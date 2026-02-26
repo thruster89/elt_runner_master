@@ -1,0 +1,102 @@
+"""
+gui/mixins/log_panel.py  ─  로그 쓰기/필터/컨텍스트메뉴
+"""
+
+from __future__ import annotations
+
+import tkinter as tk
+from typing import TYPE_CHECKING
+
+from gui.constants import C, FONTS
+
+if TYPE_CHECKING:
+    from gui.app import BatchRunnerGUI
+
+
+class LogPanelMixin:
+
+    def _log_write(self: "BatchRunnerGUI", text: str, tag="INFO"):
+        self._log_raw_lines.append((text, tag))
+        if self._should_show_line(tag):
+            self._log.insert("end", text + "\n", tag)
+            self._log.see("end")
+
+    def _log_sys(self: "BatchRunnerGUI", msg):
+        self._log_write(msg, "SYS")
+
+    def _clear_log(self: "BatchRunnerGUI"):
+        self._log.delete("1.0", "end")
+        self._log_raw_lines.clear()
+
+    def _set_log_filter(self: "BatchRunnerGUI", level):
+        self._log_filter.set(level)
+        self._refresh_log_filter_btns()
+        self._refilter_log()
+
+    def _refresh_log_filter_btns(self: "BatchRunnerGUI"):
+        cur = self._log_filter.get()
+        for lv, btn in self._log_filter_btns.items():
+            if lv == cur:
+                btn.config(bg=C["blue"], fg=C["crust"], activebackground=C["sky"])
+            else:
+                btn.config(bg=C["surface0"], fg=C["subtext"], activebackground=C["surface1"])
+
+    def _should_show_line(self: "BatchRunnerGUI", tag: str) -> bool:
+        level = self._log_filter.get()
+        if level == "ALL":
+            return True
+        if level == "WARN+":
+            return tag in ("WARN", "ERROR", "STAGE_HEADER", "STAGE_DONE", "SYS")
+        if level == "ERR":
+            return tag in ("ERROR",)
+        return True
+
+    def _refilter_log(self: "BatchRunnerGUI"):
+        self._log.delete("1.0", "end")
+        for text, tag in self._log_raw_lines:
+            if self._should_show_line(tag):
+                self._log.insert("end", text + "\n", tag)
+        self._log.see("end")
+
+    def _build_log_context_menu(self: "BatchRunnerGUI"):
+        self._log_menu = tk.Menu(self._log, tearoff=0,
+                                 bg=C["surface0"], fg=C["text"],
+                                 activebackground=C["blue"], activeforeground=C["crust"],
+                                 font=FONTS["body"])
+        self._log_menu.add_command(label="Copy", command=self._log_copy)
+        self._log_menu.add_command(label="Select All", command=self._log_select_all)
+        self._log_menu.add_separator()
+        self._log_menu.add_command(label="Copy Errors", command=self._log_copy_errors)
+        self._log_menu.add_separator()
+        self._log_menu.add_command(label="Save Log...", command=self._export_log)
+        self._log_menu.add_command(label="Clear", command=self._clear_log)
+
+    def _show_log_context_menu(self: "BatchRunnerGUI", event):
+        try:
+            self._log_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self._log_menu.grab_release()
+
+    def _log_copy(self: "BatchRunnerGUI"):
+        try:
+            sel = self._log.get("sel.first", "sel.last")
+        except tk.TclError:
+            sel = self._log.get("1.0", "end-1c")
+        self.clipboard_clear()
+        self.clipboard_append(sel)
+
+    def _log_select_all(self: "BatchRunnerGUI"):
+        self._log.tag_add("sel", "1.0", "end")
+
+    def _log_copy_errors(self: "BatchRunnerGUI"):
+        """ERROR 태그가 적용된 줄만 추출하여 클립보드에 복사"""
+        errors = []
+        ranges = self._log.tag_ranges("ERROR")
+        for i in range(0, len(ranges), 2):
+            errors.append(self._log.get(ranges[i], ranges[i + 1]))
+        text = "\n".join(errors)
+        self.clipboard_clear()
+        self.clipboard_append(text if text else "(no errors)")
+
+    def _set_status(self: "BatchRunnerGUI", text, color):
+        self._status_label.config(text=text, fg=color)
