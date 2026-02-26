@@ -1,0 +1,6 @@
+--[TB_CODE]
+SELECT
+    CODE_TYPE,
+    CODE,
+    CODE_NAME
+FROM TB_CODE

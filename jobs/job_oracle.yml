@@ -1,0 +1,60 @@
+# ============================================================
+# job_oracle.yml
+# source: Oracle → export CSV → load Oracle(MYDATA 스키마)
+#         → transform(Oracle) → report(소스 Oracle → CSV + Excel)
+# ============================================================
+
+job_name: job_oracle
+
+params:
+  clsYymm: "202003"          # 단일: "202003"
+                              # 범위: "202003:202005"
+                              # 분기: "202001:202412~Q"
+                              # 목록: "202003,202006,202009"
+
+pipeline:
+  stages:
+    - export
+    - load_local
+    - transform
+    - report
+
+# ── 소스 DB ──────────────────────────────────────────────────
+source:
+  type: oracle
+  host: local                # config/env.yml sources.oracle.hosts 키
+
+# ── Export ───────────────────────────────────────────────────
+export:
+  sql_dir: sql/export
+  out_dir: data/export
+  format: csv
+  compression: gzip
+  overwrite: true
+  parallel_workers: 1
+
+# ── Target (load 대상 DB) ─────────────────────────────────────
+target:
+  type: oracle
+  schema: MYDATA             # 없으면 자동 생성 (접속 유저에 DBA 권한 필요)
+  schema_password: aa12345   # 생략 시 스키마명과 동일
+
+# ── Transform (target DB에서 실행) ───────────────────────────
+transform:
+  sql_dir: sql/transform/oracle    # Oracle 전용 SQL 디렉토리
+  on_error: continue                   # stop / continue
+
+# ── Report ───────────────────────────────────────────────────
+report:
+  source: target             # target(load된 DB) / oracle(소스DB)
+
+  export_csv:
+    enabled: true
+    sql_dir: sql/report
+    out_dir: data/report
+    compression: none
+
+  excel:
+    enabled: true
+    out_dir: data/report
+    max_files: 10            # 최대 보관 파일 수 (초과 시 오래된 것 삭제)

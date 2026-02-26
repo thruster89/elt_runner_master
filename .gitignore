@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Runtime output
+logs/
+data/
+!data/export/job_sample/
+
+# Data files (어디서든 무시)
+*.csv
+*.gz
+*.duckdb
+*.sqlite
+*.log
+
+# Run info (JSON output)
+run_info.json
+plan_report.json
+
+# Sensitive config (contains passwords)
+config/env.yml
+
+# IDE / OS
+.claude/
+.vscode/
+*.swp
+Thumbs.db
+.DS_Store

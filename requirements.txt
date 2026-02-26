@@ -1,0 +1,16 @@
+# batch_runner v1.7 - 필수 패키지
+
+# Oracle 연결
+oracledb>=2.0.0
+
+# Vertica 연결
+vertica-python>=1.0.0
+
+# DuckDB (load target)
+duckdb>=0.10.0
+
+# YAML 파싱
+PyYAML>=6.0
+
+# Excel 출력 (report stage)
+openpyxl>=3.1.0

@@ -1,0 +1,46 @@
+job_name: test_insurance
+
+pipeline:
+  stages:
+    - export
+    - load_local
+    - transform
+    - report
+
+# export는 Oracle 필요 — 샘플 CSV로 대체
+# 실제 Oracle 연결 시 stages에 export 추가
+source:
+  type: oracle
+  host: local
+
+params:
+  clsYymm: "202303:202312~Q"
+
+export:
+  sql_dir: sql/export/test1
+  out_dir: data/export/test1
+  compression: none
+  overwrite: true
+  parallel_workers: 1
+
+load:
+  mode: append
+
+target:
+  type: duckdb
+  db_path: data/local/test_insurance.duckdb
+
+transform:
+  sql_dir: sql/transform/duckdb/test
+  on_error: stop
+
+report:
+  source: target
+  export_csv:
+    enabled: true
+    sql_dir: sql/report/test
+    out_dir: data/report/test
+  excel:
+    enabled: true
+    out_dir: data/report/test
+    max_files: 5

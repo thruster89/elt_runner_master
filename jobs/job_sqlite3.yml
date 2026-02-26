@@ -1,0 +1,56 @@
+# ============================================================
+# job_sqlite3.yml
+# source: Oracle → export CSV → load SQLite3
+#         → transform(SQLite3) → report(target SQLite3 → CSV + Excel)
+# ============================================================
+
+job_name: job_sqlite3
+
+params:
+  clsYymm: "202003"
+
+pipeline:
+  stages:
+    - export
+    - load_local
+    - transform
+    - report
+
+# ── 소스 DB ──────────────────────────────────────────────────
+source:
+  type: oracle
+  host: local
+
+# ── Export ───────────────────────────────────────────────────
+export:
+  sql_dir: sql/export
+  out_dir: data/export
+  format: csv
+  compression: gzip
+  overwrite: true
+  parallel_workers: 1
+
+# ── Target ───────────────────────────────────────────────────
+target:
+  type: sqlite3
+  db_path: data/local/result.sqlite
+
+# ── Transform ────────────────────────────────────────────────
+transform:
+  sql_dir: sql/transform/sqlite3   # SQLite3 전용 SQL 디렉토리
+  on_error: continue               # SQLite3는 continue 권장
+
+# ── Report ───────────────────────────────────────────────────
+report:
+  source: target             # load된 SQLite3에서 리포트 쿼리 실행
+
+  export_csv:
+    enabled: true
+    sql_dir: sql/report
+    out_dir: data/report
+    compression: none
+
+  excel:
+    enabled: true
+    out_dir: data/report
+    max_files: 10

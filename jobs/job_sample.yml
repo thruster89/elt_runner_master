@@ -1,0 +1,41 @@
+job_name: job_sample
+
+params:
+  clsYymm: "202003"
+
+pipeline:
+  stages:
+    - load_local
+    - transform
+    - report
+
+source:
+  type: oracle
+  host: local
+
+export:
+  sql_dir: sql/export
+  out_dir: data/export
+  format: csv
+  compression: none
+  overwrite: true
+
+target:
+  type: duckdb
+  db_path: data/local/sample.duckdb
+
+transform:
+  sql_dir: sql/transform/duckdb
+  on_error: stop
+
+report:
+  source: target
+  export_csv:
+    enabled: true
+    sql_dir: sql/report
+    out_dir: data/report
+    compression: none
+  excel:
+    enabled: true
+    out_dir: data/report
+    max_files: 10
