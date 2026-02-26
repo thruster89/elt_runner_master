@@ -28,3 +28,4 @@ config/env.yml
 *.swp
 Thumbs.db
 .DS_Store
+*.sql
