@@ -605,6 +605,13 @@ class UiBuildMixin:
             self._log_filter_btns[level] = btn
         self._refresh_log_filter_btns()
 
+        # 타임스탬프 토글 버튼
+        self._time_btn = tk.Button(header, text="[Time]", font=FONTS["shortcut"],
+                                   relief="flat", padx=4, pady=0, bd=0,
+                                   command=self._toggle_show_time)
+        self._time_btn.pack(side="left", padx=(4, 0))
+        self._refresh_time_btn()
+
         self._status_label = tk.Label(header, text="● idle", font=FONTS["mono_small"],
                                       bg=C["mantle"], fg=C["overlay0"])
         self._status_label.pack(side="right", padx=10)

@@ -91,8 +91,9 @@ class BatchRunnerGUI(
 
         # 로그 필터
         self._log_filter = tk.StringVar(value="ALL")
-        self._log_raw_lines: list[tuple[str, str]] = []  # (text, tag) pairs
+        self._log_raw_lines: list[tuple[str, str, str]] = []  # (text, tag, timestamp)
         self._log_filter_btns: dict = {}
+        self._show_time = tk.BooleanVar(value=False)
 
         # 검색 상태
         self._search_var = tk.StringVar()
