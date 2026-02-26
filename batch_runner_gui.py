@@ -628,6 +628,63 @@ class CollapsibleSection(tk.Frame):
             self._toggle_label.config(text=" ▶ ")
 
 
+class Tooltip:
+    """위젯에 마우스를 올리면 표시되는 간단한 툴팁"""
+
+    def __init__(self, widget, text, delay=500):
+        self._widget = widget
+        self._text = text
+        self._delay = delay
+        self._tip_win = None
+        self._after_id = None
+        widget.bind("<Enter>", self._on_enter, add="+")
+        widget.bind("<Leave>", self._on_leave, add="+")
+        widget.bind("<ButtonPress>", self._on_leave, add="+")
+
+    def _on_enter(self, event=None):
+        self._after_id = self._widget.after(self._delay, self._show)
+
+    def _on_leave(self, event=None):
+        if self._after_id:
+            self._widget.after_cancel(self._after_id)
+            self._after_id = None
+        self._hide()
+
+    def _show(self):
+        if self._tip_win or not self._text:
+            return
+        x = self._widget.winfo_rootx() + 20
+        y = self._widget.winfo_rooty() + self._widget.winfo_height() + 4
+        self._tip_win = tw = tk.Toplevel(self._widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x}+{y}")
+        lbl = tk.Label(tw, text=self._text, justify="left",
+                       bg=C["surface1"], fg=C["text"], relief="solid", bd=1,
+                       font=FONTS["small"], padx=8, pady=4, wraplength=320)
+        lbl.pack()
+
+    def _hide(self):
+        if self._tip_win:
+            self._tip_win.destroy()
+            self._tip_win = None
+
+
+# 필드별 툴팁 텍스트
+TOOLTIPS = {
+    "export.workers":       "동시 export 프로세스 수 (1~16)\n높을수록 빠르지만 DB 부하 증가",
+    "export.compression":   "CSV 압축 방식\ngzip: 용량 절약 / none: 속도 우선",
+    "transform.sql_dir":    "Transform SQL 파일 경로\n대상 DB 타입별 하위폴더 권장",
+    "transform.schema":     "Transform SQL에서 @{schema} 치환에 사용\n미입력 시 기본 스키마",
+    "transform.on_error":   "Transform 에러 발생 시 동작\nstop: 즉시 중단 / continue: 나머지 계속",
+    "report.sql_dir":       "Report SQL 파일 경로",
+    "report.out_dir":       "Report 출력 경로 (CSV/Excel)",
+    "report.excel":         "Excel(.xlsx) 보고서 생성 여부",
+    "report.csv":           "CSV 보고서 생성 여부",
+    "report.max_files":     "Excel 파일당 최대 시트 수 (1~100)\n초과 시 새 파일 생성",
+    "report.skip_sql":      "SQL 실행 건너뛰기\nCSV union만 수행할 때 사용",
+}
+
+
 # ─────────────────────────────────────────────────────────────
 # Stage 토글 버튼 설정
 # ─────────────────────────────────────────────────────────────
@@ -701,6 +758,18 @@ class BatchRunnerGUI(tk.Tk):
         self._ov_union_dir    = tk.StringVar(value="")
         self._ov_timeout      = tk.StringVar(value="1800")
 
+        # Dirty flag (변경 감지)
+        self._job_loaded_snapshot = None
+        self._restoring_job = False
+
+        # 최근 Work Dir 히스토리
+        self._recent_dirs: list = []
+
+        # 로그 필터
+        self._log_filter = tk.StringVar(value="ALL")
+        self._log_raw_lines: list[tuple[str, str]] = []  # (text, tag) pairs
+        self._log_filter_btns: dict = {}
+
         # 검색 상태
         self._search_var = tk.StringVar()
         self._search_matches = []
@@ -737,6 +806,11 @@ class BatchRunnerGUI(tk.Tk):
                     if conf["theme"] != self._theme_var.get():
                         self._theme_var.set(conf["theme"])
                         self._apply_theme()
+                # 최근 디렉토리 복원
+                if "recent_dirs" in conf:
+                    self._recent_dirs = conf["recent_dirs"][:10]
+                    if hasattr(self, "_wd_entry"):
+                        self._wd_entry["values"] = self._recent_dirs
                 # 마지막 설정 복원
                 if "snapshot" in conf:
                     self._restore_snapshot(conf["snapshot"])
@@ -748,6 +822,7 @@ class BatchRunnerGUI(tk.Tk):
             conf = {
                 "geometry": self.geometry(),
                 "theme": self._theme_var.get(),
+                "recent_dirs": self._recent_dirs[:10],
                 "snapshot": self._snapshot(),
             }
             _CONF_PATH.write_text(
@@ -760,6 +835,14 @@ class BatchRunnerGUI(tk.Tk):
             if not messagebox.askyesno("종료", "실행 중인 작업이 있습니다. 종료하시겠습니까?"):
                 return
             self._on_stop()
+        if self._is_dirty():
+            ans = messagebox.askyesnocancel(
+                "미저장 변경",
+                "현재 변경사항이 저장되지 않았습니다.\n저장 후 종료하시겠습니까?")
+            if ans is None:  # Cancel → 종료 취소
+                return
+            if ans:  # Yes → 저장 후 종료
+                self._on_save_yml()
         self._save_geometry()
         self.destroy()
 
@@ -906,16 +989,22 @@ class BatchRunnerGUI(tk.Tk):
         # Work Dir
         tk.Label(bar, text="Work Dir:", font=FONTS["body"],
                  bg=C["crust"], fg=C["subtext"]).pack(side="left", padx=(14, 4))
-        self._wd_entry = tk.Entry(bar, textvariable=self._work_dir,
-                            bg=C["surface0"], fg=C["text"],
-                            insertbackground=C["text"], relief="flat",
-                            font=FONTS["mono"], width=60)
+        self._wd_entry = ttk.Combobox(bar, textvariable=self._work_dir,
+                            font=FONTS["mono"], width=60,
+                            values=self._recent_dirs)
         self._wd_entry.pack(side="left", ipady=2)
+        self._wd_entry.bind("<<ComboboxSelected>>", lambda _: self._reload_project())
+        self._wd_entry.bind("<Return>", lambda _: self._reload_project())
         self._wd_btn = tk.Button(bar, text="…", font=FONTS["mono"],
                   bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
                   activebackground=C["surface1"],
                   command=self._browse_workdir)
         self._wd_btn.pack(side="left", padx=2)
+        tk.Button(bar, text="\U0001f4c2", font=FONTS["mono"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
+                  activebackground=C["surface1"],
+                  command=lambda: self._open_in_explorer(self._work_dir.get())
+                  ).pack(side="left", padx=(0, 2))
         self._reload_btn = tk.Button(bar, text="↺ Reload", font=FONTS["button_sm"],
                   bg=C["blue"], fg=C["crust"], relief="flat", padx=8,
                   activebackground=C["sky"],
@@ -989,6 +1078,29 @@ class BatchRunnerGUI(tk.Tk):
         self._target_type_var.trace_add("write", lambda *_: self._refresh_preview())
 
     # ── 헬퍼 ─────────────────────────────────────────────────
+    def _open_in_explorer(self, path_str):
+        """OS 파일 탐색기에서 경로를 연다"""
+        import subprocess as sp
+        p = Path(path_str)
+        if not p.is_absolute():
+            p = Path(self._work_dir.get()) / p
+        # 경로가 없으면 부모 폴백
+        if not p.exists():
+            p = p.parent
+        if not p.exists():
+            messagebox.showwarning("경로 없음", f"경로를 찾을 수 없습니다:\n{path_str}")
+            return
+        target = str(p)
+        try:
+            if sys.platform == "win32":
+                os.startfile(target)
+            elif sys.platform == "darwin":
+                sp.Popen(["open", target])
+            else:
+                sp.Popen(["xdg-open", target])
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+
     def _entry_row(self, parent_frame, label, var, **kw):
         row = tk.Frame(parent_frame, bg=C["mantle"])
         row.pack(fill="x", padx=12, pady=2)
@@ -1000,11 +1112,14 @@ class BatchRunnerGUI(tk.Tk):
         e.pack(side="left", fill="x", expand=True, ipady=2)
         return e
 
-    def _ov_row(self, parent_frame, label, widget_fn, note=""):
+    def _ov_row(self, parent_frame, label, widget_fn, note="", tooltip=""):
         r = tk.Frame(parent_frame, bg=C["mantle"])
         r.pack(fill="x", padx=12, pady=2)
-        tk.Label(r, text=label, font=FONTS["mono_small"], width=18, anchor="w",
-                 bg=C["mantle"], fg=C["subtext"]).pack(side="left")
+        lbl = tk.Label(r, text=label, font=FONTS["mono_small"], width=18, anchor="w",
+                       bg=C["mantle"], fg=C["subtext"])
+        lbl.pack(side="left")
+        if tooltip:
+            Tooltip(lbl, tooltip)
         widget_fn(r)
         if note:
             tk.Label(r, text=note, font=FONTS["shortcut"],
@@ -1025,6 +1140,10 @@ class BatchRunnerGUI(tk.Tk):
                     var.set(rel.as_posix())
                 except ValueError:
                     var.set(d)
+        tk.Button(row, text="\U0001f4c2", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
+                  activebackground=C["surface1"],
+                  command=lambda: self._open_in_explorer(var.get())).pack(side="right", padx=(2, 0))
         tk.Button(row, text="...", font=FONTS["mono_small"],
                   bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
                   activebackground=C["surface1"],
@@ -1237,13 +1356,13 @@ class BatchRunnerGUI(tk.Tk):
                        bg=C["surface0"], fg=C["text"], buttonbackground=C["surface1"],
                        relief="flat", font=FONTS["mono_small"],
                        command=self._refresh_preview).pack(side="left")
-        self._ov_row(body, "export.workers", _w_workers, "1~16")
+        self._ov_row(body, "export.workers", _w_workers, "1~16", tooltip=TOOLTIPS.get("export.workers", ""))
 
         def _w_compression(r):
             ttk.Combobox(r, textvariable=self._ov_compression,
                          values=["gzip", "none"], state="readonly",
                          font=FONTS["mono_small"], width=8).pack(side="left")
-        self._ov_row(body, "export.compression", _w_compression)
+        self._ov_row(body, "export.compression", _w_compression, tooltip=TOOLTIPS.get("export.compression", ""))
 
         ttk.Separator(body, orient="horizontal").pack(fill="x", padx=12, pady=4)
 
@@ -1256,13 +1375,13 @@ class BatchRunnerGUI(tk.Tk):
             tk.Entry(r, textvariable=self._transform_schema,
                      bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
                      relief="flat", font=FONTS["mono_small"], width=16).pack(side="left", fill="x", expand=True, ipady=2)
-        self._ov_row(body, "transform.schema", _w_tfm_schema, note="@{schema} 접두사용")
+        self._ov_row(body, "transform.schema", _w_tfm_schema, note="@{schema} 접두사용", tooltip=TOOLTIPS.get("transform.schema", ""))
 
         def _w_on_error(r):
             ttk.Combobox(r, textvariable=self._ov_on_error,
                          values=["stop", "continue"], state="readonly",
                          font=FONTS["mono_small"], width=8).pack(side="left")
-        self._ov_row(body, "transform.on_error", _w_on_error)
+        self._ov_row(body, "transform.on_error", _w_on_error, tooltip=TOOLTIPS.get("transform.on_error", ""))
 
         ttk.Separator(body, orient="horizontal").pack(fill="x", padx=12, pady=4)
 
@@ -1277,28 +1396,28 @@ class BatchRunnerGUI(tk.Tk):
                            bg=C["mantle"], fg=C["text"], selectcolor=C["surface0"],
                            activebackground=C["mantle"],
                            command=self._refresh_preview).pack(side="left")
-        self._ov_row(body, "report.excel", _w_excel)
+        self._ov_row(body, "report.excel", _w_excel, tooltip=TOOLTIPS.get("report.excel", ""))
 
         def _w_csv(r):
             tk.Checkbutton(r, variable=self._ov_csv, text="",
                            bg=C["mantle"], fg=C["text"], selectcolor=C["surface0"],
                            activebackground=C["mantle"],
                            command=self._refresh_preview).pack(side="left")
-        self._ov_row(body, "report.csv", _w_csv)
+        self._ov_row(body, "report.csv", _w_csv, tooltip=TOOLTIPS.get("report.csv", ""))
 
         def _w_max_files(r):
             tk.Spinbox(r, from_=1, to=100, width=4, textvariable=self._ov_max_files,
                        bg=C["surface0"], fg=C["text"], buttonbackground=C["surface1"],
                        relief="flat", font=FONTS["mono_small"],
                        command=self._refresh_preview).pack(side="left")
-        self._ov_row(body, "report.max_files", _w_max_files)
+        self._ov_row(body, "report.max_files", _w_max_files, tooltip=TOOLTIPS.get("report.max_files", ""))
 
         def _w_skip_sql(r):
             tk.Checkbutton(r, variable=self._ov_skip_sql, text="",
                            bg=C["mantle"], fg=C["text"], selectcolor=C["surface0"],
                            activebackground=C["mantle"],
                            command=self._refresh_preview).pack(side="left")
-        self._ov_row(body, "report.skip_sql", _w_skip_sql, "skip DB -> CSV union only")
+        self._ov_row(body, "report.skip_sql", _w_skip_sql, "skip DB -> CSV union only", tooltip=TOOLTIPS.get("report.skip_sql", ""))
 
         # report.csv_union_dir
         union_row = tk.Frame(body, bg=C["mantle"])
@@ -1336,6 +1455,10 @@ class BatchRunnerGUI(tk.Tk):
                                        state="readonly", font=FONTS["mono"], width=18)
         self._job_combo.pack(side="left", fill="x", expand=True)
         self._job_combo.bind("<<ComboboxSelected>>", self._on_job_change)
+        tk.Button(job_row, text="dup", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["blue"], relief="flat", padx=6,
+                  activebackground=C["surface1"],
+                  command=self._on_job_duplicate).pack(side="left", padx=(4, 0))
         tk.Button(job_row, text="del", font=FONTS["mono_small"],
                   bg=C["surface0"], fg=C["red"], relief="flat", padx=6,
                   activebackground=C["surface1"],
@@ -1363,6 +1486,16 @@ class BatchRunnerGUI(tk.Tk):
                        bg=C["mantle"], fg=C["text"], selectcolor=C["surface0"],
                        activebackground=C["mantle"], font=FONTS["mono_small"]
                        ).pack(side="left", padx=(0, 6))
+
+        # 로그 필터 버튼
+        self._log_filter_btns = {}
+        for level in ("ALL", "WARN+", "ERR"):
+            btn = tk.Button(header, text=f"[{level}]", font=FONTS["shortcut"],
+                            relief="flat", padx=4, pady=0, bd=0,
+                            command=lambda lv=level: self._set_log_filter(lv))
+            btn.pack(side="left", padx=(0, 2))
+            self._log_filter_btns[level] = btn
+        self._refresh_log_filter_btns()
 
         self._status_label = tk.Label(header, text="● idle", font=FONTS["mono_small"],
                                       bg=C["mantle"], fg=C["overlay0"])
@@ -1453,6 +1586,10 @@ class BatchRunnerGUI(tk.Tk):
                              font=(FONT_MONO, 10, "bold"),
                              spacing3=8)
         self._log.tag_config("HIGHLIGHT", background=C["yellow"], foreground=C["crust"])
+
+        # 로그 우클릭 컨텍스트 메뉴
+        self._build_log_context_menu()
+        self._log.bind("<Button-3>", self._show_log_context_menu)
 
     # ── 하단 버튼 바 ─────────────────────────────────────────
     def _build_button_bar(self):
@@ -1548,6 +1685,44 @@ class BatchRunnerGUI(tk.Tk):
                 "timeout":      self._ov_timeout.get(),
             },
         }
+
+    def _is_dirty(self) -> bool:
+        """현재 상태가 로드 시점 스냅샷과 다른지 확인"""
+        if self._job_loaded_snapshot is None:
+            return False
+        return self._snapshot() != self._job_loaded_snapshot
+
+    def _get_changed_fields(self) -> list[str]:
+        """변경된 필드명 리스트 반환"""
+        if self._job_loaded_snapshot is None:
+            return []
+        cur = self._snapshot()
+        old = self._job_loaded_snapshot
+        changed = []
+        for key in cur:
+            if key == "overrides":
+                for ok in cur.get("overrides", {}):
+                    if cur["overrides"].get(ok) != old.get("overrides", {}).get(ok):
+                        changed.append(f"overrides.{ok}")
+            elif cur.get(key) != old.get(key):
+                changed.append(key)
+        return changed
+
+    def _update_title_dirty(self):
+        """타이틀 바에 변경 표시(*) 업데이트"""
+        base = f"ELT Runner  v{APP_VERSION}"
+        fname = self.job_var.get()
+        if fname:
+            base = f"{fname} - {base}"
+        if self._is_dirty():
+            self.title(f"* {base}")
+        else:
+            self.title(base)
+
+    def _capture_loaded_snapshot(self):
+        """현재 GUI 상태를 로드 시점 스냅샷으로 캡처 (after로 지연)"""
+        self._job_loaded_snapshot = self._snapshot()
+        self._update_title_dirty()
 
     def _restore_snapshot(self, snap: dict):
         """스냅샷으로 GUI 설정 복원"""
@@ -1717,11 +1892,37 @@ class BatchRunnerGUI(tk.Tk):
                   activebackground=C["teal"],
                   command=do_save).pack(pady=10)
 
+    def _show_save_confirm(self, fname, changed_fields) -> bool:
+        """변경 내역을 보여주는 저장 확인 팝업"""
+        def build(body):
+            tk.Label(body, text=f"Save: {fname}", bg=C["base"],
+                     fg=C["text"], font=FONTS["h2"]).pack(pady=(0, 8))
+            if changed_fields:
+                tk.Label(body, text="변경된 항목:", bg=C["base"],
+                         fg=C["overlay0"], font=FONTS["body"]).pack(anchor="w", padx=16)
+                for f in changed_fields[:10]:
+                    tk.Label(body, text=f"  • {f}", bg=C["base"],
+                             fg=C["yellow"], font=FONTS["mono_small"]).pack(anchor="w", padx=20)
+                if len(changed_fields) > 10:
+                    tk.Label(body, text=f"  ... 외 {len(changed_fields) - 10}개",
+                             bg=C["base"], fg=C["overlay0"],
+                             font=FONTS["small"]).pack(anchor="w", padx=20)
+        return self._themed_confirm("━ Save 확인", build,
+                                    ok_text="Save", ok_color="green", ok_active="teal")
+
     def _on_save_yml(self):
         """현재 선택된 job 파일을 덮어쓰기. 선택된 job 없으면 save as fallback."""
         fname = self.job_var.get()
         if not fname:
             self._on_save_yml_as()
+            return
+        # 변경 없으면 스킵
+        if not self._is_dirty():
+            self._log_sys("No changes to save.")
+            return
+        # 확인 팝업
+        changed = self._get_changed_fields()
+        if not self._show_save_confirm(fname, changed):
             return
         jobs_dir = self._jobs_dir()
         out_path = jobs_dir / fname
@@ -1734,12 +1935,39 @@ class BatchRunnerGUI(tk.Tk):
         )
         self._jobs[fname] = new_cfg
         self._log_sys(f"Saved: {out_path.name}")
+        self._job_loaded_snapshot = self._snapshot()
+        self._update_title_dirty()
 
     def _on_save_yml_as(self):
         """새 이름으로 저장 (다이얼로그)"""
         fname = self.job_var.get()
         suggest = fname.replace(".yml", "") if fname else "new_job"
         self._save_yml_dialog(suggest, "Save as yml")
+
+    def _on_job_duplicate(self):
+        """현재 선택된 job을 복제하여 _copy.yml로 저장"""
+        fname = self.job_var.get()
+        if not fname:
+            return
+        jobs_dir = self._jobs_dir()
+        jobs_dir.mkdir(parents=True, exist_ok=True)
+        base = fname.replace(".yml", "")
+        # 중복 방지: _copy, _copy2, _copy3 ...
+        new_name = f"{base}_copy.yml"
+        counter = 2
+        while (jobs_dir / new_name).exists():
+            new_name = f"{base}_copy{counter}.yml"
+            counter += 1
+        new_cfg = self._build_gui_config()
+        (jobs_dir / new_name).write_text(
+            yaml.dump(new_cfg, allow_unicode=True, default_flow_style=False,
+                      sort_keys=False),
+            encoding="utf-8"
+        )
+        self._log_sys(f"Duplicated: {fname} → {new_name}")
+        self._reload_project()
+        self.job_var.set(new_name)
+        self._on_job_change()
 
     def _on_job_delete(self):
         """현재 선택된 job 파일 삭제"""
@@ -1764,6 +1992,7 @@ class BatchRunnerGUI(tk.Tk):
     # ── 프로젝트 로드 ────────────────────────────────────────
     def _reload_project(self):
         wd = Path(self._work_dir.get())
+        self._add_recent_dir(str(wd))
         self._jobs = load_jobs(wd)
         self._env_hosts = load_env_hosts(wd, self._env_path_var.get()
                                          if hasattr(self, "_env_path_var") else "config/env.yml")
@@ -1786,10 +2015,21 @@ class BatchRunnerGUI(tk.Tk):
         self._log_sys(f"Project loaded: {wd}  (jobs={len(self._jobs)}, "
                       f"env hosts={sum(len(v) for v in self._env_hosts.values())})")
 
+    def _add_recent_dir(self, dir_path):
+        """최근 디렉토리 히스토리에 추가 (최대 10개)"""
+        d = str(dir_path)
+        if d in self._recent_dirs:
+            self._recent_dirs.remove(d)
+        self._recent_dirs.insert(0, d)
+        self._recent_dirs = self._recent_dirs[:10]
+        if hasattr(self, "_wd_entry"):
+            self._wd_entry["values"] = self._recent_dirs
+
     def _browse_workdir(self):
         d = filedialog.askdirectory(initialdir=self._work_dir.get())
         if d:
             self._work_dir.set(d)
+            self._add_recent_dir(d)
             self._reload_project()
 
     # ── Job 선택 시 → 모든 1급 필드 자동 채움 ────────────────
@@ -1798,6 +2038,18 @@ class BatchRunnerGUI(tk.Tk):
         cfg = self._jobs.get(fname, {})
         if not cfg:
             return
+
+        # 미저장 변경 경고
+        if not self._restoring_job and self._is_dirty():
+            ans = messagebox.askyesnocancel(
+                "미저장 변경",
+                "현재 변경사항이 저장되지 않았습니다.\n저장하시겠습니까?")
+            if ans is None:  # Cancel
+                return
+            if ans:  # Yes → 저장
+                self._on_save_yml()
+
+        self._restoring_job = True
 
         # Source
         src = cfg.get("source", {})
@@ -1858,7 +2110,9 @@ class BatchRunnerGUI(tk.Tk):
         self._selected_sqls = set()
         self._update_sql_preview()
 
+        self._restoring_job = False
         self._refresh_preview()
+        self.after(100, self._capture_loaded_snapshot)
 
     # ── SQL 파라미터 자동 감지 ─────────────────────────────────
     def _scan_and_suggest_params(self):
@@ -2217,16 +2471,92 @@ class BatchRunnerGUI(tk.Tk):
         self._cmd_preview.insert("end", text)
         self._cmd_preview.config(state="disabled")
 
+        if not self._restoring_job:
+            self._update_title_dirty()
+
     # ── 로그 헬퍼 ────────────────────────────────────────────
     def _log_write(self, text: str, tag="INFO"):
-        self._log.insert("end", text + "\n", tag)
-        self._log.see("end")
+        self._log_raw_lines.append((text, tag))
+        if self._should_show_line(tag):
+            self._log.insert("end", text + "\n", tag)
+            self._log.see("end")
 
     def _log_sys(self, msg):
         self._log_write(msg, "SYS")
 
     def _clear_log(self):
         self._log.delete("1.0", "end")
+        self._log_raw_lines.clear()
+
+    def _set_log_filter(self, level):
+        self._log_filter.set(level)
+        self._refresh_log_filter_btns()
+        self._refilter_log()
+
+    def _refresh_log_filter_btns(self):
+        cur = self._log_filter.get()
+        for lv, btn in self._log_filter_btns.items():
+            if lv == cur:
+                btn.config(bg=C["blue"], fg=C["crust"], activebackground=C["sky"])
+            else:
+                btn.config(bg=C["surface0"], fg=C["subtext"], activebackground=C["surface1"])
+
+    def _should_show_line(self, tag: str) -> bool:
+        level = self._log_filter.get()
+        if level == "ALL":
+            return True
+        if level == "WARN+":
+            return tag in ("WARN", "ERROR", "STAGE_HEADER", "STAGE_DONE", "SYS")
+        if level == "ERR":
+            return tag in ("ERROR",)
+        return True
+
+    def _refilter_log(self):
+        self._log.delete("1.0", "end")
+        for text, tag in self._log_raw_lines:
+            if self._should_show_line(tag):
+                self._log.insert("end", text + "\n", tag)
+        self._log.see("end")
+
+    def _build_log_context_menu(self):
+        self._log_menu = tk.Menu(self._log, tearoff=0,
+                                 bg=C["surface0"], fg=C["text"],
+                                 activebackground=C["blue"], activeforeground=C["crust"],
+                                 font=FONTS["body"])
+        self._log_menu.add_command(label="Copy", command=self._log_copy)
+        self._log_menu.add_command(label="Select All", command=self._log_select_all)
+        self._log_menu.add_separator()
+        self._log_menu.add_command(label="Copy Errors", command=self._log_copy_errors)
+        self._log_menu.add_separator()
+        self._log_menu.add_command(label="Save Log...", command=self._export_log)
+        self._log_menu.add_command(label="Clear", command=self._clear_log)
+
+    def _show_log_context_menu(self, event):
+        try:
+            self._log_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self._log_menu.grab_release()
+
+    def _log_copy(self):
+        try:
+            sel = self._log.get("sel.first", "sel.last")
+        except tk.TclError:
+            sel = self._log.get("1.0", "end-1c")
+        self.clipboard_clear()
+        self.clipboard_append(sel)
+
+    def _log_select_all(self):
+        self._log.tag_add("sel", "1.0", "end")
+
+    def _log_copy_errors(self):
+        """ERROR 태그가 적용된 줄만 추출하여 클립보드에 복사"""
+        errors = []
+        ranges = self._log.tag_ranges("ERROR")
+        for i in range(0, len(ranges), 2):
+            errors.append(self._log.get(ranges[i], ranges[i + 1]))
+        text = "\n".join(errors)
+        self.clipboard_clear()
+        self.clipboard_append(text if text else "(no errors)")
 
     def _set_status(self, text, color):
         self._status_label.config(text=text, fg=color)
@@ -2308,7 +2638,7 @@ class BatchRunnerGUI(tk.Tk):
     # ── 타이틀 깜빡임 ────────────────────────────────────────
     def _flash_title(self, count=6):
         if count <= 0:
-            self.title(f"ELT Runner  v{APP_VERSION}")
+            self._update_title_dirty()
             return
         if count % 2 == 0:
             self.title(f">> Done -- ELT Runner  v{APP_VERSION}")
@@ -2571,6 +2901,34 @@ class BatchRunnerGUI(tk.Tk):
         self._progress_label.config(text=f"{cur_label}  {secs//60:02d}:{secs%60:02d}")
         self._elapsed_job_id = self.after(1000, self._tick_elapsed)
 
+    def _notify_os(self, title, message):
+        """OS 레벨 알림 전송 (실패 시 조용히 무시)"""
+        try:
+            if sys.platform == "win32":
+                import subprocess as sp
+                ps_script = (
+                    f'[Windows.UI.Notifications.ToastNotificationManager,'
+                    f' Windows.UI.Notifications, ContentType = WindowsRuntime] > $null;'
+                    f'$xml = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent(0);'
+                    f'$text = $xml.GetElementsByTagName("text");'
+                    f'$text.Item(0).AppendChild($xml.CreateTextNode("{title}")) > $null;'
+                    f'$text.Item(1).AppendChild($xml.CreateTextNode("{message}")) > $null;'
+                    f'$toast = [Windows.UI.Notifications.ToastNotification]::new($xml);'
+                    f'[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("ELT Runner").Show($toast)'
+                )
+                sp.Popen(["powershell", "-Command", ps_script],
+                         creationflags=0x08000000,  # CREATE_NO_WINDOW
+                         stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+            elif sys.platform == "darwin":
+                import subprocess as sp
+                sp.Popen(["osascript", "-e",
+                          f'display notification "{message}" with title "{title}"'])
+            else:
+                import subprocess as sp
+                sp.Popen(["notify-send", title, message])
+        except Exception:
+            pass
+
     def _on_done(self, ret: int):
         import time
         # 애니메이션 취소
@@ -2604,6 +2962,12 @@ class BatchRunnerGUI(tk.Tk):
         # 완료 알림
         self.bell()
         self._flash_title()
+        if ret == 0:
+            self._notify_os("ELT Runner", f"완료 ({elapsed_str})")
+        elif ret < 0:
+            self._notify_os("ELT Runner", f"중단됨 ({elapsed_str})")
+        else:
+            self._notify_os("ELT Runner", f"오류 발생 (code={ret})")
         self._reset_buttons()
 
     def _on_stop(self):

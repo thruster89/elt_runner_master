@@ -29,3 +29,8 @@ config/env.yml
 Thumbs.db
 .DS_Store
 *.sql
+
+!VERSION
+
+!.githooks/
+!.githooks/**
