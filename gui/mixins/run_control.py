@@ -373,6 +373,9 @@ class RunControlMixin:
             self._cancel_schedule()
             return
         raw = self._schedule_time.get().strip()
+        if raw == "HH:MM":
+            self._log_write("[Schedule] 실행할 시각을 입력하세요 (예: 09:30)", "WARN")
+            return
         try:
             target = datetime.strptime(raw, "%H:%M").replace(
                 year=datetime.now().year,
@@ -380,12 +383,13 @@ class RunControlMixin:
                 day=datetime.now().day,
             )
             now = datetime.now()
+            next_day = False
             if target <= now:
-                # 이미 지난 시각이면 다음 날로
                 from datetime import timedelta
                 target += timedelta(days=1)
+                next_day = True
         except ValueError:
-            self._log_write("[Schedule] HH:MM 형식으로 입력하세요", "WARN")
+            self._log_write("[Schedule] 24시간제 시각을 입력하세요 (예: 09:30, 23:00)", "WARN")
             return
         self._schedule_target = target
         self._schedule_id = self.after(1000, self._tick_schedule)
@@ -395,10 +399,14 @@ class RunControlMixin:
         remaining = int((target - datetime.now()).total_seconds())
         m, s = divmod(remaining, 60)
         h, m = divmod(m, 60)
+        day_tag = " 내일" if next_day else " 오늘"
         self._schedule_label.config(
-            text=f"{target.strftime('%H:%M')} 예약 ({h:02d}:{m:02d}:{s:02d})",
+            text=f"{day_tag} {target.strftime('%H:%M')} 예약 ({h:02d}:{m:02d}:{s:02d})",
             fg=C["green"])
-        self._log_sys(f"[Schedule] {target.strftime('%H:%M')} 예약됨")
+        log_msg = f"[Schedule]{day_tag} {target.strftime('%H:%M')} 예약됨"
+        if next_day:
+            log_msg += " (이미 지난 시각이므로 내일 실행)"
+        self._log_sys(log_msg)
 
     def _cancel_schedule(self: "BatchRunnerGUI"):
         if self._schedule_id is not None:
@@ -426,6 +434,7 @@ class RunControlMixin:
             return
         m, s = divmod(remaining, 60)
         h, m = divmod(m, 60)
+        day_tag = " 내일" if self._schedule_target.date() > now.date() else " 오늘"
         self._schedule_label.config(
-            text=f"{self._schedule_target.strftime('%H:%M')} 예약 ({h:02d}:{m:02d}:{s:02d})")
+            text=f"{day_tag} {self._schedule_target.strftime('%H:%M')} 예약 ({h:02d}:{m:02d}:{s:02d})")
         self._schedule_id = self.after(1000, self._tick_schedule)
