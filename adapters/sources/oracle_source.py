@@ -1,8 +1,31 @@
 import csv
 import gzip
+import json
 import time
 from pathlib import Path
 from engine.runtime_state import stop_event
+
+
+def _describe_to_meta(description) -> list[dict]:
+    """cursor.description → 직렬화 가능한 컬럼 메타 리스트 변환.
+
+    oracledb cursor.description 튜플:
+      (name, type, display_size, internal_size, precision, scale, null_ok)
+    type 객체의 name 속성: 'DB_TYPE_VARCHAR', 'DB_TYPE_NUMBER' 등
+    """
+    meta = []
+    for col in description:
+        name, dbtype, display_size, internal_size, precision, scale, null_ok = col
+        type_name = getattr(dbtype, "name", str(dbtype))  # 'DB_TYPE_VARCHAR' 등
+        entry = {"name": name, "type": type_name}
+        if internal_size is not None:
+            entry["size"] = internal_size
+        if precision is not None:
+            entry["precision"] = precision
+        if scale is not None:
+            entry["scale"] = scale
+        meta.append(entry)
+    return meta
 
 def export_sql_to_csv(
     conn,
@@ -53,6 +76,7 @@ def export_sql_to_csv(
             return 0
 
         columns = [col[0] for col in cursor.description]
+        col_meta = _describe_to_meta(cursor.description)
 
         out_file = Path(out_file)
         tmp_file = out_file.with_suffix(out_file.suffix + ".tmp")
@@ -104,6 +128,14 @@ def export_sql_to_csv(
 
             tmp_file.replace(out_file)
             logger.debug("File committed: %s", out_file)
+
+            # 컬럼 메타데이터 사이드카 저장 (.meta.json)
+            csv_name = out_file.name
+            csv_stem = csv_name[:-len(".csv.gz")] if csv_name.endswith(".csv.gz") else csv_name[:-len(".csv")]
+            meta_file = out_file.parent / (csv_stem + ".meta.json")
+            meta_file.write_text(json.dumps(col_meta, ensure_ascii=False, indent=2),
+                                 encoding="utf-8")
+            logger.debug("Column metadata saved: %s", meta_file.name)
 
             logger.info(
                 "%s CSV export completed | rows=%d file=%s",

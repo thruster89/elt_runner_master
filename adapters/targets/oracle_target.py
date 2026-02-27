@@ -2,6 +2,7 @@
 
 import csv
 import gzip
+import json
 import time
 import logging
 from datetime import datetime
@@ -151,7 +152,80 @@ def _infer_oracle_type(values: list) -> str:
         return "VARCHAR2(4000)"
 
 
+def _meta_type_to_oracle(col: dict) -> str:
+    """meta.json 컬럼 정보 → Oracle DDL 타입 문자열 변환."""
+    t = col.get("type", "").upper()
+    size = col.get("size")
+    precision = col.get("precision")
+    scale = col.get("scale")
+
+    # DB_TYPE_NUMBER, DB_TYPE_BINARY_DOUBLE 등
+    if "NUMBER" in t or "BINARY_DOUBLE" in t or "BINARY_FLOAT" in t:
+        if precision and scale:
+            return f"NUMBER({precision},{scale})"
+        elif precision:
+            return f"NUMBER({precision})"
+        return "NUMBER"
+    if "FLOAT" in t:
+        return f"FLOAT({precision})" if precision else "FLOAT"
+    if "DATE" in t and "TIMESTAMP" not in t:
+        return "DATE"
+    if "TIMESTAMP" in t:
+        if "TIME_ZONE" in t or "TZ" in t:
+            return "TIMESTAMP WITH TIME ZONE"
+        return "TIMESTAMP"
+    if "CLOB" in t:
+        return "CLOB"
+    if "BLOB" in t:
+        return "BLOB"
+    if "NVARCHAR" in t or "NCHAR_VAR" in t:
+        return f"NVARCHAR2({size})" if size else "NVARCHAR2(2000)"
+    if "NCHAR" in t:
+        return f"NCHAR({size})" if size else "NCHAR(1)"
+    if "RAW" in t and "LONG" not in t:
+        return f"RAW({size})" if size else "RAW(2000)"
+    if "LONG_RAW" in t:
+        return "LONG RAW"
+    if "LONG" in t:
+        return "LONG"
+    if "CHAR" in t and "VAR" not in t:
+        return f"CHAR({size})" if size else "CHAR(1)"
+    # VARCHAR2 / default
+    if size and size > 0:
+        return f"VARCHAR2({size})"
+    return "VARCHAR2(4000)"
+
+
+def _find_meta_file(csv_path: Path) -> Path | None:
+    """CSV와 같은 디렉토리에서 대응하는 .meta.json 탐색."""
+    name = csv_path.name
+    stem = name[:-len(".csv.gz")] if name.endswith(".csv.gz") else name[:-len(".csv")]
+    meta = csv_path.parent / (stem + ".meta.json")
+    return meta if meta.exists() else None
+
+
+def _create_table_from_meta(cur, conn, schema: str, table_name: str, meta: list[dict]):
+    """소스 메타데이터 기반으로 정확한 타입의 테이블 생성."""
+    col_defs = [f'  "{col["name"].upper()}" {_meta_type_to_oracle(col)}' for col in meta]
+    tbl = _qualified(schema, table_name)
+    ddl = f"CREATE TABLE {tbl} (\n" + ",\n".join(col_defs) + "\n)"
+
+    logger.info("CREATE TABLE %s (from source metadata)", tbl)
+    logger.debug("DDL:\n%s", ddl)
+    cur.execute(ddl)
+    conn.commit()
+
+
 def _create_table_from_csv(cur, conn, schema: str, table_name: str, csv_path: Path):
+    # 메타 파일 우선 탐색 → 소스 타입 그대로 생성
+    meta_file = _find_meta_file(csv_path)
+    if meta_file:
+        meta = json.loads(meta_file.read_text(encoding="utf-8"))
+        _create_table_from_meta(cur, conn, schema, table_name, meta)
+        return
+
+    # fallback: CSV 샘플 기반 타입 추론
+    logger.debug("No .meta.json found, inferring types from CSV samples")
     open_fn = gzip.open if str(csv_path).endswith(".gz") else open
     with open_fn(csv_path, "rt", encoding="utf-8") as f:
         reader = csv.reader(f)
@@ -169,7 +243,7 @@ def _create_table_from_csv(cur, conn, schema: str, table_name: str, csv_path: Pa
     tbl = _qualified(schema, table_name)
     ddl = f"CREATE TABLE {tbl} (\n" + ",\n".join(col_defs) + "\n)"
 
-    logger.info("CREATE TABLE %s", tbl)
+    logger.info("CREATE TABLE %s (from CSV inference)", tbl)
     logger.debug("DDL:\n%s", ddl)
     cur.execute(ddl)
     conn.commit()
