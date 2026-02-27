@@ -163,14 +163,20 @@ def sanitize_sql(sql: str) -> str:
 
 
 def build_csv_name(sqlname: str, host: str, params: dict, ext: str,
-                   name_style: str = "full") -> str:
+                   name_style: str = "full",
+                   strip_prefix: bool = False) -> str:
     """
     CSV 파일명 생성.
     name_style:
       "full"    — key_value 형태 (기본, 현행)  예: sql__host__clsYymm_202003.csv
       "compact" — value만 사용                  예: sql__host__202003.csv
+    strip_prefix:
+      True  — 숫자 접두사 제거  예: 01_contract → contract
+      False — 유지 (기본)       예: 01_contract → 01_contract
     """
-    parts = [sqlname]
+    from engine.sql_utils import strip_sql_prefix
+    base = strip_sql_prefix(sqlname) if strip_prefix else sqlname
+    parts = [base]
 
     if host:
         parts.append(host)
@@ -228,7 +234,8 @@ def _make_task_key(sql_file: Path, param_set: dict) -> str:
 # ---------------------------
 # Plan mode: Dryrun report
 # ---------------------------
-def run_plan(ctx, sql_files, export_cfg, out_dir, ext, name_style="full"):
+def run_plan(ctx, sql_files, export_cfg, out_dir, ext, name_style="full",
+             strip_prefix=False):
     logger = ctx.logger
     source_sel = ctx.job_config.get("source", {})
     host_name = source_sel.get("host", "")
@@ -252,6 +259,7 @@ def run_plan(ctx, sql_files, export_cfg, out_dir, ext, name_style="full"):
                 params=param_set,
                 ext=ext,
                 name_style=name_style,
+                strip_prefix=strip_prefix,
             )
             out_file = out_dir / csv_name
 
@@ -505,6 +513,7 @@ def run(ctx: RunContext):
     backup_keep = export_cfg.get("backup_keep", 10)
     parallel_workers = export_cfg.get("parallel_workers", 1)
     name_style = export_cfg.get("csv_name_style", "full")
+    strip_prefix = export_cfg.get("csv_strip_prefix", False)
 
     ext = "csv.gz" if compression == "gzip" else "csv"
 
@@ -512,7 +521,8 @@ def run(ctx: RunContext):
     # PLAN 모드: dryrun report만 생성하고 종료
     # ----------------------------------------
     if ctx.mode == "plan":
-        run_plan(ctx, sql_files, export_cfg, out_dir, ext, name_style=name_style)
+        run_plan(ctx, sql_files, export_cfg, out_dir, ext, name_style=name_style,
+                 strip_prefix=strip_prefix)
         return
 
     # ----------------------------------------
@@ -559,6 +569,7 @@ def run(ctx: RunContext):
                 params=param_set,
                 ext=ext,
                 name_style=name_style,
+                strip_prefix=strip_prefix,
             )
 
             out_file = out_dir / csv_name
