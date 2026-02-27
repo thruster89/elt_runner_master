@@ -5,6 +5,7 @@ gui/mixins/log_panel.py  ─  로그 쓰기/필터/컨텍스트메뉴
 from __future__ import annotations
 
 import tkinter as tk
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from gui.constants import C, FONTS
@@ -16,9 +17,10 @@ if TYPE_CHECKING:
 class LogPanelMixin:
 
     def _log_write(self: "BatchRunnerGUI", text: str, tag="INFO"):
-        self._log_raw_lines.append((text, tag))
+        ts = datetime.now().strftime("%H:%M:%S")
+        self._log_raw_lines.append((text, tag, ts))
         if self._should_show_line(tag):
-            self._log.insert("end", text + "\n", tag)
+            self._insert_log_line(text, tag, ts)
             self._log.see("end")
 
     def _log_sys(self: "BatchRunnerGUI", msg):
@@ -53,10 +55,28 @@ class LogPanelMixin:
 
     def _refilter_log(self: "BatchRunnerGUI"):
         self._log.delete("1.0", "end")
-        for text, tag in self._log_raw_lines:
+        for text, tag, ts in self._log_raw_lines:
             if self._should_show_line(tag):
-                self._log.insert("end", text + "\n", tag)
+                self._insert_log_line(text, tag, ts)
         self._log.see("end")
+
+    def _insert_log_line(self: "BatchRunnerGUI", text: str, tag: str, ts: str):
+        if self._show_time.get():
+            self._log.insert("end", ts + "  ", "TIME")
+        self._log.insert("end", text + "\n", tag)
+
+    def _toggle_show_time(self: "BatchRunnerGUI"):
+        self._show_time.set(not self._show_time.get())
+        self._refresh_time_btn()
+        self._refilter_log()
+
+    def _refresh_time_btn(self: "BatchRunnerGUI"):
+        if self._show_time.get():
+            self._time_btn.config(bg=C["blue"], fg=C["crust"],
+                                  activebackground=C["sky"])
+        else:
+            self._time_btn.config(bg=C["surface0"], fg=C["subtext"],
+                                  activebackground=C["surface1"])
 
     def _build_log_context_menu(self: "BatchRunnerGUI"):
         self._log_menu = tk.Menu(self._log, tearoff=0,

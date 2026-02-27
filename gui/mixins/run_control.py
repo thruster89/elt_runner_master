@@ -12,6 +12,7 @@ import sys
 import threading
 import time
 import tkinter as tk
+from datetime import datetime
 from tkinter import ttk
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -26,16 +27,16 @@ if TYPE_CHECKING:
 
 class RunControlMixin:
 
-    def _on_run(self: "BatchRunnerGUI"):
+    def _on_run(self: "BatchRunnerGUI", *, scheduled=False):
         mode = self.mode_var.get()
 
         # overwrite=true 확인 (Dryrun은 실제 덮어쓰기 없으므로 스킵)
-        if self._ov_overwrite.get() and mode != "plan":
+        if not scheduled and self._ov_overwrite.get() and mode != "plan":
             if not self._show_overwrite_confirm():
                 return
 
-        # 실행 전 확인 다이얼로그 (Dryrun은 확인 없이 바로 실행)
-        if mode != "plan":
+        # 실행 전 확인 다이얼로그 (Dryrun/예약은 확인 없이 바로 실행)
+        if not scheduled and mode != "plan":
             if not self._show_run_confirm():
                 return
 
@@ -354,3 +355,77 @@ class RunControlMixin:
 
         if not self._restoring_job:
             self._update_title_dirty()
+
+    # ── 예약 실행 ─────────────────────────────────────────────
+
+    def _on_schedule_focus_in(self: "BatchRunnerGUI", _event=None):
+        if self._schedule_time.get() == "HH:MM":
+            self._schedule_time.set("")
+            self._schedule_entry.config(fg=C["text"])
+
+    def _on_schedule_focus_out(self: "BatchRunnerGUI", _event=None):
+        if not self._schedule_time.get().strip():
+            self._schedule_entry.config(fg=C["overlay0"])
+            self._schedule_time.set("HH:MM")
+
+    def _on_schedule(self: "BatchRunnerGUI"):
+        if self._schedule_id is not None:
+            self._cancel_schedule()
+            return
+        raw = self._schedule_time.get().strip()
+        try:
+            target = datetime.strptime(raw, "%H:%M").replace(
+                year=datetime.now().year,
+                month=datetime.now().month,
+                day=datetime.now().day,
+            )
+            now = datetime.now()
+            if target <= now:
+                # 이미 지난 시각이면 다음 날로
+                from datetime import timedelta
+                target += timedelta(days=1)
+        except ValueError:
+            self._log_write("[Schedule] HH:MM 형식으로 입력하세요", "WARN")
+            return
+        self._schedule_target = target
+        self._schedule_id = self.after(1000, self._tick_schedule)
+        self._schedule_btn.config(text="Cancel", bg=C["red"], fg=C["crust"],
+                                  activebackground=C["peach"])
+        self._schedule_entry.config(state="disabled")
+        remaining = int((target - datetime.now()).total_seconds())
+        m, s = divmod(remaining, 60)
+        h, m = divmod(m, 60)
+        self._schedule_label.config(
+            text=f"{target.strftime('%H:%M')} 예약 ({h:02d}:{m:02d}:{s:02d})",
+            fg=C["green"])
+        self._log_sys(f"[Schedule] {target.strftime('%H:%M')} 예약됨")
+
+    def _cancel_schedule(self: "BatchRunnerGUI"):
+        if self._schedule_id is not None:
+            self.after_cancel(self._schedule_id)
+            self._schedule_id = None
+        self._schedule_btn.config(text="Schedule", bg=C["surface0"], fg=C["subtext"],
+                                  activebackground=C["surface1"])
+        self._schedule_entry.config(state="normal")
+        self._schedule_label.config(text="")
+        self._log_sys("[Schedule] 예약 취소")
+
+    def _tick_schedule(self: "BatchRunnerGUI"):
+        now = datetime.now()
+        remaining = int((self._schedule_target - now).total_seconds())
+        if remaining <= 0:
+            self._schedule_id = None
+            self._schedule_btn.config(text="Schedule", bg=C["surface0"],
+                                      fg=C["subtext"],
+                                      activebackground=C["surface1"])
+            self._schedule_entry.config(state="normal")
+            self._schedule_label.config(text="")
+            self._log_sys(f"[Schedule] {self._schedule_target.strftime('%H:%M')} 실행 시작")
+            self.mode_var.set("run")
+            self._on_run(scheduled=True)
+            return
+        m, s = divmod(remaining, 60)
+        h, m = divmod(m, 60)
+        self._schedule_label.config(
+            text=f"{self._schedule_target.strftime('%H:%M')} 예약 ({h:02d}:{m:02d}:{s:02d})")
+        self._schedule_id = self.after(1000, self._tick_schedule)

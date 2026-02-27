@@ -605,6 +605,13 @@ class UiBuildMixin:
             self._log_filter_btns[level] = btn
         self._refresh_log_filter_btns()
 
+        # 타임스탬프 토글 버튼
+        self._time_btn = tk.Button(header, text="[Time]", font=FONTS["shortcut"],
+                                   relief="flat", padx=4, pady=0, bd=0,
+                                   command=self._toggle_show_time)
+        self._time_btn.pack(side="left", padx=(4, 0))
+        self._refresh_time_btn()
+
         self._status_label = tk.Label(header, text="● idle", font=FONTS["mono_small"],
                                       bg=C["mantle"], fg=C["overlay0"])
         self._status_label.pack(side="right", padx=10)
@@ -744,6 +751,26 @@ class UiBuildMixin:
         self._stage_status = tk.Label(bar, text="", font=FONTS["small"],
                                       bg=C["crust"], fg=C["overlay0"])
         self._stage_status.pack(side="left", padx=10)
+
+        # 예약 실행
+        sep = tk.Frame(bar, bg=C["overlay0"], width=1)
+        sep.pack(side="left", fill="y", padx=8, pady=4)
+        self._schedule_entry = tk.Entry(
+            bar, textvariable=self._schedule_time, width=5,
+            font=FONTS["mono_small"], bg=C["surface0"], fg=C["text"],
+            insertbackground=C["text"], relief="flat", justify="center")
+        self._schedule_entry.pack(side="left", padx=(0, 4), ipady=2)
+        self._schedule_entry.insert(0, "HH:MM")
+        self._schedule_entry.bind("<FocusIn>", self._on_schedule_focus_in)
+        self._schedule_entry.bind("<FocusOut>", self._on_schedule_focus_out)
+        self._schedule_btn = tk.Button(
+            bar, text="Schedule", font=FONTS["mono_small"],
+            bg=C["surface0"], fg=C["subtext"], relief="flat", padx=8,
+            activebackground=C["surface1"], command=self._on_schedule)
+        self._schedule_btn.pack(side="left", padx=(0, 4))
+        self._schedule_label = tk.Label(bar, text="", font=FONTS["mono_small"],
+                                        bg=C["crust"], fg=C["overlay0"])
+        self._schedule_label.pack(side="left")
 
         # 단축키 힌트
         for hint in [("Ctrl+F5", "Dryrun"), ("F5", "Run"), ("Esc", "Stop"),
