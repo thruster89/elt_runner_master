@@ -565,6 +565,7 @@ class StateJobMixin:
             return
         # forget all dynamic rows to ensure correct pack order
         self._db_path_row.pack_forget()
+        self._compact_row.pack_forget()
         self._schema_row.pack_forget()
         self._oracle_hint_row.pack_forget()
         self._load_mode_row.pack_forget()
@@ -573,7 +574,9 @@ class StateJobMixin:
 
         if tgt in ("duckdb", "sqlite3"):
             self._db_path_row.pack(fill="x", padx=12, pady=2)
-        elif tgt == "oracle":
+        if tgt == "duckdb":
+            self._compact_row.pack(fill="x", padx=12, pady=(0, 2))
+        if tgt == "oracle":
             self._schema_row.pack(fill="x", padx=12, pady=2)
             self._oracle_hint_row.pack(fill="x", padx=12)
 

@@ -343,10 +343,17 @@ class UiBuildMixin:
                   bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
                   activebackground=C["surface1"],
                   command=_browse_db).pack(side="left", padx=(2, 0))
-        tk.Button(self._db_path_row, text="Compact", font=FONTS["mono_small"],
-                  bg=C["surface0"], fg=C["mauve"], relief="flat", padx=4,
+
+        # Compact 버튼 (duckdb 전용 — _update_target_visibility 에서 표시 제어)
+        self._compact_row = tk.Frame(body, bg=C["mantle"])
+        tk.Label(self._compact_row, text="", font=FONTS["mono_small"],
+                 bg=C["mantle"], width=14).pack(side="left")
+        tk.Button(self._compact_row, text="Compact DB", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["mauve"], relief="flat", padx=6,
                   activebackground=C["surface1"],
-                  command=self._vacuum_db).pack(side="left", padx=(2, 0))
+                  command=self._vacuum_db).pack(side="left")
+        tk.Label(self._compact_row, text="COPY FROM DATABASE → 파일 크기 최적화",
+                 font=FONTS["shortcut"], bg=C["mantle"], fg=C["overlay0"]).pack(side="left", padx=6)
 
         # Schema (oracle)
         self._schema_row = tk.Frame(body, bg=C["mantle"])
