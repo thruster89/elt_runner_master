@@ -343,6 +343,10 @@ class UiBuildMixin:
                   bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
                   activebackground=C["surface1"],
                   command=_browse_db).pack(side="left", padx=(2, 0))
+        tk.Button(self._db_path_row, text="Compact", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["mauve"], relief="flat", padx=4,
+                  activebackground=C["surface1"],
+                  command=self._vacuum_db).pack(side="left", padx=(2, 0))
 
         # Schema (oracle)
         self._schema_row = tk.Frame(body, bg=C["mantle"])

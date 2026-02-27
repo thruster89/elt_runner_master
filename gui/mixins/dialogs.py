@@ -5,7 +5,11 @@ gui/mixins/dialogs.py  ─  확인 다이얼로그, 테마 전환, 탐색기 열
 from __future__ import annotations
 
 import os
+import shutil
 import sys
+import subprocess
+import textwrap
+import threading
 import tkinter as tk
 from tkinter import messagebox, filedialog
 from pathlib import Path
@@ -195,3 +199,110 @@ class DialogsMixin:
         content = self._log.get("1.0", "end")
         Path(path).write_text(content, encoding="utf-8")
         self._log_sys(f"Log saved: {path}")
+
+    # ── DB Compact (Vacuum) ───────────────────────────────────
+    def _vacuum_db(self: "BatchRunnerGUI"):
+        """DuckDB COPY FROM DATABASE → rename 으로 파일 크기 최적화"""
+        if self._target_type_var.get() != "duckdb":
+            messagebox.showinfo("Compact", "DuckDB 타입만 지원합니다.")
+            return
+
+        wd = Path(self._work_dir.get())
+        db_rel = self._target_db_path.get().strip()
+        if not db_rel:
+            messagebox.showwarning("Compact", "DB Path가 비어있습니다.")
+            return
+
+        db_path = Path(db_rel)
+        if not db_path.is_absolute():
+            db_path = wd / db_path
+        if not db_path.exists():
+            messagebox.showwarning("Compact", f"파일이 없습니다:\n{db_path}")
+            return
+
+        size_mb = db_path.stat().st_size / 1024 / 1024
+        free_mb = shutil.disk_usage(db_path.parent).free / 1024 / 1024
+
+        if free_mb < size_mb * 1.2:
+            messagebox.showerror(
+                "Compact",
+                f"디스크 여유 공간 부족\n\n"
+                f"DB 크기: {size_mb:,.1f} MB\n"
+                f"여유 공간: {free_mb:,.1f} MB\n\n"
+                f"최소 {size_mb * 1.2:,.1f} MB 이상 필요합니다.")
+            return
+
+        def build(body):
+            tk.Label(body, text="DB Compact (Vacuum)", bg=C["base"],
+                     fg=C["mauve"], font=FONTS["h2"]).pack(pady=(0, 8))
+            tk.Label(body, text=f"COPY FROM DATABASE 로 재생성 후\n"
+                                f"원본 파일을 교체합니다.\n\n"
+                                f"파일: {db_path.name}\n"
+                                f"크기: {size_mb:,.1f} MB\n"
+                                f"여유: {free_mb:,.1f} MB",
+                     bg=C["base"], fg=C["overlay0"], font=FONTS["body"],
+                     justify="center").pack()
+
+        if not self._themed_confirm("━ DB Compact", build,
+                                    ok_text="Compact", ok_color="mauve",
+                                    ok_active="blue"):
+            return
+
+        self._log_sys(f"[Compact] 시작: {db_path}  ({size_mb:,.1f} MB)")
+        self._set_status("● compact", C["mauve"])
+
+        script = textwrap.dedent(f"""\
+            import duckdb, os, sys
+            db = r"{db_path}"
+            tmp = db + ".compact.tmp"
+            try:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+                conn = duckdb.connect()
+                conn.execute(f"ATTACH '{{db}}' AS src (READ_ONLY)")
+                conn.execute(f"ATTACH '{{tmp}}' AS dst")
+                conn.execute("COPY FROM DATABASE src TO dst")
+                conn.close()
+                old_size = os.path.getsize(db)
+                new_size = os.path.getsize(tmp)
+                bak = db + ".bak"
+                if os.path.exists(bak):
+                    os.remove(bak)
+                os.rename(db, bak)
+                os.rename(tmp, db)
+                os.remove(bak)
+                saved = old_size - new_size
+                print(f"OK  {{old_size/1024/1024:,.1f}} MB -> {{new_size/1024/1024:,.1f}} MB  ({{saved/1024/1024:,.1f}} MB 절감)")
+            except Exception as e:
+                print(f"ERROR  {{e}}", file=sys.stderr)
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+                sys.exit(1)
+        """)
+
+        def run():
+            try:
+                proc = subprocess.Popen(
+                    [sys.executable, "-c", script],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                )
+                for line in proc.stdout:
+                    line = line.rstrip("\n")
+                    tag = "ERROR" if line.startswith("ERROR") else "SUCCESS" if line.startswith("OK") else "INFO"
+                    self.after(0, self._log_write, f"[Compact] {line}", tag)
+                ret = proc.wait()
+                if ret == 0:
+                    self.after(0, self._set_status, "● idle", C["overlay0"])
+                    self.after(0, self._log_sys, "[Compact] 완료")
+                else:
+                    self.after(0, self._set_status, "● error", C["red"])
+                    self.after(0, self._log_write, "[Compact] 실패", "ERROR")
+            except Exception as e:
+                self.after(0, self._log_write, f"[Compact] {e}", "ERROR")
+                self.after(0, self._set_status, "● error", C["red"])
+
+        threading.Thread(target=run, daemon=True).start()
