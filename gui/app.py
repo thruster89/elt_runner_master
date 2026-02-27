@@ -96,7 +96,7 @@ class BatchRunnerGUI(
         self._show_time = tk.BooleanVar(value=False)
 
         # 예약 실행
-        self._schedule_time = tk.StringVar()
+        self._schedule_time = tk.StringVar(value="HH:MM")
         self._schedule_id: str | None = None
 
         # 검색 상태

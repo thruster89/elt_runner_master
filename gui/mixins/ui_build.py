@@ -755,14 +755,16 @@ class UiBuildMixin:
         # 예약 실행
         sep = tk.Frame(bar, bg=C["overlay0"], width=1)
         sep.pack(side="left", fill="y", padx=8, pady=4)
+        tk.Label(bar, text="예약시각", font=FONTS["mono_small"],
+                 bg=C["crust"], fg=C["overlay0"]).pack(side="left", padx=(0, 2))
         self._schedule_entry = tk.Entry(
             bar, textvariable=self._schedule_time, width=5,
-            font=FONTS["mono_small"], bg=C["surface0"], fg=C["text"],
+            font=FONTS["mono_small"], bg=C["surface0"], fg=C["overlay0"],
             insertbackground=C["text"], relief="flat", justify="center")
         self._schedule_entry.pack(side="left", padx=(0, 4), ipady=2)
-        self._schedule_entry.insert(0, "HH:MM")
         self._schedule_entry.bind("<FocusIn>", self._on_schedule_focus_in)
         self._schedule_entry.bind("<FocusOut>", self._on_schedule_focus_out)
+        Tooltip(self._schedule_entry, "24시간제 실행 시각 (예: 09:30, 14:00)")
         self._schedule_btn = tk.Button(
             bar, text="Schedule", font=FONTS["mono_small"],
             bg=C["surface0"], fg=C["subtext"], relief="flat", padx=8,
