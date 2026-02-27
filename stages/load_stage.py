@@ -7,7 +7,7 @@ from pathlib import Path
 from engine.connection import connect_target
 from engine.context import RunContext
 from engine.path_utils import resolve_path
-from engine.sql_utils import sort_sql_files, resolve_table_name, extract_sqlname_from_csv, extract_params_from_csv
+from engine.sql_utils import sort_sql_files, resolve_table_name, extract_sqlname_from_csv, extract_params_from_csv, strip_sql_prefix
 
 
 def _sha256_file(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
@@ -85,6 +85,11 @@ def run(ctx: RunContext):
     sql_dir = resolve_path(ctx, export_cfg.get("sql_dir", "sql/export"))
     sql_files = sort_sql_files(sql_dir)
     sql_map = {p.stem: p for p in sql_files}
+    # prefix 제거된 CSV도 매핑되도록 stripped key 추가 (csv_strip_prefix 호환)
+    for p in sql_files:
+        stripped = strip_sql_prefix(p.stem)
+        if stripped != p.stem:
+            sql_map.setdefault(stripped, p)
 
     # ── --include 필터: export와 동일하게 CSV도 필터링 ──
     include_patterns = getattr(ctx, "include_patterns", []) or []

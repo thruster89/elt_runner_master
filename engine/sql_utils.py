@@ -4,7 +4,13 @@ import re
 from pathlib import Path
 
 SQL_PREFIX_PATTERN = re.compile(r"^(\d+)_.*\.sql$", re.IGNORECASE)
+SQL_PREFIX_STRIP = re.compile(r"^(\d+)_")
 TABLE_HINT_PATTERN = re.compile(r"^--\[(.+)\]$")
+
+
+def strip_sql_prefix(name: str) -> str:
+    """숫자 접두사 제거: '01_contract' → 'contract', 'contract' → 'contract'"""
+    return SQL_PREFIX_STRIP.sub("", name)
 
 
 def sort_sql_files(sql_dir: Path):
