@@ -302,15 +302,15 @@ def _delete_by_params(cur, conn, schema: str, table_name: str, params: dict):
         idx += 1
 
     if not conditions:
-        raise ValueError(
-            f"DELETE 조건 컬럼 매칭 실패: {tbl} — 파라미터 키가 테이블 컬럼과 일치하지 않습니다. "
-            f"params={list(params.keys())}"
-        )
+        logger.warning("DELETE 조건 컬럼 매칭 실패 → full delete: %s | params=%s", tbl, list(params.keys()))
+        cur.execute(f"DELETE FROM {tbl}")
+        conn.commit()
+        logger.info("DELETE %s | %d rows (full delete, no matching columns)", tbl, cur.rowcount)
+        return
 
     where = " AND ".join(conditions)
     cur.execute(f"DELETE FROM {tbl} WHERE {where}", values)
-    logger.info("DELETE %s | %d rows | WHERE %s",
-                tbl, cur.rowcount, " AND ".join(conditions) if conditions else "(all)")
+    logger.info("DELETE %s | %d rows | WHERE %s", tbl, cur.rowcount, where)
 
 
 def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
