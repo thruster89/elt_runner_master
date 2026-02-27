@@ -112,13 +112,8 @@ def run(ctx: RunContext):
 
     # ── load.mode 결정 ──
     load_cfg = job_cfg.get("load", {})
-    if tgt_type == "oracle":
-        load_mode = load_cfg.get("mode", "delete")
-        if load_mode in ("replace", "truncate"):
-            logger.warning("Oracle: load.mode=%s not supported, falling back to delete", load_mode)
-            load_mode = "delete"
-    else:
-        load_mode = load_cfg.get("mode", "replace")
+    default_mode = "delete" if tgt_type == "oracle" else "replace"
+    load_mode = load_cfg.get("mode", default_mode)
     if load_mode not in ("replace", "truncate", "append", "delete"):
         logger.warning("Unknown load.mode=%s, using replace", load_mode)
         load_mode = "replace"
