@@ -269,14 +269,14 @@ def _get_table_columns(cur, schema: str, table_name: str) -> list:
 
 
 def _delete_by_params(cur, conn, schema: str, table_name: str, params: dict):
-    """params 기반 WHERE 조건으로 DELETE 실행"""
+    """params 기반 WHERE 조건으로 DELETE 실행 (엄격 모드: params 필수, 컬럼 매칭 필수)"""
     tbl = _qualified(schema, table_name)
 
     if not params:
-        cur.execute(f"DELETE FROM {tbl}")
-        conn.commit()
-        logger.info("DELETE %s | %d rows (no params, full delete)", tbl, cur.rowcount)
-        return
+        raise ValueError(
+            f"DELETE 모드는 params가 필수입니다: {tbl} — "
+            f"전체 삭제가 필요하면 load.mode=truncate를 사용하세요."
+        )
 
     # Column matching with underscore-removal normalization (clsYymm -> CLS_YYMM)
     table_cols = _get_table_columns(cur, schema, table_name)
@@ -284,6 +284,7 @@ def _delete_by_params(cur, conn, schema: str, table_name: str, params: dict):
 
     conditions = []
     values = []
+    skipped = []
     idx = 1
     for key, val in params.items():
         col_upper = key.upper()
@@ -295,18 +296,21 @@ def _delete_by_params(cur, conn, schema: str, table_name: str, params: dict):
             if matched_col:
                 logger.debug("DELETE param mapped: %s -> %s", key, matched_col)
             else:
-                logger.warning("DELETE condition skipped (column not found): %s.%s", tbl, col_upper)
+                skipped.append(key)
                 continue
         conditions.append(f'"{matched_col}" = :{idx}')
         values.append(val)
         idx += 1
 
     if not conditions:
-        logger.warning("DELETE 조건 컬럼 매칭 실패 → full delete: %s | params=%s", tbl, list(params.keys()))
-        cur.execute(f"DELETE FROM {tbl}")
-        conn.commit()
-        logger.info("DELETE %s | %d rows (full delete, no matching columns)", tbl, cur.rowcount)
-        return
+        raise ValueError(
+            f"DELETE 조건 컬럼 매칭 실패: {tbl} — "
+            f"params={list(params.keys())} 중 일치하는 컬럼이 없습니다. "
+            f"전체 삭제가 필요하면 load.mode=truncate를 사용하세요."
+        )
+
+    if skipped:
+        logger.warning("DELETE 조건에서 제외된 파라미터 (컬럼 없음): %s.%s", tbl, skipped)
 
     where = " AND ".join(conditions)
     cur.execute(f"DELETE FROM {tbl} WHERE {where}", values)

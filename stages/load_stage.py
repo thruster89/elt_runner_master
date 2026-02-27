@@ -145,7 +145,8 @@ def run(ctx: RunContext):
             _run_load_loop(ctx, logger, csv_files, sql_map, conn_type,
                            load_fn=lambda table, csv_path, file_hash:
                                load_csv(conn, ctx.job_name, table, csv_path, file_hash,
-                                        ctx.mode, schema, load_mode=load_mode))
+                                        ctx.mode, schema, load_mode=load_mode,
+                                        params=extract_params_from_csv(csv_path)))
 
         elif conn_type == "sqlite3":
             from adapters.targets.sqlite_target import load_csv, _ensure_history
@@ -155,7 +156,8 @@ def run(ctx: RunContext):
             _run_load_loop(ctx, logger, csv_files, sql_map, conn_type,
                            load_fn=lambda table, csv_path, file_hash:
                                load_csv(conn, ctx.job_name, table, csv_path, file_hash,
-                                        ctx.mode, load_mode=load_mode))
+                                        ctx.mode, load_mode=load_mode,
+                                        params=extract_params_from_csv(csv_path)))
 
         elif conn_type == "oracle":
             from adapters.targets.oracle_target import load_csv
