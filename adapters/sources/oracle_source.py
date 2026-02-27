@@ -36,6 +36,7 @@ def export_sql_to_csv(
     fetch_size=10000,
     stall_seconds=1800,
     log_prefix="",
+    params=None,
 ):
     """
     fetchmany 기반 고속 CSV export
@@ -129,11 +130,14 @@ def export_sql_to_csv(
             tmp_file.replace(out_file)
             logger.debug("File committed: %s", out_file)
 
-            # 컬럼 메타데이터 사이드카 저장 (.meta.json)
+            # 컬럼 + 파라미터 메타데이터 사이드카 저장 (.meta.json)
             csv_name = out_file.name
             csv_stem = csv_name[:-len(".csv.gz")] if csv_name.endswith(".csv.gz") else csv_name[:-len(".csv")]
             meta_file = out_file.parent / (csv_stem + ".meta.json")
-            meta_file.write_text(json.dumps(col_meta, ensure_ascii=False, indent=2),
+            meta_data = {"columns": col_meta}
+            if params:
+                meta_data["params"] = params
+            meta_file.write_text(json.dumps(meta_data, ensure_ascii=False, indent=2),
                                  encoding="utf-8")
             logger.debug("Column metadata saved: %s", meta_file.name)
 

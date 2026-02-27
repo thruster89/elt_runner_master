@@ -601,6 +601,7 @@ def run(ctx: RunContext):
                 fetch_size=10000,
                 stall_seconds=stall_seconds,
                 log_prefix=prefix,
+                params=param_set,
             )
 
             elapsed = time.time() - start_time

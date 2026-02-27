@@ -221,7 +221,9 @@ def _create_table_from_csv(cur, conn, schema: str, table_name: str, csv_path: Pa
     meta_file = _find_meta_file(csv_path)
     if meta_file:
         meta = json.loads(meta_file.read_text(encoding="utf-8"))
-        _create_table_from_meta(cur, conn, schema, table_name, meta)
+        # 새 dict 구조 {"columns": [...], "params": {...}} 또는 기존 list 구조 호환
+        columns = meta["columns"] if isinstance(meta, dict) and "columns" in meta else meta
+        _create_table_from_meta(cur, conn, schema, table_name, columns)
         return
 
     # fallback: CSV 샘플 기반 타입 추론
