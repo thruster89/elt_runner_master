@@ -409,6 +409,16 @@ def connect(env_config: dict, schema: str = None, schema_password: str = None):
     )
     logger.info("Oracle target connected (thin) | dsn=%s | user=%s", host_cfg["dsn"], host_cfg["user"])
 
+    # CSV 날짜 문자열(Python datetime.__str__)과 Oracle DATE/TIMESTAMP 호환 설정
+    _cur = conn.cursor()
+    try:
+        _cur.execute("ALTER SESSION SET NLS_DATE_FORMAT = 'YYYY-MM-DD HH24:MI:SS'")
+        _cur.execute("ALTER SESSION SET NLS_TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF6'")
+        _cur.execute("ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF6 TZH:TZM'")
+        logger.debug("NLS date/timestamp formats set for CSV compatibility")
+    finally:
+        _cur.close()
+
     # 스키마 자동 생성 (schema 지정된 경우)
     if schema:
         cur = conn.cursor()
