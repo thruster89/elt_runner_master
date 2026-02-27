@@ -588,8 +588,8 @@ class StateJobMixin:
             return
         tgt = self._target_type_var.get()
         if tgt == "oracle":
-            self._load_mode_combo["values"] = ["delete", "append"]
-            if self._ov_load_mode.get() not in ("delete", "append"):
+            self._load_mode_combo["values"] = ["replace", "truncate", "delete", "append"]
+            if self._ov_load_mode.get() not in ("replace", "truncate", "delete", "append"):
                 self._ov_load_mode.set("delete")
         else:
             self._load_mode_combo["values"] = ["replace", "truncate", "append"]

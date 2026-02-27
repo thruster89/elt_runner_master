@@ -320,7 +320,7 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
     CSV를 Oracle 테이블에 적재.
     schema 지정 시 해당 스키마에 테이블 생성/INSERT.
     테이블 없으면 CSV 헤더로 자동 생성.
-    load_mode: delete(params 기반 DELETE+INSERT) | append(INSERT)
+    load_mode: replace(DROP+CREATE) | truncate(DELETE ALL) | delete(params WHERE) | append
     반환값: row 수 (-1이면 skip)
     """
     cur = conn.cursor()
@@ -337,13 +337,25 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
                 logger.info("LOAD skip (already loaded) | %s | %s", full_table, csv_path.name)
                 return -1
 
+        # replace 모드: DROP TABLE → CREATE TABLE
+        if load_mode == "replace" and _table_exists(cur, schema, table_name):
+            tbl = _qualified(schema, table_name)
+            logger.info("LOAD mode=replace → DROP TABLE %s", tbl)
+            cur.execute(f"DROP TABLE {tbl} PURGE")
+            conn.commit()
+
         if not _table_exists(cur, schema, table_name):
             logger.info("Table not found, creating: %s", _qualified(schema, table_name))
             _create_table_from_csv(cur, conn, schema, table_name, csv_path)
         else:
             logger.debug("Table exists: %s", _qualified(schema, table_name))
+            # truncate 모드: 테이블 구조 유지, 데이터 전체 삭제
+            if load_mode == "truncate":
+                tbl = _qualified(schema, table_name)
+                logger.info("LOAD mode=truncate → TRUNCATE TABLE %s", tbl)
+                cur.execute(f"TRUNCATE TABLE {tbl}")
             # delete 모드: INSERT 전 기존 데이터 삭제
-            if load_mode == "delete":
+            elif load_mode == "delete":
                 _delete_by_params(cur, conn, schema, table_name, params or {})
 
         start = time.time()
