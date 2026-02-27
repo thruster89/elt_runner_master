@@ -95,6 +95,10 @@ class BatchRunnerGUI(
         self._log_filter_btns: dict = {}
         self._show_time = tk.BooleanVar(value=False)
 
+        # 예약 실행
+        self._schedule_time = tk.StringVar()
+        self._schedule_id: str | None = None
+
         # 검색 상태
         self._search_var = tk.StringVar()
         self._search_matches = []
