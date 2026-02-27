@@ -88,6 +88,58 @@ def _infer_sqlite_type(values: list) -> str:
     return "TEXT"
 
 
+def _get_table_columns(conn, table_name: str) -> set:
+    """테이블 컬럼명 집합 반환 (대소문자 원본 유지)"""
+    cur = conn.cursor()
+    cur.execute(f'PRAGMA table_info("{table_name}")')
+    return {row[1] for row in cur.fetchall()}
+
+
+def _delete_by_params(conn, table_name: str, params: dict):
+    """params 기반 WHERE 조건으로 DELETE 실행 (엄격 모드: params 필수, 컬럼 매칭 필수)"""
+    if not params:
+        raise ValueError(
+            f"DELETE 모드는 params가 필수입니다: {table_name} — "
+            f"전체 삭제가 필요하면 load.mode=truncate를 사용하세요."
+        )
+
+    table_cols = _get_table_columns(conn, table_name)
+    norm_map = {col.replace("_", "").lower(): col for col in table_cols}
+
+    conditions = []
+    values = []
+    skipped = []
+    for key, val in params.items():
+        if key in table_cols:
+            matched_col = key
+        else:
+            norm_key = key.replace("_", "").lower()
+            matched_col = norm_map.get(norm_key)
+            if matched_col:
+                logger.debug("DELETE param mapped: %s -> %s", key, matched_col)
+            else:
+                skipped.append(key)
+                continue
+        conditions.append(f'"{matched_col}" = ?')
+        values.append(val)
+
+    if not conditions:
+        raise ValueError(
+            f"DELETE 조건 컬럼 매칭 실패: {table_name} — "
+            f"params={list(params.keys())} 중 일치하는 컬럼이 없습니다. "
+            f"전체 삭제가 필요하면 load.mode=truncate를 사용하세요."
+        )
+
+    if skipped:
+        logger.warning("DELETE 조건에서 제외된 파라미터 (컬럼 없음): %s.%s", table_name, skipped)
+
+    where = " AND ".join(conditions)
+    cur = conn.cursor()
+    cur.execute(f'DELETE FROM "{table_name}" WHERE {where}', values)
+    conn.commit()
+    logger.info("DELETE %s | %d rows | WHERE %s", table_name, cur.rowcount, where)
+
+
 def _create_table_from_csv(conn, table_name: str, csv_path: Path):
     """CSV 헤더 + 샘플 100행으로 SQLite 테이블 자동 생성"""
     open_fn = gzip.open if str(csv_path).endswith(".gz") else open
@@ -120,11 +172,11 @@ def _create_table_from_csv(conn, table_name: str, csv_path: Path):
 
 def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
              file_hash: str, mode: str,
-             load_mode: str = "replace") -> int:
+             load_mode: str = "replace", params: dict = None) -> int:
     """
     CSV를 SQLite 테이블에 적재. (pandas 미사용 → numexpr 로그 없음)
     테이블이 없으면 CSV 헤더 기반으로 자동 생성.
-    load_mode: replace(DROP+CREATE) | truncate(DELETE+INSERT) | append(INSERT)
+    load_mode: replace(DROP+CREATE) | truncate(DELETE ALL) | delete(params WHERE) | append(INSERT)
     반환값: 적재된 row 수 (-1이면 skip)
     """
     file_size = csv_path.stat().st_size
@@ -145,6 +197,9 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
         logger.info("LOAD mode=truncate → DELETE FROM %s", table_name)
         conn.execute(f'DELETE FROM "{table_name}"')
         conn.commit()
+
+    if load_mode == "delete" and _table_exists(conn, table_name):
+        _delete_by_params(conn, table_name, params or {})
 
     # 테이블 없으면 자동 생성
     if not _table_exists(conn, table_name):

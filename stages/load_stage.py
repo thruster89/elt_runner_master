@@ -1,6 +1,7 @@
 # file: v2/stages/load_stage.py
 
 import hashlib
+import json
 import time
 from pathlib import Path
 
@@ -8,6 +9,19 @@ from engine.connection import connect_target
 from engine.context import RunContext
 from engine.path_utils import resolve_path
 from engine.sql_utils import sort_sql_files, resolve_table_name, extract_sqlname_from_csv, extract_params_from_csv, strip_sql_prefix
+
+
+def _extract_params(csv_path: Path) -> dict:
+    """meta.json에서 params 읽기, 없으면 파일명 파싱 fallback."""
+    name = csv_path.name
+    stem = name[:-len(".csv.gz")] if name.endswith(".csv.gz") else name[:-len(".csv")]
+    meta_file = csv_path.parent / (stem + ".meta.json")
+    if meta_file.exists():
+        meta = json.loads(meta_file.read_text(encoding="utf-8"))
+        if isinstance(meta, dict) and "params" in meta:
+            return meta["params"]
+    # fallback: 파일명 파싱 (기존 export 데이터 호환)
+    return extract_params_from_csv(csv_path)
 
 
 def _sha256_file(path: Path, chunk_size: int = 8 * 1024 * 1024) -> str:
@@ -112,13 +126,8 @@ def run(ctx: RunContext):
 
     # ── load.mode 결정 ──
     load_cfg = job_cfg.get("load", {})
-    if tgt_type == "oracle":
-        load_mode = load_cfg.get("mode", "delete")
-        if load_mode in ("replace", "truncate"):
-            logger.warning("Oracle: load.mode=%s not supported, falling back to delete", load_mode)
-            load_mode = "delete"
-    else:
-        load_mode = load_cfg.get("mode", "replace")
+    default_mode = "delete" if tgt_type == "oracle" else "replace"
+    load_mode = load_cfg.get("mode", default_mode)
     if load_mode not in ("replace", "truncate", "append", "delete"):
         logger.warning("Unknown load.mode=%s, using replace", load_mode)
         load_mode = "replace"
@@ -150,7 +159,8 @@ def run(ctx: RunContext):
             _run_load_loop(ctx, logger, csv_files, sql_map, conn_type,
                            load_fn=lambda table, csv_path, file_hash:
                                load_csv(conn, ctx.job_name, table, csv_path, file_hash,
-                                        ctx.mode, schema, load_mode=load_mode))
+                                        ctx.mode, schema, load_mode=load_mode,
+                                        params=_extract_params(csv_path)))
 
         elif conn_type == "sqlite3":
             from adapters.targets.sqlite_target import load_csv, _ensure_history
@@ -160,7 +170,8 @@ def run(ctx: RunContext):
             _run_load_loop(ctx, logger, csv_files, sql_map, conn_type,
                            load_fn=lambda table, csv_path, file_hash:
                                load_csv(conn, ctx.job_name, table, csv_path, file_hash,
-                                        ctx.mode, load_mode=load_mode))
+                                        ctx.mode, load_mode=load_mode,
+                                        params=_extract_params(csv_path)))
 
         elif conn_type == "oracle":
             from adapters.targets.oracle_target import load_csv
@@ -168,7 +179,7 @@ def run(ctx: RunContext):
                            load_fn=lambda table, csv_path, file_hash:
                                load_csv(conn, ctx.job_name, table, csv_path, file_hash,
                                         ctx.mode, schema, load_mode=load_mode,
-                                        params=extract_params_from_csv(csv_path)))
+                                        params=_extract_params(csv_path)))
     finally:
         conn.close()
 

@@ -368,7 +368,7 @@ class UiBuildMixin:
         self._load_mode_combo.pack(side="left", fill="x", expand=True)
 
         self._load_note_oracle = tk.Label(body,
-            text="oracle: delete (param WHERE) / append",
+            text="oracle: replace (DROP+CREATE) / truncate / delete (param WHERE) / append",
             font=FONTS["small"], bg=C["mantle"], fg=C["overlay0"])
         self._load_note_other = tk.Label(body,
             text="duckdb/sqlite: replace (DROP+CREATE) / truncate / append",

@@ -221,7 +221,9 @@ def _create_table_from_csv(cur, conn, schema: str, table_name: str, csv_path: Pa
     meta_file = _find_meta_file(csv_path)
     if meta_file:
         meta = json.loads(meta_file.read_text(encoding="utf-8"))
-        _create_table_from_meta(cur, conn, schema, table_name, meta)
+        # 새 dict 구조 {"columns": [...], "params": {...}} 또는 기존 list 구조 호환
+        columns = meta["columns"] if isinstance(meta, dict) and "columns" in meta else meta
+        _create_table_from_meta(cur, conn, schema, table_name, columns)
         return
 
     # fallback: CSV 샘플 기반 타입 추론
@@ -269,14 +271,14 @@ def _get_table_columns(cur, schema: str, table_name: str) -> list:
 
 
 def _delete_by_params(cur, conn, schema: str, table_name: str, params: dict):
-    """params 기반 WHERE 조건으로 DELETE 실행"""
+    """params 기반 WHERE 조건으로 DELETE 실행 (엄격 모드: params 필수, 컬럼 매칭 필수)"""
     tbl = _qualified(schema, table_name)
 
     if not params:
-        cur.execute(f"DELETE FROM {tbl}")
-        conn.commit()
-        logger.info("DELETE %s | %d rows (no params, full delete)", tbl, cur.rowcount)
-        return
+        raise ValueError(
+            f"DELETE 모드는 params가 필수입니다: {tbl} — "
+            f"전체 삭제가 필요하면 load.mode=truncate를 사용하세요."
+        )
 
     # Column matching with underscore-removal normalization (clsYymm -> CLS_YYMM)
     table_cols = _get_table_columns(cur, schema, table_name)
@@ -284,6 +286,7 @@ def _delete_by_params(cur, conn, schema: str, table_name: str, params: dict):
 
     conditions = []
     values = []
+    skipped = []
     idx = 1
     for key, val in params.items():
         col_upper = key.upper()
@@ -295,7 +298,7 @@ def _delete_by_params(cur, conn, schema: str, table_name: str, params: dict):
             if matched_col:
                 logger.debug("DELETE param mapped: %s -> %s", key, matched_col)
             else:
-                logger.warning("DELETE condition skipped (column not found): %s.%s", tbl, col_upper)
+                skipped.append(key)
                 continue
         conditions.append(f'"{matched_col}" = :{idx}')
         values.append(val)
@@ -303,14 +306,17 @@ def _delete_by_params(cur, conn, schema: str, table_name: str, params: dict):
 
     if not conditions:
         raise ValueError(
-            f"DELETE 조건 컬럼 매칭 실패: {tbl} — 파라미터 키가 테이블 컬럼과 일치하지 않습니다. "
-            f"params={list(params.keys())}"
+            f"DELETE 조건 컬럼 매칭 실패: {tbl} — "
+            f"params={list(params.keys())} 중 일치하는 컬럼이 없습니다. "
+            f"전체 삭제가 필요하면 load.mode=truncate를 사용하세요."
         )
+
+    if skipped:
+        logger.warning("DELETE 조건에서 제외된 파라미터 (컬럼 없음): %s.%s", tbl, skipped)
 
     where = " AND ".join(conditions)
     cur.execute(f"DELETE FROM {tbl} WHERE {where}", values)
-    logger.info("DELETE %s | %d rows | WHERE %s",
-                tbl, cur.rowcount, " AND ".join(conditions) if conditions else "(all)")
+    logger.info("DELETE %s | %d rows | WHERE %s", tbl, cur.rowcount, where)
 
 
 def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
@@ -320,7 +326,7 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
     CSV를 Oracle 테이블에 적재.
     schema 지정 시 해당 스키마에 테이블 생성/INSERT.
     테이블 없으면 CSV 헤더로 자동 생성.
-    load_mode: delete(params 기반 DELETE+INSERT) | append(INSERT)
+    load_mode: replace(DROP+CREATE) | truncate(DELETE ALL) | delete(params WHERE) | append
     반환값: row 수 (-1이면 skip)
     """
     cur = conn.cursor()
@@ -337,13 +343,25 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
                 logger.info("LOAD skip (already loaded) | %s | %s", full_table, csv_path.name)
                 return -1
 
+        # replace 모드: DROP TABLE → CREATE TABLE
+        if load_mode == "replace" and _table_exists(cur, schema, table_name):
+            tbl = _qualified(schema, table_name)
+            logger.info("LOAD mode=replace → DROP TABLE %s", tbl)
+            cur.execute(f"DROP TABLE {tbl} PURGE")
+            conn.commit()
+
         if not _table_exists(cur, schema, table_name):
             logger.info("Table not found, creating: %s", _qualified(schema, table_name))
             _create_table_from_csv(cur, conn, schema, table_name, csv_path)
         else:
             logger.debug("Table exists: %s", _qualified(schema, table_name))
+            # truncate 모드: 테이블 구조 유지, 데이터 전체 삭제
+            if load_mode == "truncate":
+                tbl = _qualified(schema, table_name)
+                logger.info("LOAD mode=truncate → TRUNCATE TABLE %s", tbl)
+                cur.execute(f"TRUNCATE TABLE {tbl}")
             # delete 모드: INSERT 전 기존 데이터 삭제
-            if load_mode == "delete":
+            elif load_mode == "delete":
                 _delete_by_params(cur, conn, schema, table_name, params or {})
 
         start = time.time()

@@ -2,6 +2,7 @@
 
 import csv
 import gzip
+import json
 import time
 from pathlib import Path
 from engine.runtime_state import stop_event
@@ -16,6 +17,7 @@ def export_sql_to_csv(
     fetch_size=10000,
     stall_seconds=1800,
     log_prefix="",
+    params=None,
 ):
     cursor = conn.cursor()
 
@@ -84,6 +86,16 @@ def export_sql_to_csv(
 
             tmp_file.replace(out_file)
             logger.debug("File committed: %s", out_file)
+
+            # 파라미터 메타데이터 사이드카 저장 (.meta.json)
+            if params:
+                csv_name = out_file.name
+                csv_stem = csv_name[:-len(".csv.gz")] if csv_name.endswith(".csv.gz") else csv_name[:-len(".csv")]
+                meta_file = out_file.parent / (csv_stem + ".meta.json")
+                meta_data = {"params": params}
+                meta_file.write_text(json.dumps(meta_data, ensure_ascii=False, indent=2),
+                                     encoding="utf-8")
+                logger.debug("Params metadata saved: %s", meta_file.name)
 
             logger.info(
                 "%s CSV export completed | rows=%d file=%s",
