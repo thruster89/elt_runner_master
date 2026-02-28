@@ -506,14 +506,15 @@ class UiBuildMixin:
 
         # Load Mode
         self._load_mode_row = tk.Frame(body, bg=C["mantle"])
-        tk.Label(self._load_mode_row, text="Load Mode", font=FONTS["mono_small"],
-                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w").pack(side="left")
+        _lm_lbl = tk.Label(self._load_mode_row, text="Load Mode", font=FONTS["mono_small"],
+                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w")
+        _lm_lbl.pack(side="left")
+        Tooltip(_lm_lbl, TOOLTIPS["load_mode"])
         self._load_mode_combo = ttk.Combobox(
             self._load_mode_row, textvariable=self._ov_load_mode,
             values=["replace", "truncate", "append"],
             state="readonly", font=FONTS["mono"], width=14)
         self._load_mode_combo.pack(side="left", fill="x", expand=True)
-        Tooltip(self._load_mode_combo, TOOLTIPS["load_mode"])
 
         self._update_target_visibility()
 

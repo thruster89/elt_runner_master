@@ -74,10 +74,10 @@ class DialogsMixin:
         def build(body):
             tk.Label(body, text="⚠  export.overwrite = ON", bg=C["base"],
                      fg=C["red"], font=FONTS["h2"]).pack(pady=(0, 8))
-            tk.Label(body, text="기존 데이터를 덮어쓸 수 있습니다.\n계속하시겠습니까?",
+            tk.Label(body, text="Existing data may be overwritten.\nDo you want to continue?",
                      **kw_key, justify="center").pack()
 
-        return self._themed_confirm("━ Overwrite 확인", build,
+        return self._themed_confirm("━ Overwrite Confirm", build,
                                     ok_text="Continue", ok_color="red", ok_active="peach")
 
     def _show_run_confirm(self: "BatchRunnerGUI") -> bool:
@@ -132,7 +132,7 @@ class DialogsMixin:
                 tk.Label(body, text=params_str, **kw_val).grid(
                     row=row, column=1, columnspan=3, sticky="w", **pad_v)
 
-        return self._themed_confirm("━ 실행 확인", build)
+        return self._themed_confirm("━ Run Confirm", build)
 
     def _apply_theme(self: "BatchRunnerGUI"):
         """테마 전환: C 딕셔너리 업데이트 후 앱 전체 재빌드"""
@@ -165,7 +165,7 @@ class DialogsMixin:
         if not p.exists():
             p = p.parent
         if not p.exists():
-            messagebox.showwarning("경로 없음", f"경로를 찾을 수 없습니다:\n{path_str}")
+            messagebox.showwarning("Path Not Found", f"Cannot find path:\n{path_str}")
             return
         target = str(p)
         try:

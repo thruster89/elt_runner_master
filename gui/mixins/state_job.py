@@ -251,16 +251,15 @@ class StateJobMixin:
 
     def _on_close(self: "BatchRunnerGUI"):
         if self._process and self._process.poll() is None:
-            if not messagebox.askyesno("종료", "실행 중인 작업이 있습니다. 종료하시겠습니까?"):
-                return
-            self._on_stop()
+            messagebox.showwarning("Running", "A task is currently running.\nStop it before closing.")
+            return
         if self._is_dirty():
             ans = messagebox.askyesnocancel(
-                "미저장 변경",
-                "현재 변경사항이 저장되지 않았습니다.\n저장 후 종료하시겠습니까?")
-            if ans is None:  # Cancel → 종료 취소
+                "Unsaved Changes",
+                "You have unsaved changes.\nSave before exit?")
+            if ans is None:  # Cancel
                 return
-            if ans:  # Yes → 저장 후 종료
+            if ans:  # Yes
                 self._on_save_yml()
         self._save_geometry()
         self.destroy()
@@ -275,8 +274,8 @@ class StateJobMixin:
         # 미저장 변경 경고
         if not self._restoring_job and self._is_dirty():
             ans = messagebox.askyesnocancel(
-                "미저장 변경",
-                "현재 변경사항이 저장되지 않았습니다.\n저장하시겠습니까?")
+                "Unsaved Changes",
+                "You have unsaved changes.\nSave now?")
             if ans is None:  # Cancel
                 return
             if ans:  # Yes → 저장
@@ -381,16 +380,16 @@ class StateJobMixin:
             tk.Label(body, text=f"Save: {fname}", bg=C["base"],
                      fg=C["text"], font=FONTS["h2"]).pack(pady=(0, 8))
             if changed_fields:
-                tk.Label(body, text="변경된 항목:", bg=C["base"],
+                tk.Label(body, text="Changed fields:", bg=C["base"],
                          fg=C["subtext"], font=FONTS["body"]).pack(anchor="w", padx=16)
                 for f in changed_fields[:10]:
                     tk.Label(body, text=f"  • {f}", bg=C["base"],
                              fg=C["yellow"], font=FONTS["mono_small"]).pack(anchor="w", padx=20)
                 if len(changed_fields) > 10:
-                    tk.Label(body, text=f"  ... 외 {len(changed_fields) - 10}개",
+                    tk.Label(body, text=f"  ... and {len(changed_fields) - 10} more",
                              bg=C["base"], fg=C["subtext"],
                              font=FONTS["small"]).pack(anchor="w", padx=20)
-        return self._themed_confirm("━ Save 확인", build,
+        return self._themed_confirm("━ Save Confirm", build,
                                     ok_text="Save", ok_color="green", ok_active="teal")
 
     def _on_save_yml_as(self: "BatchRunnerGUI"):
@@ -692,7 +691,7 @@ class StateJobMixin:
         sql_dir = wd / sql_dir_rel
         if not sql_dir.exists():
             messagebox.showwarning("SQL Filter",
-                                   f"export.sql_dir 경로가 존재하지 않습니다:\n{sql_dir}",
+                                   f"export.sql_dir path not found:\n{sql_dir}",
                                    parent=self)
             return
 

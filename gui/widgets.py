@@ -15,7 +15,7 @@ class SqlSelectorDialog(tk.Toplevel):
 
     def __init__(self, parent, sql_dir: Path, pre_selected: set = None):
         super().__init__(parent)
-        self.title("SQL 파일 선택")
+        self.title("SQL File Select")
         self.configure(bg=C["base"])
         self.resizable(True, True)
         self.geometry("500x560")
@@ -297,7 +297,7 @@ class Tooltip:
         tw.wm_geometry(f"+{x}+{y}")
         lbl = tk.Label(tw, text=self._text, justify="left",
                        bg=C["surface1"], fg=C["text"], relief="solid", bd=1,
-                       font=FONTS["small"], padx=8, pady=4, wraplength=320)
+                       font=FONTS["mono"], padx=8, pady=4, wraplength=360)
         lbl.pack()
 
     def _hide(self):

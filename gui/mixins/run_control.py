@@ -138,11 +138,11 @@ class RunControlMixin:
         self._flash_title()
         job_name = self.job_var.get().replace(".yml", "") if self.job_var.get() else "ELT"
         if ret == 0:
-            self._notify_os("ELT Runner ✔", f"{job_name} 완료 ({elapsed_str})")
+            self._notify_os("ELT Runner ✔", f"{job_name} Done ({elapsed_str})")
         elif ret < 0:
-            self._notify_os("ELT Runner", f"{job_name} 중단됨 ({elapsed_str})")
+            self._notify_os("ELT Runner", f"{job_name} Stopped ({elapsed_str})")
         else:
-            self._notify_os("ELT Runner ✖", f"{job_name} 오류 발생 (code={ret}, {elapsed_str})")
+            self._notify_os("ELT Runner ✖", f"{job_name} Error (code={ret}, {elapsed_str})")
         self._reset_buttons()
 
     def _on_stop(self: "BatchRunnerGUI"):
@@ -351,7 +351,7 @@ class RunControlMixin:
             cmd = self._build_command_args()
             text = " ".join(cmd)
         except Exception as e:
-            text = f"(오류: {e})"
+            text = f"(error: {e})"
 
         self._cmd_preview.config(state="normal")
         self._cmd_preview.delete("1.0", "end")
@@ -410,12 +410,12 @@ class RunControlMixin:
             return
         raw = self._schedule_time.get().strip()
         if not raw or raw == "+30m / 18:00":
-            self._log_write("[Schedule] 형식: +30m, +2h, 18:00, 0302 18:00", "WARN")
+            self._log_write("[Schedule] Format: +30m, +2h, 18:00, 0302 18:00", "WARN")
             return
         try:
             target = self._parse_schedule_input(raw)
         except (ValueError, IndexError):
-            self._log_write("[Schedule] 형식: +30m, +2h, 18:00, 0302 18:00", "WARN")
+            self._log_write("[Schedule] Format: +30m, +2h, 18:00, 0302 18:00", "WARN")
             return
         self._schedule_target = target
         self._schedule_id = self.after(1000, self._tick_schedule)
@@ -427,8 +427,8 @@ class RunControlMixin:
         h, m = divmod(m, 60)
         label = target.strftime("%m/%d %H:%M")
         self._schedule_label.config(
-            text=f" {label} 예약 ({h:02d}:{m:02d}:{s:02d})", fg=C["green"])
-        self._log_sys(f"[Schedule] {label} 예약됨")
+            text=f" {label} reserved ({h:02d}:{m:02d}:{s:02d})", fg=C["green"])
+        self._log_sys(f"[Schedule] Reserved for {label}")
 
     def _cancel_schedule(self: "BatchRunnerGUI"):
         if self._schedule_id is not None:
@@ -438,7 +438,7 @@ class RunControlMixin:
                                   activebackground=C["surface1"])
         self._schedule_entry.config(state="normal")
         self._schedule_label.config(text="")
-        self._log_sys("[Schedule] 예약 취소")
+        self._log_sys("[Schedule] Cancelled")
 
     def _tick_schedule(self: "BatchRunnerGUI"):
         now = datetime.now()
@@ -450,7 +450,7 @@ class RunControlMixin:
                                       activebackground=C["surface1"])
             self._schedule_entry.config(state="normal")
             self._schedule_label.config(text="")
-            self._log_sys(f"[Schedule] {self._schedule_target.strftime('%H:%M')} 실행 시작")
+            self._log_sys(f"[Schedule] {self._schedule_target.strftime('%H:%M')} Starting")
             self.mode_var.set("run")
             self._on_run(scheduled=True)
             return
@@ -458,5 +458,5 @@ class RunControlMixin:
         h, m = divmod(m, 60)
         label = self._schedule_target.strftime("%m/%d %H:%M")
         self._schedule_label.config(
-            text=f" {label} 예약 ({h:02d}:{m:02d}:{s:02d})")
+            text=f" {label} reserved ({h:02d}:{m:02d}:{s:02d})")
         self._schedule_id = self.after(1000, self._tick_schedule)

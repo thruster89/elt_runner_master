@@ -184,22 +184,22 @@ _CONF_PATH = Path.home() / ".elt_runner_gui.conf"
 # 필드별 툴팁 텍스트
 TOOLTIPS = {
     # Export
-    "overwrite":    "ON: 기존 출력 파일 덮어쓰기\nOFF: 이미 존재하면 건너뜀",
-    "timeout":      "Export 최대 대기 시간 (초)",
-    "workers":      "동시 Export 프로세스 수 (1~16)\n높을수록 빠르지만 DB 부하 증가",
-    "compression":  "CSV 압축 방식\ngzip: 용량 절약 / none: 속도 우선",
+    "overwrite":    "ON: overwrite existing output files\nOFF: skip if already exists",
+    "timeout":      "Max export wait time (seconds)",
+    "workers":      "Concurrent export processes (1~16)\nHigher = faster but more DB load",
+    "compression":  "CSV compression\ngzip: smaller files / none: no compression",
     # Load
-    "load_mode":    "oracle: replace / truncate / delete (param WHERE) / append\n"
-                    "duckdb·sqlite: replace / truncate / append",
+    "load_mode":    "replace: DROP + CREATE\ntruncate: TRUNCATE + INSERT\n"
+                    "delete: DELETE with param WHERE + INSERT\nappend: INSERT only",
     # Transform
-    "schema":       "SQL 내 @{schema} 치환에 사용\n미입력 시 기본 스키마",
-    "on_error":     "에러 발생 시 동작\nstop: 즉시 중단 / continue: 나머지 계속",
+    "schema":       "Used for @{schema} substitution in SQL\nDefault schema if empty",
+    "on_error":     "Behavior on error\nstop: abort immediately / continue: run remaining",
     # Report
-    "excel":        "Excel(.xlsx) 보고서 생성",
-    "csv":          "CSV 보고서 생성",
-    "max_files":    "Excel 파일당 최대 시트 수 (1~100)\n초과 시 새 파일 생성",
-    "skip_sql":     "SQL 실행 건너뛰기\nCSV union만 수행할 때 사용",
-    "union_dir":    "CSV union 소스 폴더\n외부 CSV를 합칠 때 지정",
+    "excel":        "Generate Excel(.xlsx) report",
+    "csv":          "Generate CSV report",
+    "max_files":    "Max sheets per Excel file (1~100)\nCreates new file when exceeded",
+    "skip_sql":     "Skip SQL execution\nPerform CSV union only",
+    "union_dir":    "CSV union source folder\nSpecify to merge external CSVs",
 }
 
 # ─────────────────────────────────────────────────────────────
