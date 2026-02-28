@@ -732,47 +732,37 @@ class StateJobMixin:
         self._sql_preview.config(state="disabled")
 
     # ── Param 행 관리 ────────────────────────────────────────
-    _STAGE_LABELS = {
-        "export": ("Export", "blue"),
-        "transform": ("Transform", "mauve"),
-        "report": ("Report", "teal"),
-        "custom": ("Custom", "overlay0"),
-    }
 
     def _refresh_param_rows(self: "BatchRunnerGUI", pairs: list):
         """그룹 없이 flat 리스트로 표시 (스냅샷 복원 / job 선택 시 사용)"""
-        for w in self._params_frame.winfo_children():
-            w.destroy()
+        for frame in self._stage_params_frames.values():
+            for w in frame.winfo_children():
+                w.destroy()
         self._param_entries = []
         for k, v in pairs:
-            self._add_param_row(k, str(v))
+            self._add_param_row(k, str(v), stage="export")
 
     def _refresh_param_rows_grouped(self: "BatchRunnerGUI", grouped: list):
-        """스테이지별 그룹 헤더 + param 행 표시"""
-        for w in self._params_frame.winfo_children():
-            w.destroy()
+        """스테이지별로 해당 섹션의 params 프레임에 분배"""
+        for frame in self._stage_params_frames.values():
+            for w in frame.winfo_children():
+                w.destroy()
         self._param_entries = []
 
         for stage, pairs in grouped:
-            label_text, color_key = self._STAGE_LABELS.get(stage, (stage, "overlay0"))
-            # 그룹 헤더
-            hdr = tk.Frame(self._params_frame, bg=C["mantle"])
-            hdr.pack(fill="x", pady=(4, 1))
-            tk.Frame(hdr, bg=C[color_key], width=3, height=12).pack(side="left", padx=(0, 4))
-            tk.Label(hdr, text=label_text, font=FONTS["mono_small"],
-                     bg=C["mantle"], fg=C[color_key]).pack(side="left")
-            # 파라미터 행
+            target = stage if stage in self._stage_params_frames else "export"
             for k, v in pairs:
-                self._add_param_row(k, str(v))
+                self._add_param_row(k, str(v), stage=target)
 
-    def _add_param_row(self: "BatchRunnerGUI", key="", value=""):
+    def _add_param_row(self: "BatchRunnerGUI", key="", value="", stage="export"):
+        frame = self._stage_params_frames.get(stage, self._export_params_frame)
         k_var = tk.StringVar(value=key)
         v_var = tk.StringVar(value=value)
         self._param_entries.append((k_var, v_var))
         k_var.trace_add("write", lambda *_: self._refresh_preview())
         v_var.trace_add("write", lambda *_: self._refresh_preview())
 
-        row = tk.Frame(self._params_frame, bg=C["mantle"])
+        row = tk.Frame(frame, bg=C["mantle"])
         row.pack(fill="x", pady=1)
 
         tk.Entry(row, textvariable=k_var, bg=C["surface0"], fg=C["text"],

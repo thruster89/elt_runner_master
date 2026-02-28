@@ -184,13 +184,23 @@ class UiBuildMixin:
                  bg=C["mantle"], fg=C["text"]).pack(pady=(14, 4), padx=12, anchor="w")
         ttk.Separator(parent, orient="horizontal").pack(fill="x", padx=8)
 
-        self._build_source_section(parent)      # 1. Source Type + Host       [펼침, teal]
-        self._build_target_section(parent)      # 2. Target Type + DB/Schema  [펼침, mauve]
-        self._build_paths_section(parent)       # 3. export.sql_dir, out_dir  [펼침, blue]
-        self._build_stages_section(parent)      # 4. 4개 토글 버튼            [펼침, green]
-        self._build_params_section(parent)      # 5. Params key=value         [펼침, green]
-        self._build_advanced_section(parent)    # 6. SQL Filter / 세부 옵션   [접힘, sky]
-        self._build_job_preset_section(parent)  # 7. Job + Presets + Run Mode [접힘, peach]
+        # Stage 토글바 — 최상단 (항상 보임)
+        self._build_stage_toggle_bar(parent)
+
+        # 섹션들 — 각 메서드가 CollapsibleSection 반환, Stage와 1:1 매핑
+        self._param_entries: list[tuple[tk.StringVar, tk.StringVar]] = []
+        self._export_section    = self._build_export_section(parent)     # EXPORT ↔ Source 통합
+        self._load_section      = self._build_load_section(parent)      # LOAD ↔ 구 Target
+        self._transform_section = self._build_transform_section(parent) # TRANSFORM
+        self._report_section    = self._build_report_section(parent)    # REPORT
+        self._job_section       = self._build_job_preset_section(parent)
+
+        # Params 프레임 — 각 섹션 하단에 인라인 배치됨
+        self._stage_params_frames = {
+            "export":    self._export_params_frame,
+            "transform": self._transform_params_frame,
+            "report":    self._report_params_frame,
+        }
 
         # 변경 감지 → preview 갱신
         for ov_var in (self._ov_compression, self._ov_on_error,
@@ -207,6 +217,95 @@ class UiBuildMixin:
         self._transform_sql_dir.trace_add("write", lambda *_: self.after(300, self._scan_and_suggest_params))
         self._report_sql_dir.trace_add("write", lambda *_: self.after(300, self._scan_and_suggest_params))
         self._target_type_var.trace_add("write", lambda *_: self._refresh_preview())
+
+        # Stage BooleanVar → 가시성 연동
+        for stage_var in (self._stage_export, self._stage_load_local,
+                          self._stage_transform, self._stage_report):
+            stage_var.trace_add("write", lambda *_: self._update_section_visibility())
+
+        # 초기 가시성 설정
+        self._update_section_visibility()
+
+    # ── Stage 토글바 (최상단, 항상 보임) ──────────────────────
+    def _build_stage_toggle_bar(self: "BatchRunnerGUI", parent):
+        bar = tk.Frame(parent, bg=C["surface0"])
+        bar.pack(fill="x", padx=4, pady=(6, 2))
+
+        # 헤더 행: "Stages" 라벨 + Select All · Clear 우측 배치
+        hdr = tk.Frame(bar, bg=C["surface0"])
+        hdr.pack(fill="x", padx=8, pady=(6, 0))
+        tk.Label(hdr, text="Stages", font=FONTS["body_bold"],
+                 bg=C["surface0"], fg=C["text"]).pack(side="left")
+        tk.Button(hdr, text="Clear", font=FONTS["shortcut"],
+                  bg=C["surface0"], fg=C["overlay0"], relief="flat",
+                  padx=4, pady=0, activebackground=C["surface1"],
+                  command=self._stages_none).pack(side="right", padx=(0, 2))
+        tk.Label(hdr, text="\u00b7", font=FONTS["shortcut"],
+                 bg=C["surface0"], fg=C["overlay0"]).pack(side="right")
+        tk.Button(hdr, text="Select All", font=FONTS["shortcut"],
+                  bg=C["surface0"], fg=C["overlay0"], relief="flat",
+                  padx=4, pady=0, activebackground=C["surface1"],
+                  command=self._stages_all).pack(side="right", padx=(0, 2))
+
+        # Stage 토글 버튼
+        btn_frame = tk.Frame(bar, bg=C["surface0"])
+        btn_frame.pack(fill="x", padx=8, pady=(4, 6))
+        self._stage_buttons = {}
+        for stage_key, label, color_key in STAGE_CONFIG:
+            btn = tk.Button(btn_frame, text=label, font=(FONT_FAMILY, 9, "bold"),
+                            relief="flat", width=9, pady=4, bd=0,
+                            command=lambda sk=stage_key: self._toggle_stage(sk))
+            btn.pack(side="left", padx=(0, 4), fill="x", expand=True)
+            self._stage_buttons[stage_key] = (btn, color_key)
+        self._refresh_stage_buttons()
+
+    # ── 섹션 가시성 ──────────────────────────────────────────
+    def _update_section_visibility(self: "BatchRunnerGUI"):
+        """Stage ON/OFF에 따라 관련 섹션 pack_forget / pack."""
+        if not hasattr(self, "_export_section"):
+            return  # 빌드 중 guard
+
+        # 모든 동적 섹션 forget (pack 순서 보장)
+        for sec in (self._export_section, self._load_section,
+                    self._transform_section, self._report_section,
+                    self._job_section):
+            sec.pack_forget()
+
+        # Stage 토글 ↔ 섹션 1:1 매핑
+        if self._stage_export.get():
+            self._export_section.pack(fill="x")
+
+        if self._stage_load_local.get():
+            self._load_section.pack(fill="x")
+
+        if self._stage_transform.get():
+            self._transform_section.pack(fill="x")
+
+        if self._stage_report.get():
+            self._report_section.pack(fill="x")
+
+        # 항상 보임
+        self._job_section.pack(fill="x")
+
+        # 스크롤 영역 갱신
+        if hasattr(self, "_left_canvas"):
+            self.after(10, lambda: self._left_canvas.configure(
+                scrollregion=self._left_canvas.bbox("all")))
+
+    # ── 인라인 Params 헬퍼 ─────────────────────────────────────
+    def _build_inline_params(self: "BatchRunnerGUI", body, stage, color_key):
+        """각 섹션 하단에 인라인 Params 영역 생성, frame 반환"""
+        ttk.Separator(body, orient="horizontal").pack(fill="x", padx=12, pady=4)
+        tk.Label(body, text="Params", font=FONTS["body_bold"],
+                 bg=C["mantle"], fg=C[color_key]).pack(anchor="w", padx=12, pady=(4, 2))
+        frame = tk.Frame(body, bg=C["mantle"])
+        frame.pack(fill="x", padx=12)
+        tk.Button(body, text="+ add param", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["subtext"], relief="flat", padx=6, pady=2,
+                  activebackground=C["surface1"],
+                  command=lambda: self._add_param_row(stage=stage)
+                  ).pack(anchor="w", padx=12, pady=(2, 6))
+        return frame
 
     # ── 헬퍼 ─────────────────────────────────────────────────
     def _entry_row(self: "BatchRunnerGUI", parent_frame, label, var, **kw):
@@ -260,50 +359,9 @@ class UiBuildMixin:
                  insertbackground=C["text"], relief="flat",
                  font=FONTS["mono"], width=16).pack(side="right", fill="x", expand=True, ipady=2)
 
-    # ── 1) Source ─────────────────────────────────────────────
-    def _build_source_section(self: "BatchRunnerGUI", parent):
-        sec = CollapsibleSection(parent, "Source", color_key="teal", expanded=True)
-        sec.pack(fill="x")
-        body = sec.body
-
-        # Source Type
-        row1 = tk.Frame(body, bg=C["mantle"])
-        row1.pack(fill="x", padx=12, pady=(8, 2))
-        tk.Label(row1, text="Source Type", font=FONTS["mono_small"],
-                 bg=C["mantle"], fg=C["subtext"], width=14, anchor="w").pack(side="left")
-        self._source_type_combo = ttk.Combobox(
-            row1, textvariable=self._source_type_var,
-            state="readonly", font=FONTS["mono"], width=10)
-        self._source_type_combo.pack(side="left")
-        self._source_type_combo.bind("<<ComboboxSelected>>", self._on_source_type_change)
-        tk.Label(row1, text="overwrite", font=FONTS["mono_small"],
-                 bg=C["mantle"], fg=C["subtext"]).pack(side="left", padx=(10, 0))
-        tk.Checkbutton(row1, variable=self._ov_overwrite, text="",
-                       bg=C["mantle"], fg=C["text"], selectcolor=C["surface0"],
-                       activebackground=C["mantle"],
-                       command=self._refresh_preview).pack(side="left")
-
-        # Host + timeout
-        row2 = tk.Frame(body, bg=C["mantle"])
-        row2.pack(fill="x", padx=12, pady=(2, 6))
-        tk.Label(row2, text="Host", font=FONTS["mono_small"],
-                 bg=C["mantle"], fg=C["subtext"], width=14, anchor="w").pack(side="left")
-        self._host_combo = ttk.Combobox(
-            row2, textvariable=self._source_host_var,
-            state="readonly", font=FONTS["mono"], width=10)
-        self._host_combo.pack(side="left")
-        self._host_combo.bind("<<ComboboxSelected>>", lambda _: self._refresh_preview())
-        tk.Label(row2, text="timeout", font=FONTS["mono_small"],
-                 bg=C["mantle"], fg=C["subtext"]).pack(side="left", padx=(10, 4))
-        tk.Entry(row2, textvariable=self._ov_timeout,
-                 bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
-                 relief="flat", font=FONTS["mono_small"], width=6).pack(side="left", ipady=2)
-        tk.Label(row2, text="sec", font=FONTS["shortcut"],
-                 bg=C["mantle"], fg=C["overlay0"]).pack(side="left", padx=4)
-
-    # ── 2) Target ─────────────────────────────────────────────
-    def _build_target_section(self: "BatchRunnerGUI", parent):
-        sec = CollapsibleSection(parent, "Target", color_key="mauve", expanded=True)
+    # ── 1) Load (구 Target) ───────────────────────────────────
+    def _build_load_section(self: "BatchRunnerGUI", parent):
+        sec = CollapsibleSection(parent, "Load", color_key="teal", expanded=True)
         sec.pack(fill="x")
         body = sec.body
 
@@ -376,67 +434,47 @@ class UiBuildMixin:
 
         self._update_target_visibility()
 
-    # ── 3) Paths — Export ─────────────────────────────────────
-    def _build_paths_section(self: "BatchRunnerGUI", parent):
-        sec = CollapsibleSection(parent, "Paths \u2014 Export", color_key="blue", expanded=True)
+        return sec
+
+    # ── 2) Export (Source 통합) ────────────────────────────────
+    def _build_export_section(self: "BatchRunnerGUI", parent):
+        sec = CollapsibleSection(parent, "Export", color_key="blue", expanded=True)
         sec.pack(fill="x")
         body = sec.body
 
+        # --- Source (통합) — Source Type + Host 한 줄 2열 ---
+        src_row = tk.Frame(body, bg=C["mantle"])
+        src_row.pack(fill="x", padx=12, pady=(8, 4))
+
+        col_l = tk.Frame(src_row, bg=C["mantle"])
+        col_l.pack(side="left", fill="x", expand=True)
+        tk.Label(col_l, text="Source Type", font=FONTS["mono_small"],
+                 bg=C["mantle"], fg=C["subtext"]).pack(anchor="w")
+        self._source_type_combo = ttk.Combobox(
+            col_l, textvariable=self._source_type_var,
+            state="readonly", font=FONTS["mono"])
+        self._source_type_combo.pack(fill="x", pady=(2, 0))
+        self._source_type_combo.bind("<<ComboboxSelected>>", self._on_source_type_change)
+
+        col_r = tk.Frame(src_row, bg=C["mantle"])
+        col_r.pack(side="left", fill="x", expand=True, padx=(8, 0))
+        tk.Label(col_r, text="Host", font=FONTS["mono_small"],
+                 bg=C["mantle"], fg=C["subtext"]).pack(anchor="w")
+        self._host_combo = ttk.Combobox(
+            col_r, textvariable=self._source_host_var,
+            state="readonly", font=FONTS["mono"])
+        self._host_combo.pack(fill="x", pady=(2, 0))
+        self._host_combo.bind("<<ComboboxSelected>>", lambda _: self._refresh_preview())
+
+        ttk.Separator(body, orient="horizontal").pack(fill="x", padx=12, pady=6)
+
+        # --- Export 경로 + 옵션 ---
         self._path_row(body, "export.sql_dir", self._export_sql_dir, "Select SQL dir")
         self._path_row(body, "export.out_dir", self._export_out_dir, "Select output dir")
 
-    # ── 4) Stages — 토글 버튼 ────────────────────────────────
-    def _build_stages_section(self: "BatchRunnerGUI", parent):
-        sec = CollapsibleSection(parent, "Stages", color_key="yellow", expanded=True)
-        sec.pack(fill="x")
-        body = sec.body
-
-        btn_frame = tk.Frame(body, bg=C["mantle"])
-        btn_frame.pack(fill="x", padx=12, pady=(8, 2))
-
-        self._stage_buttons = {}
-        for stage_key, label, color_key in STAGE_CONFIG:
-            btn = tk.Button(btn_frame, text=label, font=(FONT_FAMILY, 9, "bold"),
-                            relief="flat", width=9, pady=4, bd=0,
-                            command=lambda sk=stage_key: self._toggle_stage(sk))
-            btn.pack(side="left", padx=(0, 4), fill="x", expand=True)
-            self._stage_buttons[stage_key] = (btn, color_key)
-
-        self._refresh_stage_buttons()
-
-        # all / none
-        ctrl = tk.Frame(body, bg=C["mantle"])
-        ctrl.pack(fill="x", padx=12, pady=(2, 6))
-        for txt, cmd in [("all", self._stages_all), ("none", self._stages_none)]:
-            tk.Button(ctrl, text=txt, font=FONTS["shortcut"],
-                      bg=C["surface0"], fg=C["subtext"], relief="flat",
-                      padx=5, pady=0, activebackground=C["surface1"],
-                      command=cmd).pack(side="left", padx=(0, 6))
-
-    # ── 5) Params ─────────────────────────────────────────────
-    def _build_params_section(self: "BatchRunnerGUI", parent):
-        sec = CollapsibleSection(parent, "Params  (--param)", color_key="green", expanded=True)
-        sec.pack(fill="x")
-        body = sec.body
-
-        self._params_frame = tk.Frame(body, bg=C["mantle"])
-        self._params_frame.pack(fill="x", padx=12)
-        self._param_entries: list[tuple[tk.StringVar, tk.StringVar]] = []
-        self._refresh_param_rows([])
-        tk.Button(body, text="+ add param", font=FONTS["mono_small"],
-                  bg=C["surface0"], fg=C["subtext"], relief="flat", padx=6, pady=2,
-                  activebackground=C["surface1"],
-                  command=self._add_param_row).pack(anchor="w", padx=12, pady=(2, 6))
-
-    # ── 6) Advanced ───────────────────────────────────────────
-    def _build_advanced_section(self: "BatchRunnerGUI", parent):
-        sec = CollapsibleSection(parent, "Advanced", color_key="sky", expanded=False)
-        sec.pack(fill="x")
-        body = sec.body
-
-        # ─── SQL Filter ───
+        # SQL Filter
         tk.Label(body, text="SQL Filter", font=FONTS["body_bold"],
-                 bg=C["mantle"], fg=C["sky"]).pack(anchor="w", padx=12, pady=(8, 2))
+                 bg=C["mantle"], fg=C["blue"]).pack(anchor="w", padx=12, pady=(8, 2))
         sql_row = tk.Frame(body, bg=C["mantle"])
         sql_row.pack(fill="x", padx=12, pady=(2, 4))
         self._sql_btn = tk.Button(
@@ -455,10 +493,24 @@ class UiBuildMixin:
 
         ttk.Separator(body, orient="horizontal").pack(fill="x", padx=12, pady=4)
 
-        # ─── Export 옵션 ───
-        tk.Label(body, text="Export", font=FONTS["body_bold"],
-                 bg=C["mantle"], fg=C["sky"]).pack(anchor="w", padx=12, pady=(4, 2))
+        # overwrite + timeout
+        ov_row = tk.Frame(body, bg=C["mantle"])
+        ov_row.pack(fill="x", padx=12, pady=2)
+        tk.Label(ov_row, text="overwrite", font=FONTS["mono_small"],
+                 bg=C["mantle"], fg=C["subtext"], width=18, anchor="w").pack(side="left")
+        tk.Checkbutton(ov_row, variable=self._ov_overwrite, text="",
+                       bg=C["mantle"], fg=C["text"], selectcolor=C["surface0"],
+                       activebackground=C["mantle"],
+                       command=self._refresh_preview).pack(side="left")
+        tk.Label(ov_row, text="timeout", font=FONTS["mono_small"],
+                 bg=C["mantle"], fg=C["subtext"]).pack(side="left", padx=(10, 4))
+        tk.Entry(ov_row, textvariable=self._ov_timeout,
+                 bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
+                 relief="flat", font=FONTS["mono_small"], width=6).pack(side="left", ipady=2)
+        tk.Label(ov_row, text="sec", font=FONTS["shortcut"],
+                 bg=C["mantle"], fg=C["overlay0"]).pack(side="left", padx=4)
 
+        # workers + compression
         def _w_workers(r):
             tk.Spinbox(r, from_=1, to=16, width=4, textvariable=self._ov_workers,
                        bg=C["surface0"], fg=C["text"], buttonbackground=C["surface1"],
@@ -472,11 +524,17 @@ class UiBuildMixin:
                          font=FONTS["mono_small"], width=8).pack(side="left")
         self._ov_row(body, "export.compression", _w_compression, tooltip=TOOLTIPS.get("export.compression", ""))
 
-        ttk.Separator(body, orient="horizontal").pack(fill="x", padx=12, pady=4)
+        # --- Params (export) ---
+        self._export_params_frame = self._build_inline_params(body, "export", "blue")
 
-        # ─── Transform 옵션 ───
-        tk.Label(body, text="Transform", font=FONTS["body_bold"],
-                 bg=C["mantle"], fg=C["sky"]).pack(anchor="w", padx=12, pady=(4, 2))
+        return sec
+
+    # ── 3) Transform ──────────────────────────────────────────
+    def _build_transform_section(self: "BatchRunnerGUI", parent):
+        sec = CollapsibleSection(parent, "Transform", color_key="sky", expanded=False)
+        sec.pack(fill="x")
+        body = sec.body
+
         self._path_row(body, "transform.sql_dir", self._transform_sql_dir, "Select transform SQL dir")
 
         def _w_tfm_schema(r):
@@ -491,11 +549,17 @@ class UiBuildMixin:
                          font=FONTS["mono_small"], width=8).pack(side="left")
         self._ov_row(body, "transform.on_error", _w_on_error, tooltip=TOOLTIPS.get("transform.on_error", ""))
 
-        ttk.Separator(body, orient="horizontal").pack(fill="x", padx=12, pady=4)
+        # --- Params (transform) ---
+        self._transform_params_frame = self._build_inline_params(body, "transform", "sky")
 
-        # ─── Report 옵션 ───
-        tk.Label(body, text="Report", font=FONTS["body_bold"],
-                 bg=C["mantle"], fg=C["sky"]).pack(anchor="w", padx=12, pady=(4, 2))
+        return sec
+
+    # ── 4) Report ─────────────────────────────────────────────
+    def _build_report_section(self: "BatchRunnerGUI", parent):
+        sec = CollapsibleSection(parent, "Report", color_key="peach", expanded=False)
+        sec.pack(fill="x")
+        body = sec.body
+
         self._path_row(body, "report.sql_dir", self._report_sql_dir, "Select report SQL dir")
         self._path_row(body, "report.out_dir", self._report_out_dir, "Select report output dir")
 
@@ -550,9 +614,14 @@ class UiBuildMixin:
                   activebackground=C["surface1"],
                   command=_browse_union).pack(side="left", padx=(2, 0))
 
-    # ── 7) Job / Presets ──────────────────────────────────────
+        # --- Params (report) ---
+        self._report_params_frame = self._build_inline_params(body, "report", "peach")
+
+        return sec
+
+    # ── 5) Job / Presets ──────────────────────────────────────
     def _build_job_preset_section(self: "BatchRunnerGUI", parent):
-        sec = CollapsibleSection(parent, "Job / Presets", color_key="peach", expanded=False)
+        sec = CollapsibleSection(parent, "Job / Presets", color_key="green", expanded=False)
         sec.pack(fill="x")
         body = sec.body
 
@@ -583,6 +652,8 @@ class UiBuildMixin:
                   bg=C["surface0"], fg=C["subtext"], relief="flat", padx=6, pady=2,
                   activebackground=C["surface1"],
                   command=self._on_save_yml_as).pack(side="left")
+
+        return sec
 
     # ── 우측 로그 패널 ───────────────────────────────────────
     def _build_right(self: "BatchRunnerGUI", parent):
