@@ -1,13 +1,14 @@
 SELECT
-    p.CLS_YYMM,
-    p.PAY_TYPE,
+    c.CLS_YYMM,
+    p.PAYMENT_TYPE,
     COUNT(p.PAYMENT_ID)             AS PAY_CNT,
-    SUM(p.PAY_AMT)                  AS PAY_AMT_SUM,
-    ROUND(AVG(p.PAY_AMT), 0)        AS PAY_AMT_AVG
-FROM TB_PAYMENT p
+    SUM(p.PAYMENT_AMT)              AS PAY_AMT_SUM,
+    ROUND(AVG(p.PAYMENT_AMT), 0)    AS PAY_AMT_AVG
+FROM @{schema}TB_PAYMENT p
+JOIN @{schema}TB_CONTRACT c ON p.CONTRACT_ID = c.CONTRACT_ID
 GROUP BY
-    p.CLS_YYMM,
-    p.PAY_TYPE
+    c.CLS_YYMM,
+    p.PAYMENT_TYPE
 ORDER BY
-    p.CLS_YYMM,
-    p.PAY_TYPE
+    c.CLS_YYMM,
+    p.PAYMENT_TYPE

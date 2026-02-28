@@ -23,14 +23,11 @@ plan_report.json
 config/env.yml
 
 # IDE / OS
-.claude/
-.vscode/
+.claude/d
 *.swp
 Thumbs.db
 .DS_Store
 *.sql
-
-!VERSION
 
 !.githooks/
 !.githooks/**

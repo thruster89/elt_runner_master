@@ -1,57 +1,37 @@
-# ============================================================
-# job_duckdb.yml
-# source: Oracle → export CSV → load DuckDB
-#         → transform(DuckDB) → report(target DuckDB → CSV + Excel)
-# ============================================================
-
 job_name: job_duckdb
-
-params:
-  clsYymm: "202003"
-
 pipeline:
   stages:
-    - export
-    - load_local
-    - transform
-    - report
-
-# ── 소스 DB ──────────────────────────────────────────────────
+  - export
+  - load_local
+  - transform
+  - report
 source:
   type: oracle
   host: local
-
-# ── Export ───────────────────────────────────────────────────
 export:
-  # sql_dir: sql/export
-  out_dir: data/export
-  format: csv
-  compression: gzip
+  sql_dir: sql/export/test
+  out_dir: data/export/test
   overwrite: true
   parallel_workers: 1
-
-# ── Target ───────────────────────────────────────────────────
+  compression: gzip
+  format: csv
+load:
+  mode: replace
 target:
   type: duckdb
   db_path: data/local/result.duckdb
-  # schema: MY_SCHEMA       # 선택: 스키마 지정
-
-# ── Transform ────────────────────────────────────────────────
 transform:
-  sql_dir: sql/transform/duckdb    # DuckDB 전용 SQL 디렉토리
+  sql_dir: sql/transform/duckdb
   on_error: stop
-
-# ── Report ───────────────────────────────────────────────────
 report:
-  source: target             # load된 DuckDB에서 리포트 쿼리 실행
-
+  source: target
   export_csv:
     enabled: true
     sql_dir: sql/report
     out_dir: data/report
-    compression: none
-
   excel:
     enabled: true
     out_dir: data/report
     max_files: 10
+params:
+  clsYymm: '202303'

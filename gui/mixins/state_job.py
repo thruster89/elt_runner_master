@@ -57,6 +57,8 @@ class StateJobMixin:
                 "skip_sql":     self._ov_skip_sql.get(),
                 "union_dir":    self._ov_union_dir.get(),
                 "timeout":      self._ov_timeout.get(),
+                "name_style":   self._ov_name_style.get(),
+                "strip_prefix": self._ov_strip_prefix.get(),
             },
         }
 
@@ -109,6 +111,8 @@ class StateJobMixin:
         self._ov_skip_sql.set(ov.get("skip_sql", False))
         self._ov_union_dir.set(ov.get("union_dir", ""))
         self._ov_timeout.set(ov.get("timeout", "1800"))
+        self._ov_name_style.set(ov.get("name_style", "full"))
+        self._ov_strip_prefix.set(ov.get("strip_prefix", False))
 
         self._refresh_preview()
 
@@ -171,6 +175,8 @@ class StateJobMixin:
                 "overwrite": self._ov_overwrite.get(),
                 "parallel_workers": self._ov_workers.get(),
                 "compression": self._ov_compression.get(),
+                "csv_name_style": self._ov_name_style.get(),
+                "csv_strip_prefix": self._ov_strip_prefix.get(),
                 "format": "csv",
             },
             "load": {
@@ -325,6 +331,8 @@ class StateJobMixin:
         self._ov_overwrite.set(bool(exp.get("overwrite", False)))
         self._ov_workers.set(int(exp.get("parallel_workers", 1)))
         self._ov_compression.set(str(exp.get("compression", "gzip")))
+        self._ov_name_style.set(str(exp.get("csv_name_style", "full")))
+        self._ov_strip_prefix.set(bool(exp.get("csv_strip_prefix", False)))
         self._ov_load_mode.set(str(cfg.get("load", {}).get("mode", "replace")))
         self._ov_on_error.set(str(tfm.get("on_error", "stop")))
         self._ov_excel.set(bool(rep.get("excel", {}).get("enabled", True)))

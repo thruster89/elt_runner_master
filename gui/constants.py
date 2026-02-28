@@ -200,6 +200,8 @@ TOOLTIPS = {
     "max_files":    "Max sheets per Excel file (1~100)\nCreates new file when exceeded",
     "skip_sql":     "Skip SQL execution\nPerform CSV union only",
     "union_dir":    "CSV union source folder\nSpecify to merge external CSVs",
+    "name_style":   "CSV filename param format\nfull: key_value (clsYymm_202003)\ncompact: value only (202003)",
+    "strip_prefix": "Remove numeric prefix from SQL filename\nON: 01_contract → contract\nOFF: 01_contract (keep as-is)",
 }
 
 # ─────────────────────────────────────────────────────────────

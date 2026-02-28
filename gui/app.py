@@ -89,6 +89,8 @@ class BatchRunnerGUI(
         self._ov_skip_sql     = tk.BooleanVar(value=False)
         self._ov_union_dir    = tk.StringVar(value="")
         self._ov_timeout      = tk.StringVar(value="1800")
+        self._ov_name_style   = tk.StringVar(value="full")
+        self._ov_strip_prefix = tk.BooleanVar(value=False)
 
         # Dirty flag (변경 감지)
         self._job_loaded_snapshot = None

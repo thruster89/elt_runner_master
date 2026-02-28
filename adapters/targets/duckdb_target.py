@@ -136,9 +136,9 @@ def _delete_by_params(conn, schema: str, table_name: str, params: dict):
         logger.warning("DELETE 조건에서 제외된 파라미터 (컬럼 없음): %s.%s", tbl, skipped)
 
     where = " AND ".join(conditions)
+    del_count = conn.execute(f"SELECT COUNT(*) FROM {tbl} WHERE {where}", values).fetchone()[0]
     conn.execute(f"DELETE FROM {tbl} WHERE {where}", values)
-    logger.info("DELETE %s | %d rows | WHERE %s", tbl,
-                conn.execute("SELECT changes()").fetchone()[0], where)
+    logger.info("DELETE %s | %d rows | WHERE %s", tbl, del_count, where)
 
 
 def load_csv(conn, job_name: str, table_name: str, csv_path: Path,

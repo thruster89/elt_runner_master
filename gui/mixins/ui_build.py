@@ -634,6 +634,23 @@ class UiBuildMixin:
         tk.Label(to_frame, text="sec", font=FONTS["shortcut"],
                  bg=C["mantle"], fg=C["subtext"]).pack(side="left", padx=(4, 0))
 
+        # row 2: name_style [full] | strip_prefix ☐
+        _ns_lbl = tk.Label(opt_grid, text="name_style", font=FONTS["mono_small"],
+                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w")
+        _ns_lbl.grid(row=2, column=0, sticky="w", pady=2)
+        Tooltip(_ns_lbl, TOOLTIPS["name_style"])
+        ttk.Combobox(opt_grid, textvariable=self._ov_name_style,
+                     values=["full", "compact"], state="readonly",
+                     font=FONTS["mono_small"], width=8).grid(row=2, column=1, sticky="w", pady=2)
+        _sp_lbl = tk.Label(opt_grid, text="strip_prefix", font=FONTS["mono_small"],
+                 bg=C["mantle"], fg=C["subtext"])
+        _sp_lbl.grid(row=2, column=2, sticky="w", padx=(16, 4), pady=2)
+        Tooltip(_sp_lbl, TOOLTIPS["strip_prefix"])
+        tk.Checkbutton(opt_grid, variable=self._ov_strip_prefix, text="",
+                       bg=C["mantle"], fg=C["text"], selectcolor=C["surface0"],
+                       activebackground=C["mantle"],
+                       command=self._refresh_preview).grid(row=2, column=3, sticky="w", pady=2)
+
         # --- Params (export) ---
         self._export_params_frame = self._build_inline_params(body, "export", "blue")
 
