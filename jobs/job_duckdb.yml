@@ -53,10 +53,11 @@ report:
 
   # export_views:              # DB view → SELECT * → CSV 추출
   #   enabled: true
-  #   views: all               # all | [VIEW_A, VIEW_B] (선택 추출)
+  #   views: all               # all(schema 내 전체) | [VIEW_A, VIEW_B]
   #   out_dir: data/report
   #   compression: none
-  #   max_rows: 1048576        # 행 수 제한 (0=무제한, 기본=1048576)
+  #   max_rows: 200000         # 행 수 제한 (0=무제한, 기본=200000)
+  #   warn_rows: 100000        # 초과 시 WARNING (기본=100000)
 
   excel:
     enabled: true

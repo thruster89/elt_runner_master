@@ -16,10 +16,11 @@ job.yml 설정:
       compression: none     # none(기본) / gzip
     export_views:
       enabled: true
-      views: all            # all | [VIEW_A, VIEW_B] (선택 추출)
+      views: all            # all(schema 내 전체) | [VIEW_A, VIEW_B] (선택 추출)
       out_dir: data/report/
       compression: none     # none(기본) / gzip
-      max_rows: 1048576     # 행 수 제한 (0=무제한, 기본=1048576)
+      max_rows: 200000      # 행 수 제한 (0=무제한, 기본=200000)
+      warn_rows: 100000     # 이 수 초과 시 WARNING 로그 (기본=100000)
     excel:
       enabled: true
       out_dir: data/report/
@@ -285,20 +286,6 @@ def _list_views(conn, conn_type: str, schema: str) -> list[str]:
             cur.execute("SELECT view_name FROM user_views ORDER BY view_name")
             rows = cur.fetchall()
             cur.close()
-    elif conn_type == "vertica":
-        cur = conn.cursor()
-        if schema:
-            cur.execute(
-                "SELECT table_name FROM v_catalog.views "
-                "WHERE table_schema = %s ORDER BY table_name",
-                [schema],
-            )
-        else:
-            cur.execute(
-                "SELECT table_name FROM v_catalog.views ORDER BY table_name"
-            )
-        rows = cur.fetchall()
-        cur.close()
     else:
         return []
 
@@ -306,11 +293,12 @@ def _list_views(conn, conn_type: str, schema: str) -> list[str]:
 
 
 def _run_view_export(ctx, report_cfg, cfg) -> list:
-    """DB view를 SELECT * → CSV 추출."""
+    """DB view를 SELECT * → CSV 추출. schema 단위로 view 목록 조회."""
     logger = ctx.logger
     out_dir = resolve_path(ctx, cfg.get("out_dir", "data/report"))
     compression = (cfg.get("compression") or "none").strip().lower()
-    max_rows = int(cfg.get("max_rows", 1_048_576))
+    max_rows = int(cfg.get("max_rows", 200_000))
+    warn_rows = int(cfg.get("warn_rows", 100_000))
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -325,12 +313,15 @@ def _run_view_export(ctx, report_cfg, cfg) -> list:
         conn.execute(f"SET schema = '{schema}'")
         logger.info("REPORT views SET schema = '%s'", schema)
 
+    schema_label = schema or "(default)"
+
     # view 필터 결정
     views_setting = cfg.get("views", "all")
 
     try:
         all_views = _list_views(conn, conn_type, schema)
-        logger.info("REPORT views found %d view(s) in %s", len(all_views), conn_label)
+        logger.info("REPORT views | schema=%s found %d view(s) in %s",
+                     schema_label, len(all_views), conn_label)
 
         if isinstance(views_setting, list):
             # 지정된 view만 추출 (대소문자 무시 매칭)
@@ -338,18 +329,19 @@ def _run_view_export(ctx, report_cfg, cfg) -> list:
             target_views = [v for v in all_views if v.upper() in requested]
             not_found = requested - {v.upper() for v in target_views}
             if not_found:
-                logger.warning("REPORT views not found: %s", ", ".join(sorted(not_found)))
+                logger.warning("REPORT views not found in schema=%s: %s",
+                               schema_label, ", ".join(sorted(not_found)))
         else:
-            # all
+            # all = schema 내 전체 view
             target_views = all_views
 
         if not target_views:
-            logger.info("REPORT no views to export")
+            logger.info("REPORT no views to export (schema=%s)", schema_label)
             return []
 
         logger.info(
-            "REPORT view export | db=%s views=%d out_dir=%s compression=%s max_rows=%s",
-            conn_label, len(target_views), out_dir, compression,
+            "REPORT view export | schema=%s db=%s views=%d out_dir=%s compression=%s max_rows=%s",
+            schema_label, conn_label, len(target_views), out_dir, compression,
             max_rows if max_rows > 0 else "unlimited",
         )
 
@@ -359,8 +351,6 @@ def _run_view_export(ctx, report_cfg, cfg) -> list:
         for i, view_name in enumerate(target_views, 1):
             # schema prefix 처리
             if conn_type == "oracle" and schema:
-                qualified = f"{schema}.{view_name}"
-            elif conn_type == "vertica" and schema:
                 qualified = f"{schema}.{view_name}"
             else:
                 qualified = view_name
@@ -374,11 +364,24 @@ def _run_view_export(ctx, report_cfg, cfg) -> list:
             start = time.time()
             try:
                 rows = _export_to_csv(conn, conn_type, sql_text, out_file, compression, max_rows)
-                suffix = f" (truncated at {max_rows})" if max_rows > 0 and rows >= max_rows else ""
-                logger.info(
-                    "REPORT view [%d/%d] done | rows=%d elapsed=%.2fs%s",
-                    i, total, rows, time.time() - start, suffix,
-                )
+                elapsed = time.time() - start
+
+                if max_rows > 0 and rows >= max_rows:
+                    logger.warning(
+                        "REPORT view [%d/%d] %s: %d rows로 잘림 (max_rows=%d, %.2fs) "
+                        "→ SQL 내에서 집계/필터 후 view를 재생성하는 것을 권장합니다",
+                        i, total, view_name, rows, max_rows, elapsed,
+                    )
+                elif warn_rows > 0 and rows > warn_rows:
+                    logger.warning(
+                        "REPORT view [%d/%d] %s: %d rows (%.2fs) — "
+                        "대량 데이터입니다. SQL 내에서 가공 후 view로 만드는 것을 권장합니다",
+                        i, total, view_name, rows, elapsed,
+                    )
+                else:
+                    logger.info("REPORT view [%d/%d] done | rows=%d elapsed=%.2fs",
+                                i, total, rows, elapsed)
+
                 generated.append(out_file)
             except Exception as e:
                 logger.error("REPORT view [%d/%d] FAILED (%.2fs): %s",
