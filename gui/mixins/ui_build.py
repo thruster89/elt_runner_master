@@ -510,6 +510,12 @@ class UiBuildMixin:
         self._path_row(body, "report.sql_dir", self._report_sql_dir, "Select report SQL dir")
         self._path_row(body, "report.out_dir", self._report_out_dir, "Select report output dir")
 
+        def _w_rpt_schema(r):
+            tk.Entry(r, textvariable=self._report_schema,
+                     bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
+                     relief="flat", font=FONTS["mono_small"], width=16).pack(side="left", fill="x", expand=True, ipady=2)
+        self._ov_row(body, "report.schema", _w_rpt_schema, note="@{schema} 접두사용", tooltip=TOOLTIPS.get("report.schema", ""))
+
         def _w_excel(r):
             tk.Checkbutton(r, variable=self._ov_excel, text="",
                            bg=C["mantle"], fg=C["text"], selectcolor=C["surface0"],

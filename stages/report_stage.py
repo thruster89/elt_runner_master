@@ -104,6 +104,16 @@ def _run_csv_export(ctx, report_cfg, cfg) -> list:
     report_source = (report_cfg.get("source") or "target").strip().lower()
     conn, conn_type, conn_label = _open_connection(ctx, report_source)
 
+    # schema 주입: report.schema 우선 → target.schema fallback
+    # transform과 동일하게 @{schema} 치환 지원
+    schema = (report_cfg.get("schema") or "").strip() \
+             or (ctx.job_config.get("target", {}).get("schema") or "").strip() \
+             or ""
+    if conn_type == "duckdb" and schema:
+        conn.execute(f'SET schema = \'{schema}\'')
+        logger.info("REPORT SET schema = '%s'", schema)
+    ctx.params.setdefault("schema", schema)
+
     logger.info(
         "REPORT csv export | db=%s sql_dir=%s out_dir=%s files=%d compression=%s",
         conn_label, sql_dir, out_dir, len(sql_files), compression,

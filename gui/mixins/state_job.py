@@ -38,6 +38,7 @@ class StateJobMixin:
             "export_out_dir": self._export_out_dir.get(),
             "transform_schema":  self._transform_schema.get(),
             "transform_sql_dir": self._transform_sql_dir.get(),
+            "report_schema":     self._report_schema.get(),
             "report_sql_dir":    self._report_sql_dir.get(),
             "report_out_dir":    self._report_out_dir.get(),
             "stage_export":     self._stage_export.get(),
@@ -78,6 +79,7 @@ class StateJobMixin:
         self._export_out_dir.set(snap.get("export_out_dir", "data/export"))
         self._transform_schema.set(snap.get("transform_schema", ""))
         self._transform_sql_dir.set(snap.get("transform_sql_dir", "sql/transform/duckdb"))
+        self._report_schema.set(snap.get("report_schema", ""))
         self._report_sql_dir.set(snap.get("report_sql_dir", "sql/report"))
         self._report_out_dir.set(snap.get("report_out_dir", "data/report"))
 
@@ -187,6 +189,8 @@ class StateJobMixin:
             },
             "report": {
                 "source": "target",
+                **({"schema": self._report_schema.get().strip()}
+                   if self._report_schema.get().strip() else {}),
                 "export_csv": {
                     "enabled": self._ov_csv.get(),
                     "sql_dir": self._report_sql_dir.get(),
@@ -309,6 +313,7 @@ class StateJobMixin:
         self._transform_schema.set(tfm.get("schema", ""))
         self._transform_sql_dir.set(tfm.get("sql_dir", f"sql/transform/{tgt.get('type', 'duckdb')}"))
         rep = cfg.get("report", {})
+        self._report_schema.set(rep.get("schema", ""))
         rep_csv = rep.get("export_csv", {})
         self._report_sql_dir.set(rep_csv.get("sql_dir", "sql/report"))
         self._report_out_dir.set(rep_csv.get("out_dir", rep.get("excel", {}).get("out_dir", "data/report")))
