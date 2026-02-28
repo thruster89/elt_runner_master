@@ -1,4 +1,61 @@
-# Batch Runner Changelog
+# ELT Runner Changelog
+
+## v1.98.9 (2026-03-01)
+
+- **feat**: CSV `name_style` (full/compact) + `strip_prefix` GUI toggles in Export section
+- **fix**: DuckDB DELETE — pre-count rows before delete for accurate logging
+- **chore**: SQL schema references (`@{schema}`) applied to report/transform queries
+
+## v1.98.8 (2026-03-01)
+
+- **feat**: All GUI labels/tooltips converted Korean → English
+- **feat**: Running process close protection — block window close while task is running
+- **fix**: Tooltip font unified to Consolas 10pt
+- **fix**: Load mode tooltip moved from combobox to label
+
+## v1.98.6 (2026-03-01)
+
+- **feat**: Ctrl+F search bar moved inside log panel (no longer overlaps Run buttons)
+- **feat**: Schedule/Reserve UX — supports `+30m`, `+2h`, `18:00`, `0302 18:00`
+- **fix**: Bottom bar clock cutoff resolved
+- **fix**: Transform section color unified to mauve
+
+## v1.98.4 (2026-03-01)
+
+- **feat**: Param range `~N` filter — e.g. `202001:202412~2` = February only
+- **feat**: OS toast notification shows job name + elapsed time
+- **feat**: Elapsed time format: `2.6s` instead of `00:02`
+- **feat**: Export options consolidated into 2-row grid layout
+- **feat**: SQL Filter integrated into sql_dir row (3-line preview removed)
+- **feat**: New Window opens with random different theme (`ELT_GUI_THEME` env)
+- **fix**: Label widths reduced 18/14 → 12 for compact layout
+- **fix**: Oracle hint memo and Load mode notes → tooltips
+
+## v1.98.0 (2026-03-01)
+
+- **feat**: GUI layout v2 — Stage toggles at top, sections 1:1 mapped to stages
+- **feat**: Stage OFF hides corresponding section (conditional visibility)
+- **feat**: Inline Params per stage (export/transform/report)
+- **feat**: Source (Type/Host) merged into Export section
+- **feat**: Target section renamed to Load
+
+## v1.97.2 (2026-02-27)
+
+- **feat**: Params stored in `.meta.json` — read from meta instead of filename parsing
+- **feat**: Delete mode unified across all targets (strict mode with param WHERE)
+- **feat**: Oracle target `replace` (DROP+CREATE) and `truncate` modes
+- **feat**: Oracle export column metadata → target table preserves source types
+- **feat**: CSV filename `strip_prefix` option (remove `01_` prefix)
+- **feat**: Schedule execution feature
+- **fix**: DELETE column matching fallback when no match found
+- **fix**: ORA-01861 — target session NLS_DATE_FORMAT set explicitly
+- **fix**: Schedule UX placeholder display bug
+
+## v1.97.0 (2026-02-26)
+
+- **refactor**: `batch_runner_gui.py` → `gui/` package (modular Mixin architecture)
+- **feat**: Log timestamp toggle button `[Time]`
+- **docs**: CLAUDE.md project structure documentation
 
 ## v1.96 (2026-02-25)
 
