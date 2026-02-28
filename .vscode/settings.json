@@ -1,0 +1,8 @@
+{
+  "editor.formatOnSave": false,
+  "files.associations": {
+    "VERSION": "plaintext",
+    "**/sql/transform/**/*.sql": "sql",
+    "**/sql/report/**/*.sql": "sql"
+  }
+}
