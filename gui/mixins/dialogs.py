@@ -69,7 +69,7 @@ class DialogsMixin:
         return result[0]
 
     def _show_overwrite_confirm(self: "BatchRunnerGUI") -> bool:
-        kw_key = {"bg": C["base"], "fg": C["overlay0"], "font": FONTS["body"]}
+        kw_key = {"bg": C["base"], "fg": C["subtext"], "font": FONTS["body"]}
 
         def build(body):
             tk.Label(body, text="⚠  export.overwrite = ON", bg=C["base"],
@@ -93,7 +93,7 @@ class DialogsMixin:
         timeout_val = self._ov_timeout.get().strip() or "1800"
         ov_on = self._ov_overwrite.get()
 
-        kw_key = {"bg": C["base"], "fg": C["overlay0"], "font": FONTS["body"]}
+        kw_key = {"bg": C["base"], "fg": C["subtext"], "font": FONTS["body"]}
         kw_val = {"bg": C["base"], "fg": C["text"], "font": FONTS["body_bold"]}
         pad_k = {"padx": (16, 4), "pady": 3}
         pad_v = {"padx": (0, 16), "pady": 3}
@@ -111,7 +111,7 @@ class DialogsMixin:
                 row=row, column=1, sticky="w", **pad_v)
             tk.Label(body, text="Overwrite", **kw_key).grid(row=row, column=2, sticky="e", **pad_k)
             tk.Label(body, text="ON" if ov_on else "OFF", bg=C["base"],
-                     fg=C["red"] if ov_on else C["overlay0"],
+                     fg=C["red"] if ov_on else C["subtext"],
                      font=FONTS["body_bold"]).grid(row=row, column=3, sticky="w", **pad_v)
             row += 1
 

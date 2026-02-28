@@ -112,6 +112,9 @@ def expand_range_value(value: str):
             continue
         if opt == "Y" and month != "12":
             continue
+        if opt and opt.isdigit():
+            if month != opt.zfill(2):
+                continue
 
         result.append(ym)
 

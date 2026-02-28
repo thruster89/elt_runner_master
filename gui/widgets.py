@@ -43,7 +43,7 @@ class SqlSelectorDialog(tk.Toplevel):
         tk.Label(hdr, text="📂  SQL File Select", font=FONTS["h2"],
                  bg=C["mantle"], fg=C["text"]).pack(side="left", padx=14)
         tk.Label(hdr, text=str(self.sql_dir), font=FONTS["shortcut"],
-                 bg=C["mantle"], fg=C["overlay0"]).pack(side="left", padx=6)
+                 bg=C["mantle"], fg=C["subtext"]).pack(side="left", padx=6)
 
         # 전체선택 / 전체해제
         ctrl = tk.Frame(self, bg=C["base"], pady=4)

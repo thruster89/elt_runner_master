@@ -45,7 +45,7 @@ THEMES = {
         "text":    "#f8f8f2", "subtext": "#bfbfb2",
         "blue":    "#8be9fd", "green":   "#50fa7b", "yellow":  "#f1fa8c",
         "red":     "#ff5555", "peach":   "#ffb86c", "mauve":   "#bd93f9",
-        "teal":    "#8be9fd", "sky":     "#69c3ff",
+        "teal":    "#45e0b0", "sky":     "#69c3ff",
     },
     "Tokyo Night": {     # Dark — Tokyo Night
         "base":    "#1a1b26", "mantle":  "#16161e", "crust":   "#101014",
@@ -183,17 +183,23 @@ _CONF_PATH = Path.home() / ".elt_runner_gui.conf"
 
 # 필드별 툴팁 텍스트
 TOOLTIPS = {
-    "export.workers":       "동시 export 프로세스 수 (1~16)\n높을수록 빠르지만 DB 부하 증가",
-    "export.compression":   "CSV 압축 방식\ngzip: 용량 절약 / none: 속도 우선",
-    "transform.sql_dir":    "Transform SQL 파일 경로\n대상 DB 타입별 하위폴더 권장",
-    "transform.schema":     "Transform SQL에서 @{schema} 치환에 사용\n미입력 시 기본 스키마",
-    "transform.on_error":   "Transform 에러 발생 시 동작\nstop: 즉시 중단 / continue: 나머지 계속",
-    "report.sql_dir":       "Report SQL 파일 경로",
-    "report.out_dir":       "Report 출력 경로 (CSV/Excel)",
-    "report.excel":         "Excel(.xlsx) 보고서 생성 여부",
-    "report.csv":           "CSV 보고서 생성 여부",
-    "report.max_files":     "Excel 파일당 최대 시트 수 (1~100)\n초과 시 새 파일 생성",
-    "report.skip_sql":      "SQL 실행 건너뛰기\nCSV union만 수행할 때 사용",
+    # Export
+    "overwrite":    "ON: 기존 출력 파일 덮어쓰기\nOFF: 이미 존재하면 건너뜀",
+    "timeout":      "Export 최대 대기 시간 (초)",
+    "workers":      "동시 Export 프로세스 수 (1~16)\n높을수록 빠르지만 DB 부하 증가",
+    "compression":  "CSV 압축 방식\ngzip: 용량 절약 / none: 속도 우선",
+    # Load
+    "load_mode":    "oracle: replace / truncate / delete (param WHERE) / append\n"
+                    "duckdb·sqlite: replace / truncate / append",
+    # Transform
+    "schema":       "SQL 내 @{schema} 치환에 사용\n미입력 시 기본 스키마",
+    "on_error":     "에러 발생 시 동작\nstop: 즉시 중단 / continue: 나머지 계속",
+    # Report
+    "excel":        "Excel(.xlsx) 보고서 생성",
+    "csv":          "CSV 보고서 생성",
+    "max_files":    "Excel 파일당 최대 시트 수 (1~100)\n초과 시 새 파일 생성",
+    "skip_sql":     "SQL 실행 건너뛰기\nCSV union만 수행할 때 사용",
+    "union_dir":    "CSV union 소스 폴더\n외부 CSV를 합칠 때 지정",
 }
 
 # ─────────────────────────────────────────────────────────────

@@ -218,10 +218,11 @@ class StateJobMixin:
         try:
             conf = {
                 "geometry": self.geometry(),
-                "theme": self._theme_var.get(),
                 "recent_dirs": self._recent_dirs[:10],
                 "snapshot": self._snapshot(),
             }
+            if not getattr(self, "_theme_from_env", False):
+                conf["theme"] = self._theme_var.get()
             _CONF_PATH.write_text(
                 json.dumps(conf, ensure_ascii=False), encoding="utf-8")
         except Exception:
@@ -234,7 +235,7 @@ class StateJobMixin:
                 if "geometry" in conf:
                     self.geometry(conf["geometry"])
                 if "theme" in conf and conf["theme"] in THEMES:
-                    if conf["theme"] != self._theme_var.get():
+                    if not getattr(self, "_theme_from_env", False) and conf["theme"] != self._theme_var.get():
                         self._theme_var.set(conf["theme"])
                         self._apply_theme()
                 # 최근 디렉토리 복원
@@ -381,13 +382,13 @@ class StateJobMixin:
                      fg=C["text"], font=FONTS["h2"]).pack(pady=(0, 8))
             if changed_fields:
                 tk.Label(body, text="변경된 항목:", bg=C["base"],
-                         fg=C["overlay0"], font=FONTS["body"]).pack(anchor="w", padx=16)
+                         fg=C["subtext"], font=FONTS["body"]).pack(anchor="w", padx=16)
                 for f in changed_fields[:10]:
                     tk.Label(body, text=f"  • {f}", bg=C["base"],
                              fg=C["yellow"], font=FONTS["mono_small"]).pack(anchor="w", padx=20)
                 if len(changed_fields) > 10:
                     tk.Label(body, text=f"  ... 외 {len(changed_fields) - 10}개",
-                             bg=C["base"], fg=C["overlay0"],
+                             bg=C["base"], fg=C["subtext"],
                              font=FONTS["small"]).pack(anchor="w", padx=20)
         return self._themed_confirm("━ Save 확인", build,
                                     ok_text="Save", ok_color="green", ok_active="teal")
@@ -566,21 +567,15 @@ class StateJobMixin:
         # forget all dynamic rows to ensure correct pack order
         self._db_path_row.pack_forget()
         self._schema_row.pack_forget()
-        self._oracle_hint_row.pack_forget()
         self._load_mode_row.pack_forget()
-        self._load_note_oracle.pack_forget()
-        self._load_note_other.pack_forget()
 
         if tgt in ("duckdb", "sqlite3"):
             self._db_path_row.pack(fill="x", padx=12, pady=2)
         elif tgt == "oracle":
             self._schema_row.pack(fill="x", padx=12, pady=2)
-            self._oracle_hint_row.pack(fill="x", padx=12)
 
         # load mode always visible after target-specific rows
         self._load_mode_row.pack(fill="x", padx=12, pady=2)
-        self._load_note_oracle.pack(anchor="w", padx=26, pady=(4, 0))
-        self._load_note_other.pack(anchor="w", padx=26, pady=0)
 
     def _update_load_mode_options(self: "BatchRunnerGUI"):
         """target type에 따라 load.mode 선택지 자동 전환"""
@@ -718,18 +713,9 @@ class StateJobMixin:
     def _update_sql_preview(self: "BatchRunnerGUI"):
         count = len(self._selected_sqls)
         if count == 0:
-            self._sql_count_label.config(text="(all)", fg=C["overlay0"])
+            self._sql_count_label.config(text="(all)", fg=C["subtext"])
         else:
-            self._sql_count_label.config(text=f"{count} selected", fg=C["green"])
-
-        self._sql_preview.config(state="normal")
-        self._sql_preview.delete("1.0", "end")
-        if self._selected_sqls:
-            for s in sorted(self._selected_sqls):
-                self._sql_preview.insert("end", f"  {s}\n")
-        else:
-            self._sql_preview.insert("end", "  (none selected = run all)\n")
-        self._sql_preview.config(state="disabled")
+            self._sql_count_label.config(text=f"({count})", fg=C["green"])
 
     # ── Param 행 관리 ────────────────────────────────────────
 
@@ -768,7 +754,7 @@ class StateJobMixin:
         tk.Entry(row, textvariable=k_var, bg=C["surface0"], fg=C["text"],
                  insertbackground=C["text"], relief="flat", font=FONTS["mono"],
                  width=10).pack(side="left", padx=(0, 2), ipady=2)
-        tk.Label(row, text="=", bg=C["mantle"], fg=C["overlay0"],
+        tk.Label(row, text="=", bg=C["mantle"], fg=C["subtext"],
                  font=FONTS["mono"]).pack(side="left")
         tk.Entry(row, textvariable=v_var, bg=C["surface0"], fg=C["text"],
                  insertbackground=C["text"], relief="flat", font=FONTS["mono"],
@@ -780,7 +766,7 @@ class StateJobMixin:
                 self._param_entries.remove(pair)
             self._refresh_preview()
         tk.Button(row, text="X", font=FONTS["shortcut"], bg=C["mantle"],
-                  fg=C["overlay0"], relief="flat", padx=4,
+                  fg=C["subtext"], relief="flat", padx=4,
                   command=remove).pack(side="right")
 
     # ── Stage 토글 버튼 ──────────────────────────────────────
@@ -797,8 +783,8 @@ class StateJobMixin:
                 btn.config(bg=C[color_key], fg=C["crust"],
                            activebackground=C[color_key], activeforeground=C["crust"])
             else:
-                btn.config(bg=C["surface0"], fg=C["overlay0"],
-                           activebackground=C["surface1"], activeforeground=C["overlay0"])
+                btn.config(bg=C["surface0"], fg=C["subtext"],
+                           activebackground=C["surface1"], activeforeground=C["subtext"])
 
     def _stages_all(self: "BatchRunnerGUI"):
         for s, _, _ in STAGE_CONFIG:

@@ -2,11 +2,12 @@
 gui/app.py  ─  BatchRunnerGUI 클래스 (Mixin 조립 + __init__)
 """
 
+import os
 import subprocess
 import tkinter as tk
 from pathlib import Path
 
-from gui.constants import C, APP_VERSION
+from gui.constants import C, THEMES, APP_VERSION
 from gui.mixins.ui_build import UiBuildMixin
 from gui.mixins.run_control import RunControlMixin
 from gui.mixins.state_job import StateJobMixin
@@ -37,7 +38,14 @@ class BatchRunnerGUI(
 
         self._jobs: dict = {}
         self._env_hosts: dict = {}
-        self._theme_var = tk.StringVar(value="Mocha")
+        _init_theme = os.environ.pop("ELT_GUI_THEME", None)
+        if _init_theme and _init_theme in THEMES:
+            self._theme_var = tk.StringVar(value=_init_theme)
+            self._theme_from_env = True
+            C.update(THEMES[_init_theme])
+        else:
+            self._theme_var = tk.StringVar(value="Mocha")
+            self._theme_from_env = False
 
         # Job / Run Mode
         self.job_var = tk.StringVar()

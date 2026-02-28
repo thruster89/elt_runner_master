@@ -110,11 +110,15 @@ class RunControlMixin:
             self.after_cancel(self._elapsed_job_id)
             self._elapsed_job_id = None
         if self._elapsed_start:
-            secs = int(time.time() - self._elapsed_start)
+            elapsed = time.time() - self._elapsed_start
             self._elapsed_start = None
         else:
-            secs = 0
-        elapsed_str = f"{secs//60:02d}:{secs%60:02d}"
+            elapsed = 0.0
+        if elapsed < 60:
+            elapsed_str = f"{elapsed:.1f}s"
+        else:
+            m, s = divmod(int(elapsed), 60)
+            elapsed_str = f"{m:02d}:{s:02d}"
 
         if ret == 0:
             self._log_write(f"Done  ({elapsed_str})", "SUCCESS")
@@ -132,12 +136,13 @@ class RunControlMixin:
         # 완료 알림
         self.bell()
         self._flash_title()
+        job_name = self.job_var.get().replace(".yml", "") if self.job_var.get() else "ELT"
         if ret == 0:
-            self._notify_os("ELT Runner", f"완료 ({elapsed_str})")
+            self._notify_os("ELT Runner ✔", f"{job_name} 완료 ({elapsed_str})")
         elif ret < 0:
-            self._notify_os("ELT Runner", f"중단됨 ({elapsed_str})")
+            self._notify_os("ELT Runner", f"{job_name} 중단됨 ({elapsed_str})")
         else:
-            self._notify_os("ELT Runner", f"오류 발생 (code={ret})")
+            self._notify_os("ELT Runner ✖", f"{job_name} 오류 발생 (code={ret}, {elapsed_str})")
         self._reset_buttons()
 
     def _on_stop(self: "BatchRunnerGUI"):
@@ -296,7 +301,7 @@ class RunControlMixin:
                 ps_script = (
                     f'[Windows.UI.Notifications.ToastNotificationManager,'
                     f' Windows.UI.Notifications, ContentType = WindowsRuntime] > $null;'
-                    f'$xml = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent(0);'
+                    f'$xml = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent(1);'
                     f'$text = $xml.GetElementsByTagName("text");'
                     f'$text.Item(0).AppendChild($xml.CreateTextNode("{title}")) > $null;'
                     f'$text.Item(1).AppendChild($xml.CreateTextNode("{message}")) > $null;'
