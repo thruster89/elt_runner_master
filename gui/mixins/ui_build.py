@@ -206,6 +206,18 @@ class UiBuildMixin:
         self._export_sql_dir.trace_add("write", lambda *_: self.after(300, self._on_export_sql_dir_change))
         self._transform_sql_dir.trace_add("write", lambda *_: self.after(300, self._scan_and_suggest_params))
         self._report_sql_dir.trace_add("write", lambda *_: self.after(300, self._scan_and_suggest_params))
+        # transform.schema → report.schema 기본값 동기화
+        # report_schema가 비어있거나 이전 transform 값과 같으면 따라감
+        def _sync_report_schema(*_):
+            tfm = self._transform_schema.get().strip()
+            rpt = self._report_schema.get().strip()
+            prev = getattr(self, "_prev_transform_schema", "")
+            if rpt == "" or rpt == prev:
+                self._report_schema.set(tfm)
+            self._prev_transform_schema = tfm
+            self._refresh_preview()
+        self._prev_transform_schema = ""
+        self._transform_schema.trace_add("write", _sync_report_schema)
         self._target_type_var.trace_add("write", lambda *_: self._refresh_preview())
 
     # ── 헬퍼 ─────────────────────────────────────────────────
