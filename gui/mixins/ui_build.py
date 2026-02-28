@@ -659,7 +659,7 @@ class UiBuildMixin:
         self._ov_row(body, "on_error", _w_on_error, tooltip=TOOLTIPS["on_error"])
 
         # --- Params (transform) ---
-        self._transform_params_frame = self._build_inline_params(body, "transform", "sky")
+        self._transform_params_frame = self._build_inline_params(body, "transform", "mauve")
 
         return sec
 
