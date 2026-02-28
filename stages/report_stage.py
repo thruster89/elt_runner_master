@@ -14,6 +14,12 @@ job.yml 설정:
       sql_dir: sql/report/
       out_dir: data/report/
       compression: none     # none(기본) / gzip
+    export_views:
+      enabled: true
+      views: all            # all | [VIEW_A, VIEW_B] (선택 추출)
+      out_dir: data/report/
+      compression: none     # none(기본) / gzip
+      max_rows: 1048576     # 행 수 제한 (0=무제한, 기본=1048576)
     excel:
       enabled: true
       out_dir: data/report/
@@ -69,6 +75,14 @@ def run(ctx: RunContext):
             generated_csvs = _run_csv_export(ctx, report_cfg, export_csv_cfg)
         else:
             logger.info("REPORT csv export skipped")
+
+        # export_views: DB view를 SELECT * → CSV 추출
+        export_views_cfg = report_cfg.get("export_views", {})
+        if export_views_cfg.get("enabled", False):
+            view_csvs = _run_view_export(ctx, report_cfg, export_views_cfg)
+            generated_csvs.extend(view_csvs)
+        else:
+            logger.info("REPORT view export skipped")
 
     excel_cfg = report_cfg.get("excel", {})
     if excel_cfg.get("enabled", False):
@@ -188,10 +202,13 @@ def _open_connection(ctx, report_source: str):
         raise ValueError(f"REPORT: unsupported source type: {src_type}")
 
 
-def _export_to_csv(conn, conn_type: str, sql_text: str, out_file: Path, compression: str) -> int:
-    """SQL 실행 결과를 CSV 저장. row 수 반환."""
+def _export_to_csv(conn, conn_type: str, sql_text: str, out_file: Path,
+                   compression: str, max_rows: int = 0) -> int:
+    """SQL 실행 결과를 CSV 저장. row 수 반환.
+    max_rows > 0 이면 해당 행 수에서 잘라서 저장."""
     open_fn = gzip.open if compression == "gzip" else open
     row_count = 0
+    truncated = False
 
     if conn_type == "duckdb":
         rel = conn.execute(sql_text)
@@ -204,8 +221,13 @@ def _export_to_csv(conn, conn_type: str, sql_text: str, out_file: Path, compress
                 if not batch:
                     break
                 for row in batch:
+                    if max_rows > 0 and row_count >= max_rows:
+                        truncated = True
+                        break
                     writer.writerow(["" if v is None else str(v) for v in row])
                     row_count += 1
+                if truncated:
+                    break
     else:
         cur = conn.cursor()
         try:
@@ -221,12 +243,150 @@ def _export_to_csv(conn, conn_type: str, sql_text: str, out_file: Path, compress
                     if not batch:
                         break
                     for row in batch:
+                        if max_rows > 0 and row_count >= max_rows:
+                            truncated = True
+                            break
                         writer.writerow(["" if v is None else str(v) for v in row])
                         row_count += 1
+                    if truncated:
+                        break
         finally:
             cur.close()
 
     return row_count
+
+
+# ────────────────────────────────────────────────────────────
+# View Export (SELECT * FROM view → CSV)
+# ────────────────────────────────────────────────────────────
+
+def _list_views(conn, conn_type: str, schema: str) -> list[str]:
+    """DB에서 view 목록 조회. view 이름 리스트 반환."""
+    if conn_type == "duckdb":
+        sql = ("SELECT view_name FROM duckdb_views() "
+               "WHERE schema_name = ? ORDER BY view_name")
+        target_schema = schema or "main"
+        rows = conn.execute(sql, [target_schema]).fetchall()
+    elif conn_type == "sqlite3":
+        rows = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='view' ORDER BY name"
+        ).fetchall()
+    elif conn_type == "oracle":
+        if schema:
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT view_name FROM all_views WHERE owner = :1 ORDER BY view_name",
+                [schema.upper()],
+            )
+            rows = cur.fetchall()
+            cur.close()
+        else:
+            cur = conn.cursor()
+            cur.execute("SELECT view_name FROM user_views ORDER BY view_name")
+            rows = cur.fetchall()
+            cur.close()
+    elif conn_type == "vertica":
+        cur = conn.cursor()
+        if schema:
+            cur.execute(
+                "SELECT table_name FROM v_catalog.views "
+                "WHERE table_schema = %s ORDER BY table_name",
+                [schema],
+            )
+        else:
+            cur.execute(
+                "SELECT table_name FROM v_catalog.views ORDER BY table_name"
+            )
+        rows = cur.fetchall()
+        cur.close()
+    else:
+        return []
+
+    return [row[0] for row in rows]
+
+
+def _run_view_export(ctx, report_cfg, cfg) -> list:
+    """DB view를 SELECT * → CSV 추출."""
+    logger = ctx.logger
+    out_dir = resolve_path(ctx, cfg.get("out_dir", "data/report"))
+    compression = (cfg.get("compression") or "none").strip().lower()
+    max_rows = int(cfg.get("max_rows", 1_048_576))
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    report_source = (report_cfg.get("source") or "target").strip().lower()
+    conn, conn_type, conn_label = _open_connection(ctx, report_source)
+
+    # schema 결정
+    schema = (report_cfg.get("schema") or "").strip() \
+             or (ctx.job_config.get("target", {}).get("schema") or "").strip() \
+             or ""
+    if conn_type == "duckdb" and schema:
+        conn.execute(f"SET schema = '{schema}'")
+        logger.info("REPORT views SET schema = '%s'", schema)
+
+    # view 필터 결정
+    views_setting = cfg.get("views", "all")
+
+    try:
+        all_views = _list_views(conn, conn_type, schema)
+        logger.info("REPORT views found %d view(s) in %s", len(all_views), conn_label)
+
+        if isinstance(views_setting, list):
+            # 지정된 view만 추출 (대소문자 무시 매칭)
+            requested = {v.upper() for v in views_setting}
+            target_views = [v for v in all_views if v.upper() in requested]
+            not_found = requested - {v.upper() for v in target_views}
+            if not_found:
+                logger.warning("REPORT views not found: %s", ", ".join(sorted(not_found)))
+        else:
+            # all
+            target_views = all_views
+
+        if not target_views:
+            logger.info("REPORT no views to export")
+            return []
+
+        logger.info(
+            "REPORT view export | db=%s views=%d out_dir=%s compression=%s max_rows=%s",
+            conn_label, len(target_views), out_dir, compression,
+            max_rows if max_rows > 0 else "unlimited",
+        )
+
+        generated = []
+        total = len(target_views)
+
+        for i, view_name in enumerate(target_views, 1):
+            # schema prefix 처리
+            if conn_type == "oracle" and schema:
+                qualified = f"{schema}.{view_name}"
+            elif conn_type == "vertica" and schema:
+                qualified = f"{schema}.{view_name}"
+            else:
+                qualified = view_name
+
+            sql_text = f"SELECT * FROM {qualified}"
+
+            ext = ".csv.gz" if compression == "gzip" else ".csv"
+            out_file = out_dir / (view_name + ext)
+
+            logger.info("REPORT view [%d/%d] %s → %s", i, total, view_name, out_file.name)
+            start = time.time()
+            try:
+                rows = _export_to_csv(conn, conn_type, sql_text, out_file, compression, max_rows)
+                suffix = f" (truncated at {max_rows})" if max_rows > 0 and rows >= max_rows else ""
+                logger.info(
+                    "REPORT view [%d/%d] done | rows=%d elapsed=%.2fs%s",
+                    i, total, rows, time.time() - start, suffix,
+                )
+                generated.append(out_file)
+            except Exception as e:
+                logger.error("REPORT view [%d/%d] FAILED (%.2fs): %s",
+                             i, total, time.time() - start, e)
+
+        return generated
+    finally:
+        conn.close()
 
 
 # ────────────────────────────────────────────────────────────

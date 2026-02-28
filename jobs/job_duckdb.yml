@@ -51,6 +51,13 @@ report:
     out_dir: data/report
     compression: none
 
+  # export_views:              # DB view → SELECT * → CSV 추출
+  #   enabled: true
+  #   views: all               # all | [VIEW_A, VIEW_B] (선택 추출)
+  #   out_dir: data/report
+  #   compression: none
+  #   max_rows: 1048576        # 행 수 제한 (0=무제한, 기본=1048576)
+
   excel:
     enabled: true
     out_dir: data/report
