@@ -794,8 +794,11 @@ class UiBuildMixin:
         self._cmd_preview.pack(fill="x", padx=4, pady=(2, 6))
         ttk.Separator(parent, orient="horizontal").pack(fill="x", padx=8)
 
-        # 검색 바 (Ctrl+F — 초기 숨김)
-        self._search_frame = tk.Frame(parent, bg=C["mantle"])
+        log_outer = tk.Frame(parent, bg=C["crust"])
+        log_outer.pack(fill="both", expand=True, padx=8, pady=8)
+
+        # 검색 바 (Ctrl+F — 초기 숨김, 로그 내부 상단)
+        self._search_frame = tk.Frame(log_outer, bg=C["mantle"])
         search_inner = tk.Frame(self._search_frame, bg=C["mantle"])
         search_inner.pack(fill="x", padx=4, pady=4)
         tk.Label(search_inner, text="Find:", font=FONTS["small"],
@@ -804,25 +807,25 @@ class UiBuildMixin:
                                       bg=C["surface0"], fg=C["text"],
                                       insertbackground=C["text"], relief="flat",
                                       font=FONTS["mono"], width=20)
-        self._search_entry.pack(side="left", padx=2, ipady=2)
+        self._search_entry.pack(side="left", fill="x", expand=True, padx=2, ipady=2)
         self._search_var.trace_add("write", self._on_search_change)
         self._search_entry.bind("<Return>", lambda e: self._search_next())
         self._search_entry.bind("<Shift-Return>", lambda e: self._search_prev())
         self._search_count_label = tk.Label(search_inner, text="", font=FONTS["small"],
                                              bg=C["mantle"], fg=C["subtext"])
         self._search_count_label.pack(side="left", padx=4)
-        tk.Button(search_inner, text="Prev", font=FONTS["shortcut"],
+        tk.Button(search_inner, text="▲", font=FONTS["shortcut"],
                   bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
                   command=self._search_prev).pack(side="left", padx=1)
-        tk.Button(search_inner, text="Next", font=FONTS["shortcut"],
+        tk.Button(search_inner, text="▼", font=FONTS["shortcut"],
                   bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
                   command=self._search_next).pack(side="left", padx=1)
-        tk.Button(search_inner, text="X", font=FONTS["shortcut"],
+        tk.Button(search_inner, text="✕", font=FONTS["shortcut"],
                   bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
                   command=self._toggle_search).pack(side="left", padx=1)
 
-        log_frame = tk.Frame(parent, bg=C["crust"])
-        log_frame.pack(fill="both", expand=True, padx=8, pady=8)
+        log_frame = tk.Frame(log_outer, bg=C["crust"])
+        log_frame.pack(fill="both", expand=True)
         self._log = tk.Text(
             log_frame, bg=C["crust"], fg=C["text"],
             font=FONTS["log"], relief="flat", bd=8, wrap="word",
@@ -900,35 +903,33 @@ class UiBuildMixin:
         # 예약 실행
         sep = tk.Frame(bar, bg=C["subtext"], width=1)
         sep.pack(side="left", fill="y", padx=8, pady=4)
-        tk.Label(bar, text="예약시각", font=FONTS["mono_small"],
-                 bg=C["crust"], fg=C["subtext"]).pack(side="left", padx=(0, 2))
         self._schedule_entry = tk.Entry(
-            bar, textvariable=self._schedule_time, width=5,
+            bar, textvariable=self._schedule_time, width=12,
             font=FONTS["mono_small"], bg=C["surface0"], fg=C["subtext"],
             insertbackground=C["text"], relief="flat", justify="center")
         self._schedule_entry.pack(side="left", padx=(0, 4), ipady=2)
         self._schedule_entry.bind("<FocusIn>", self._on_schedule_focus_in)
         self._schedule_entry.bind("<FocusOut>", self._on_schedule_focus_out)
-        Tooltip(self._schedule_entry, "24시간제 실행 시각 (예: 09:30, 14:00)")
+        self._schedule_entry.bind("<Return>", lambda e: self._on_schedule())
         self._schedule_btn = tk.Button(
-            bar, text="Schedule", font=FONTS["mono_small"],
+            bar, text="⏱ Reserve", font=FONTS["mono_small"],
             bg=C["surface0"], fg=C["subtext"], relief="flat", padx=8,
             activebackground=C["surface1"], command=self._on_schedule)
         self._schedule_btn.pack(side="left", padx=(0, 4))
+        Tooltip(self._schedule_btn, "+30m  +2h  18:00  0302 18:00")
         self._schedule_label = tk.Label(bar, text="", font=FONTS["mono_small"],
                                         bg=C["crust"], fg=C["subtext"])
         self._schedule_label.pack(side="left")
 
-        # 단축키 힌트
-        for hint in [("Ctrl+F5", "Dryrun"), ("F5", "Run"), ("Esc", "Stop"),
-                      ("Ctrl+S", "Save"), ("Ctrl+R", "Reload"),
-                      ("Ctrl+L", "Save Log"), ("Ctrl+F", "Search")]:
-            tk.Label(bar, text=f"{hint[0]} {hint[1]}", font=FONTS["shortcut"],
-                     bg=C["crust"], fg=C["subtext"]).pack(side="left", padx=6)
-
+        # 시계 (우측 고정)
         self._clock_label = tk.Label(bar, text="", bg=C["crust"],
                                      fg=C["subtext"], font=FONTS["mono_small"])
         self._clock_label.pack(side="right", padx=10)
+
+        # 단축키 힌트 (시계 왼쪽, 우측 정렬)
+        hints_text = "F5 Run  Esc Stop  Ctrl+S Save  Ctrl+F Find"
+        tk.Label(bar, text=hints_text, font=FONTS["shortcut"],
+                 bg=C["crust"], fg=C["subtext"]).pack(side="right", padx=6)
         self._tick_clock()
 
     def _bind_shortcuts(self: "BatchRunnerGUI"):

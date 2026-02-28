@@ -364,60 +364,77 @@ class RunControlMixin:
     # ── 예약 실행 ─────────────────────────────────────────────
 
     def _on_schedule_focus_in(self: "BatchRunnerGUI", _event=None):
-        if self._schedule_time.get() == "HH:MM":
+        if self._schedule_time.get() == "+30m / 18:00":
             self._schedule_time.set("")
             self._schedule_entry.config(fg=C["text"])
 
     def _on_schedule_focus_out(self: "BatchRunnerGUI", _event=None):
         if not self._schedule_time.get().strip():
             self._schedule_entry.config(fg=C["overlay0"])
-            self._schedule_time.set("HH:MM")
+            self._schedule_time.set("+30m / 18:00")
+
+    def _parse_schedule_input(self, raw: str):
+        """예약 시각 파싱. 지원 형식: 18:00, +30m, +2h, 0302 18:00"""
+        from datetime import timedelta
+        now = datetime.now()
+        raw = raw.strip()
+
+        # +Nm (분) / +Nh (시간)
+        if raw.startswith("+"):
+            val = raw[1:].strip()
+            if val.endswith("h"):
+                return now + timedelta(hours=float(val[:-1]))
+            if val.endswith("m"):
+                val = val[:-1]
+            return now + timedelta(minutes=float(val))
+
+        # MMDD HH:MM
+        if " " in raw and len(raw.split()[0]) == 4:
+            parts = raw.split(None, 1)
+            md, hm = parts[0], parts[1]
+            target = datetime.strptime(f"{now.year}{md} {hm}", "%Y%m%d %H:%M")
+            if target <= now:
+                target = target.replace(year=now.year + 1)
+            return target
+
+        # HH:MM (기존)
+        target = datetime.strptime(raw, "%H:%M").replace(
+            year=now.year, month=now.month, day=now.day)
+        if target <= now:
+            target += timedelta(days=1)
+        return target
 
     def _on_schedule(self: "BatchRunnerGUI"):
         if self._schedule_id is not None:
             self._cancel_schedule()
             return
         raw = self._schedule_time.get().strip()
-        if raw == "HH:MM":
-            self._log_write("[Schedule] 실행할 시각을 입력하세요 (예: 09:30)", "WARN")
+        if not raw or raw == "+30m / 18:00":
+            self._log_write("[Schedule] 형식: +30m, +2h, 18:00, 0302 18:00", "WARN")
             return
         try:
-            target = datetime.strptime(raw, "%H:%M").replace(
-                year=datetime.now().year,
-                month=datetime.now().month,
-                day=datetime.now().day,
-            )
-            now = datetime.now()
-            next_day = False
-            if target <= now:
-                from datetime import timedelta
-                target += timedelta(days=1)
-                next_day = True
-        except ValueError:
-            self._log_write("[Schedule] 24시간제 시각을 입력하세요 (예: 09:30, 23:00)", "WARN")
+            target = self._parse_schedule_input(raw)
+        except (ValueError, IndexError):
+            self._log_write("[Schedule] 형식: +30m, +2h, 18:00, 0302 18:00", "WARN")
             return
         self._schedule_target = target
         self._schedule_id = self.after(1000, self._tick_schedule)
-        self._schedule_btn.config(text="Cancel", bg=C["red"], fg=C["crust"],
+        self._schedule_btn.config(text="✕ Cancel", bg=C["red"], fg=C["crust"],
                                   activebackground=C["peach"])
         self._schedule_entry.config(state="disabled")
         remaining = int((target - datetime.now()).total_seconds())
         m, s = divmod(remaining, 60)
         h, m = divmod(m, 60)
-        day_tag = " 내일" if next_day else " 오늘"
+        label = target.strftime("%m/%d %H:%M")
         self._schedule_label.config(
-            text=f"{day_tag} {target.strftime('%H:%M')} 예약 ({h:02d}:{m:02d}:{s:02d})",
-            fg=C["green"])
-        log_msg = f"[Schedule]{day_tag} {target.strftime('%H:%M')} 예약됨"
-        if next_day:
-            log_msg += " (이미 지난 시각이므로 내일 실행)"
-        self._log_sys(log_msg)
+            text=f" {label} 예약 ({h:02d}:{m:02d}:{s:02d})", fg=C["green"])
+        self._log_sys(f"[Schedule] {label} 예약됨")
 
     def _cancel_schedule(self: "BatchRunnerGUI"):
         if self._schedule_id is not None:
             self.after_cancel(self._schedule_id)
             self._schedule_id = None
-        self._schedule_btn.config(text="Schedule", bg=C["surface0"], fg=C["subtext"],
+        self._schedule_btn.config(text="⏱ Reserve", bg=C["surface0"], fg=C["subtext"],
                                   activebackground=C["surface1"])
         self._schedule_entry.config(state="normal")
         self._schedule_label.config(text="")
@@ -428,7 +445,7 @@ class RunControlMixin:
         remaining = int((self._schedule_target - now).total_seconds())
         if remaining <= 0:
             self._schedule_id = None
-            self._schedule_btn.config(text="Schedule", bg=C["surface0"],
+            self._schedule_btn.config(text="⏱ Reserve", bg=C["surface0"],
                                       fg=C["subtext"],
                                       activebackground=C["surface1"])
             self._schedule_entry.config(state="normal")
@@ -439,7 +456,7 @@ class RunControlMixin:
             return
         m, s = divmod(remaining, 60)
         h, m = divmod(m, 60)
-        day_tag = " 내일" if self._schedule_target.date() > now.date() else " 오늘"
+        label = self._schedule_target.strftime("%m/%d %H:%M")
         self._schedule_label.config(
-            text=f"{day_tag} {self._schedule_target.strftime('%H:%M')} 예약 ({h:02d}:{m:02d}:{s:02d})")
+            text=f" {label} 예약 ({h:02d}:{m:02d}:{s:02d})")
         self._schedule_id = self.after(1000, self._tick_schedule)

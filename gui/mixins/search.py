@@ -16,7 +16,8 @@ class SearchMixin:
             self._search_frame.pack_forget()
             self._clear_search_highlights()
         else:
-            self._search_frame.pack(fill="x", padx=8, pady=(0, 4), before=self._log)
+            # log_frame 위에 표시 (log_outer 내부)
+            self._search_frame.pack(fill="x", before=self._log.master)
             self._search_entry.focus_set()
 
     def _on_search_change(self: "BatchRunnerGUI", *_):
