@@ -639,7 +639,7 @@ class UiBuildMixin:
                  bg=C["mantle"], fg=C["subtext"], width=12, anchor="w")
         _wk_lbl.grid(row=1, column=0, sticky="w", pady=2)
         Tooltip(_wk_lbl, TOOLTIPS["workers"])
-        tk.Spinbox(opt_grid, from_=1, to=16, width=4, textvariable=self._ov_workers,
+        tk.Spinbox(opt_grid, from_=1, to=4, width=4, textvariable=self._ov_workers,
                    bg=C["surface0"], fg=C["text"], buttonbackground=C["surface1"],
                    relief="flat", font=FONTS["mono"],
                    command=self._refresh_preview).grid(row=1, column=1, sticky="w", pady=2)
@@ -968,18 +968,24 @@ class UiBuildMixin:
             bg=C["surface0"], fg=C["subtext"], relief="flat", padx=8,
             activebackground=C["surface1"], command=self._on_schedule)
         self._schedule_btn.pack(side="left", padx=(0, 4))
-        Tooltip(self._schedule_btn, "+30m  +2h  18:00  0302 18:00")
+        Tooltip(self._schedule_btn,
+                "예약 실행 — 지정 시각에 자동으로 Run\n\n"
+                "입력 형식:\n"
+                "  +30m        30분 후\n"
+                "  +2h         2시간 후\n"
+                "  18:00       오늘 18시\n"
+                "  0302 18:00  3월 2일 18시")
         self._schedule_label = tk.Label(bar, text="", font=FONTS["mono_small"],
                                         bg=C["crust"], fg=C["subtext"])
         self._schedule_label.pack(side="left")
 
         # 시계 (우측 고정)
         self._clock_label = tk.Label(bar, text="", bg=C["crust"],
-                                     fg=C["subtext"], font=FONTS["mono_small"])
+                                     fg=C["text"], font=FONTS["mono_small"])
         self._clock_label.pack(side="right", padx=10)
 
         # 단축키 힌트 (시계 왼쪽, 우측 정렬)
-        hints_text = "F5 Run  Esc Stop  Ctrl+S Save  Ctrl+F Find"
+        hints_text = "[F5] Run · [Ctrl+F5] Dryrun · [Esc] Stop · [Ctrl+S] Save · [Ctrl+R] Reload · [Ctrl+F] Find · [Ctrl+L] Export Log"
         tk.Label(bar, text=hints_text, font=FONTS["shortcut"],
                  bg=C["crust"], fg=C["subtext"]).pack(side="right", padx=6)
         self._tick_clock()

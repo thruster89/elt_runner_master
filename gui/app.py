@@ -118,10 +118,14 @@ class BatchRunnerGUI(
         # 애니메이션 상태
         self._anim_id = None
         self._anim_dots = 0
+        # 유휴 타이머
+        self._idle_timer_id = None
+        self._idle_hours = 0
 
         self._build_style()
         self._build_ui()
         self._reload_project()
         self._bind_shortcuts()
         self._load_geometry()
+        self._start_idle_timer()
         self.protocol("WM_DELETE_WINDOW", self._on_close)

@@ -174,24 +174,24 @@ _CONF_PATH = Path.home() / ".elt_runner_gui.conf"
 # 필드별 툴팁 텍스트
 TOOLTIPS = {
     # Export
-    "overwrite":    "ON: overwrite existing output files\nOFF: skip if already exists",
-    "timeout":      "Max export wait time (seconds)",
-    "workers":      "Concurrent export processes (1~16)\nHigher = faster but more DB load",
-    "compression":  "CSV compression\ngzip: smaller files / none: no compression",
+    "overwrite":    "ON: 기존 출력 파일 덮어쓰기\nOFF: 이미 존재하면 건너뜀",
+    "timeout":      "Export 최대 대기 시간 (초)",
+    "workers":      "동시 Export 프로세스 수 (1~4)\n높을수록 빠르지만 DB 부하 증가",
+    "compression":  "CSV 압축 방식\ngzip: 파일 크기 축소 / none: 압축 없음",
     # Load
     "load_mode":    "replace: DROP + CREATE\ntruncate: TRUNCATE + INSERT\n"
-                    "delete: DELETE with param WHERE + INSERT\nappend: INSERT only (skip if exists)",
+                    "delete: param WHERE 조건 DELETE + INSERT\nappend: INSERT만 (이미 있으면 건너뜀)",
     # Transform
-    "schema":       "Session schema for SQL execution\nDuckDB: SET schema / Oracle: ALTER SESSION",
-    "on_error":     "Behavior on error\nstop: abort immediately / continue: run remaining",
+    "schema":       "SQL 실행 시 세션 스키마\nDuckDB: SET schema / Oracle: ALTER SESSION",
+    "on_error":     "에러 발생 시 동작\nstop: 즉시 중단 / continue: 나머지 계속 실행",
     # Report
-    "excel":        "Generate Excel(.xlsx) report",
-    "csv":          "Generate CSV report",
-    "max_files":    "Max sheets per Excel file (1~100)\nCreates new file when exceeded",
-    "skip_sql":     "Skip SQL execution\nConvert union_dir CSVs directly to Excel",
-    "union_dir":    "CSV source folder\nUsed when skip_sql=ON to merge CSVs into Excel",
-    "name_style":   "CSV filename param format\nfull: key_value (clsYymm_202003)\ncompact: value only (202003)",
-    "strip_prefix": "Remove numeric prefix from SQL filename\nON: 01_contract → contract\nOFF: 01_contract (keep as-is)",
+    "excel":        "Excel(.xlsx) 리포트 생성",
+    "csv":          "CSV 리포트 생성",
+    "max_files":    "Excel 파일당 최대 시트 수 (1~100)\n초과 시 새 파일 생성",
+    "skip_sql":     "SQL 실행 건너뜀\nunion_dir의 CSV를 바로 Excel로 변환",
+    "union_dir":    "CSV 원본 폴더\nskip_sql=ON 시 CSV를 합쳐 Excel로 변환",
+    "name_style":   "CSV 파일명 파라미터 형식\nfull: key_value (clsYymm_202003)\ncompact: value만 (202003)",
+    "strip_prefix": "SQL 파일명에서 숫자 접두어 제거\nON: 01_contract → contract\nOFF: 01_contract (그대로 유지)",
 }
 
 # ─────────────────────────────────────────────────────────────

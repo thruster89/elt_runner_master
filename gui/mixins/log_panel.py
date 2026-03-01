@@ -122,3 +122,19 @@ class LogPanelMixin:
 
     def _set_status(self: "BatchRunnerGUI", text, color):
         self._status_label.config(text=text, fg=color)
+
+    def _start_idle_timer(self: "BatchRunnerGUI"):
+        """유휴 타이머 시작 — 1시간마다 상태 라벨 갱신"""
+        self._stop_idle_timer()
+        self._idle_hours = 0
+        self._idle_timer_id = self.after(3_600_000, self._tick_idle)
+
+    def _stop_idle_timer(self: "BatchRunnerGUI"):
+        if self._idle_timer_id:
+            self.after_cancel(self._idle_timer_id)
+            self._idle_timer_id = None
+
+    def _tick_idle(self: "BatchRunnerGUI"):
+        self._idle_hours += 1
+        self._set_status(f"● idle ({self._idle_hours}h)", C["overlay1"])
+        self._idle_timer_id = self.after(3_600_000, self._tick_idle)

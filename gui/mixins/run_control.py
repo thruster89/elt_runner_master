@@ -57,6 +57,7 @@ class RunControlMixin:
         self._set_left_panel_state(False)
         self._anim_dots = 0
         self._anim_id = self.after(500, self._animate_run_btn)
+        self._stop_idle_timer()
 
         env = os.environ.copy()
         # Windows에서 한글 깨짐 방지: PYTHONIOENCODING, PYTHONUTF8 강제 설정
@@ -144,14 +145,21 @@ class RunControlMixin:
         else:
             self._notify_os("ELT Runner ✖", f"{job_name} Error (code={ret}, {elapsed_str})")
         self._reset_buttons()
+        self._start_idle_timer()
 
     def _on_stop(self: "BatchRunnerGUI"):
-        if self._process and self._process.poll() is None:
-            self._log_write("Stopping process...", "WARN")
-            if sys.platform == "win32":
-                self._process.send_signal(signal.CTRL_BREAK_EVENT)
-            else:
-                self._process.terminate()
+        if not self._process or self._process.poll() is not None:
+            return
+        def _body(f):
+            tk.Label(f, text="실행 중인 작업을 중지하시겠습니까?",
+                     font=FONTS["body"], bg=C["base"], fg=C["text"]).pack()
+        if not self._themed_confirm("Stop", _body, ok_text="Stop", ok_color="red", ok_active="peach"):
+            return
+        self._log_write("Stopping process...", "WARN")
+        if sys.platform == "win32":
+            self._process.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+            self._process.terminate()
         self._reset_buttons()
         self._set_status("● stopped", C["yellow"])
 
