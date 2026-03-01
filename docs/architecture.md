@@ -265,10 +265,15 @@ transform:
   schema: MYDATA
 ```
 
-In SQL templates:
-- `@{schema}TABLE_NAME` → `MYDATA.TABLE_NAME` (or just `TABLE_NAME` if empty)
-- `${schema}` → raw value substitution
-- DuckDB: auto `SET schema = 'MYDATA'` at session start
+**Session schema** (set via GUI schema field):
+- DuckDB: `SET schema = 'MYDATA'` — all tables resolve in that schema
+- Oracle: `ALTER SESSION SET CURRENT_SCHEMA = MYDATA` — same effect
+- This is independent of `@{}` param substitution
+
+**`@{}` prefix in SQL** (set via Params):
+- `@{src}TABLE_NAME` → `SRCSCHEMA.TABLE_NAME` (with param `src=SRCSCHEMA`)
+- `@{tgt}TABLE_NAME` → `TGTSCHEMA.TABLE_NAME` (with param `tgt=TGTSCHEMA`)
+- Empty value → prefix removed entirely
 
 ---
 
@@ -304,7 +309,7 @@ Generates CSV reports and converts them to Excel files.
 | `:param` | Auto-quoted, outside literals only | `:clsYymm` → `'202303'` |
 | `${param}` | Raw substitution everywhere | `'${clsYymm}'` → `'202303'` |
 | `{#param}` | Same as `${}` (alias) | `{#clsYymm}` → `202303` |
-| `@{param}` | Schema prefix (adds `.` if value exists) | `@{schema}TABLE` → `MYDATA.TABLE` |
+| `@{param}` | Dot-prefix (adds `.` if value exists) | `@{src}TABLE` → `SRCSCHEMA.TABLE` |
 
 ### Table Name Resolution
 

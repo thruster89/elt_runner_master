@@ -40,6 +40,7 @@ class StateJobMixin:
             "transform_sql_dir": self._transform_sql_dir.get(),
             "report_sql_dir":    self._report_sql_dir.get(),
             "report_out_dir":    self._report_out_dir.get(),
+            "report_schema":     self._report_schema.get(),
             "stage_export":     self._stage_export.get(),
             "stage_load_local": self._stage_load_local.get(),
             "stage_transform":  self._stage_transform.get(),
@@ -82,6 +83,7 @@ class StateJobMixin:
         self._transform_sql_dir.set(snap.get("transform_sql_dir", "sql/transform/duckdb"))
         self._report_sql_dir.set(snap.get("report_sql_dir", "sql/report"))
         self._report_out_dir.set(snap.get("report_out_dir", "data/report"))
+        self._report_schema.set(snap.get("report_schema", ""))
 
         self._stage_export.set(snap.get("stage_export", True))
         self._stage_load_local.set(snap.get("stage_load_local", True))
@@ -193,6 +195,8 @@ class StateJobMixin:
             },
             "report": {
                 "source": "target",
+                **({"schema": self._report_schema.get().strip()}
+                   if self._report_schema.get().strip() else {}),
                 "export_csv": {
                     "enabled": self._ov_csv.get(),
                     "sql_dir": self._report_sql_dir.get(),
@@ -213,7 +217,7 @@ class StateJobMixin:
             cfg["target"]["db_path"] = self._target_db_path.get().strip()
         if self._target_schema.get().strip():
             cfg["target"]["schema"] = self._target_schema.get().strip()
-        if self._ov_skip_sql.get():
+        if not self._ov_csv.get():
             cfg["report"]["skip_sql"] = True
         if self._ov_union_dir.get().strip():
             cfg["report"]["csv_union_dir"] = self._ov_union_dir.get().strip()
@@ -249,8 +253,8 @@ class StateJobMixin:
                     self._recent_dirs = conf["recent_dirs"][:10]
                     if hasattr(self, "_wd_entry"):
                         self._wd_entry["values"] = self._recent_dirs
-                # 마지막 설정 복원
-                if "snapshot" in conf:
+                # 마지막 설정 복원 (새 창이면 스킵 → _default.yml 사용)
+                if "snapshot" in conf and not getattr(self, "_is_new_window", False):
                     self._restore_snapshot(conf["snapshot"])
         except Exception:
             pass
@@ -318,6 +322,7 @@ class StateJobMixin:
         rep_csv = rep.get("export_csv", {})
         self._report_sql_dir.set(rep_csv.get("sql_dir", "sql/report"))
         self._report_out_dir.set(rep_csv.get("out_dir", rep.get("excel", {}).get("out_dir", "data/report")))
+        self._report_schema.set(rep.get("schema", ""))
 
         # Stages
         stages = cfg.get("pipeline", {}).get("stages", [])
@@ -336,9 +341,11 @@ class StateJobMixin:
         self._ov_load_mode.set(str(cfg.get("load", {}).get("mode", "replace")))
         self._ov_on_error.set(str(tfm.get("on_error", "stop")))
         self._ov_excel.set(bool(rep.get("excel", {}).get("enabled", True)))
-        self._ov_csv.set(bool(rep_csv.get("enabled", True)))
+        csv_enabled = bool(rep_csv.get("enabled", True))
+        if rep.get("skip_sql", False):
+            csv_enabled = False
+        self._ov_csv.set(csv_enabled)
         self._ov_max_files.set(int(rep.get("excel", {}).get("max_files", 10)))
-        self._ov_skip_sql.set(bool(rep.get("skip_sql", False)))
         self._ov_union_dir.set(str(rep.get("csv_union_dir", "")))
 
         # Params
@@ -514,6 +521,9 @@ class StateJobMixin:
             self._job_combo["values"] = job_names
             if self.job_var.get() in job_names:
                 self._on_job_change()
+            elif not self.job_var.get() and "_default.yml" in job_names:
+                self.job_var.set("_default.yml")
+                self._on_job_change()
 
         # source type combo 갱신
         if hasattr(self, "_source_type_combo"):
@@ -574,15 +584,11 @@ class StateJobMixin:
         # forget all dynamic rows to ensure correct pack order
         self._db_path_row.pack_forget()
         self._schema_row.pack_forget()
-        self._load_mode_row.pack_forget()
 
         if tgt in ("duckdb", "sqlite3"):
             self._db_path_row.pack(fill="x", padx=12, pady=2)
-        elif tgt == "oracle":
-            self._schema_row.pack(fill="x", padx=12, pady=2)
-
-        # load mode always visible after target-specific rows
-        self._load_mode_row.pack(fill="x", padx=12, pady=2)
+        # Schema — 모든 target type에서 표시 (DuckDB: main 외 스키마, Oracle: 대상 스키마)
+        self._schema_row.pack(fill="x", padx=12, pady=2)
 
     def _update_load_mode_options(self: "BatchRunnerGUI"):
         """target type에 따라 load.mode 선택지 자동 전환"""
@@ -760,12 +766,12 @@ class StateJobMixin:
 
         tk.Entry(row, textvariable=k_var, bg=C["surface0"], fg=C["text"],
                  insertbackground=C["text"], relief="flat", font=FONTS["mono"],
-                 width=10).pack(side="left", padx=(0, 2), ipady=2)
+                 width=15).pack(side="left", padx=(0, 2), ipady=2)
         tk.Label(row, text="=", bg=C["mantle"], fg=C["subtext"],
                  font=FONTS["mono"]).pack(side="left")
         tk.Entry(row, textvariable=v_var, bg=C["surface0"], fg=C["text"],
                  insertbackground=C["text"], relief="flat", font=FONTS["mono"],
-                 width=14).pack(side="left", padx=(2, 0), fill="x", expand=True, ipady=2)
+                 width=8).pack(side="left", padx=(2, 0), fill="x", expand=True, ipady=2)
 
         def remove(r=row, pair=(k_var, v_var)):
             r.destroy()

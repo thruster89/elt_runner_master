@@ -1,4 +1,4 @@
-job_name: job_duckdb
+job_name: default
 pipeline:
   stages:
   - export
@@ -9,9 +9,9 @@ source:
   type: oracle
   host: local
 export:
-  sql_dir: sql/export/test
-  out_dir: data/export/test
-  overwrite: true
+  sql_dir: sql/export
+  out_dir: data/export
+  overwrite: false
   parallel_workers: 1
   compression: gzip
   csv_name_style: full
@@ -22,14 +22,11 @@ load:
 target:
   type: duckdb
   db_path: data/local/result.duckdb
-  schema: aaa
 transform:
   sql_dir: sql/transform/duckdb
   on_error: stop
-  schema: aaa
 report:
   source: target
-  schema: aaa
   export_csv:
     enabled: true
     sql_dir: sql/report
@@ -38,6 +35,4 @@ report:
     enabled: true
     out_dir: data/report
     max_files: 10
-  csv_union_dir: .
-params:
-  clsYymm: '202303'
+  csv_union_dir: data/report

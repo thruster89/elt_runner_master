@@ -39,6 +39,7 @@ class BatchRunnerGUI(
         self._jobs: dict = {}
         self._env_hosts: dict = {}
         _init_theme = os.environ.pop("ELT_GUI_THEME", None)
+        self._is_new_window = bool(os.environ.pop("ELT_GUI_NEW_WINDOW", None))
         if _init_theme and _init_theme in THEMES:
             self._theme_var = tk.StringVar(value=_init_theme)
             self._theme_from_env = True
@@ -69,6 +70,7 @@ class BatchRunnerGUI(
         self._transform_sql_dir = tk.StringVar(value="sql/transform/duckdb")
         self._report_sql_dir    = tk.StringVar(value="sql/report")
         self._report_out_dir    = tk.StringVar(value="data/report")
+        self._report_schema     = tk.StringVar(value="")
         # Stages — 4개 고정 BooleanVar
         self._stage_export     = tk.BooleanVar(value=True)
         self._stage_load_local = tk.BooleanVar(value=True)

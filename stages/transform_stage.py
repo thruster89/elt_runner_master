@@ -19,8 +19,6 @@ from engine.sql_utils import sort_sql_files, render_sql
 
 def run(ctx: RunContext):
     logger = ctx.logger
-    # logger.info("TRANSFORM stage start")
-
     transform_cfg = ctx.job_config.get("transform")
     if not transform_cfg:
         logger.info("TRANSFORM stage skipped (no config)")
@@ -61,17 +59,19 @@ def run(ctx: RunContext):
              or (target_cfg.get("schema") or "").strip() \
              or ""
 
-    # DuckDB: schema가 설정되어 있으면 세션 기본 스키마 지정
-    if conn_type == "duckdb" and schema:
-        conn.execute(f'SET schema = \'{schema}\'')
-        logger.info("TRANSFORM SET schema = '%s'", schema)
+    # 세션 기본 스키마 지정 (schema 입력 = 해당 스키마에서 SQL 실행)
+    if schema:
+        if conn_type == "duckdb":
+            conn.execute(f"SET schema = '{schema}'")
+        elif conn_type == "oracle":
+            cur = conn.cursor()
+            cur.execute(f"ALTER SESSION SET CURRENT_SCHEMA = {schema}")
+            cur.close()
+        logger.info("TRANSFORM session schema = '%s'", schema)
 
-    # schema를 params에 주입
-    # SQL에서 ${schema}.tablename 또는 @{schema}tablename 사용 가능
-    # @{schema} 사용 시: 값이 있으면 "schema." 으로, 없으면 "" 으로 치환
-    ctx.params.setdefault("schema", schema)
-
-    logger.info("TRANSFORM target=%s | sql_count=%d | on_error=%s", label, len(sql_files), on_error)
+    schema_display = schema if schema else "(default)"
+    logger.info("TRANSFORM target=%s | schema=%s | sql_count=%d | on_error=%s",
+                label, schema_display, len(sql_files), on_error)
 
     try:
         _run_sql_loop(ctx, conn, conn_type, sql_files, on_error)

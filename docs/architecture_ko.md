@@ -267,10 +267,15 @@ transform:
   schema: MYDATA
 ```
 
-SQL 템플릿에서의 사용:
-- `@{schema}TABLE_NAME` → `MYDATA.TABLE_NAME` (값이 비어있으면 그냥 `TABLE_NAME`)
-- `${schema}` → 값 그대로 치환
-- DuckDB: 세션 시작 시 `SET schema = 'MYDATA'` 자동 실행
+**세션 스키마** (GUI schema 필드로 설정):
+- DuckDB: `SET schema = 'MYDATA'` — 모든 테이블이 해당 스키마에서 조회
+- Oracle: `ALTER SESSION SET CURRENT_SCHEMA = MYDATA` — 동일 효과
+- `@{}` 파라미터 치환과는 별개 기능
+
+**SQL에서 `@{}` 접두사 사용** (Params에서 설정):
+- `@{src}TABLE_NAME` → `SRCSCHEMA.TABLE_NAME` (param `src=SRCSCHEMA`)
+- `@{tgt}TABLE_NAME` → `TGTSCHEMA.TABLE_NAME` (param `tgt=TGTSCHEMA`)
+- 값이 비어있으면 접두사 제거
 
 ---
 
@@ -306,7 +311,7 @@ CSV 리포트를 생성하고 Excel 파일로 변환합니다.
 | `:param` | 자동 싱글쿼트 감싸기, 리터럴 외부만 | `:clsYymm` → `'202303'` |
 | `${param}` | 값 그대로 치환 (전체 대상) | `'${clsYymm}'` → `'202303'` |
 | `{#param}` | `${}`과 동일 (별칭) | `{#clsYymm}` → `202303` |
-| `@{param}` | 스키마 접두사 (값 있으면 `.` 자동 추가) | `@{schema}TABLE` → `MYDATA.TABLE` |
+| `@{param}` | 접두사 (값 있으면 `.` 자동 추가) | `@{src}TABLE` → `SRCSCHEMA.TABLE` |
 
 **`:param` 안전 처리**: 싱글쿼트 문자열 리터럴(`'...'`) 내부의 `:word`는 치환하지 않습니다.
 예: `TO_CHAR(dt, 'HH24:MI:SS')` → `:MI`, `:SS`를 파라미터로 오인하지 않음.

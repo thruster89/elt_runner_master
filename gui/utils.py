@@ -43,6 +43,7 @@ def load_env_hosts(work_dir: Path, env_path: str = "config/env.yml") -> dict:
 
 _PAT_DOLLAR = re.compile(r'\$\{(\w+)\}')
 _PAT_HASH   = re.compile(r'\{#(\w+)\}')
+_PAT_AT     = re.compile(r'@\{(\w+)\}')
 _PAT_COLON  = re.compile(r'(?<![:\w]):(\w+)\b')
 _EXCLUDE = {
     "null","true","false","and","or","not","in","is","as","by","on",
@@ -74,12 +75,10 @@ def _non_literal_chunks(text):
 def _extract_params(text: str) -> set[str]:
     """단일 SQL 텍스트에서 파라미터 추출"""
     found: set[str] = set()
-    for m in _PAT_DOLLAR.finditer(text):
-        if m.group(1) not in _EXCLUDE:
-            found.add(m.group(1))
-    for m in _PAT_HASH.finditer(text):
-        if m.group(1) not in _EXCLUDE:
-            found.add(m.group(1))
+    for pat in (_PAT_DOLLAR, _PAT_HASH, _PAT_AT):
+        for m in pat.finditer(text):
+            if m.group(1) not in _EXCLUDE:
+                found.add(m.group(1))
     for chunk in _non_literal_chunks(text):
         for m in _PAT_COLON.finditer(chunk):
             if m.group(1) not in _EXCLUDE:

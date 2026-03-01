@@ -104,6 +104,19 @@ def _run_csv_export(ctx, report_cfg, cfg) -> list:
     report_source = (report_cfg.get("source") or "target").strip().lower()
     conn, conn_type, conn_label = _open_connection(ctx, report_source)
 
+    # 세션 스키마 설정: report.schema 우선, 없으면 target.schema fallback
+    schema = (report_cfg.get("schema") or "").strip() \
+             or (ctx.job_config.get("target", {}).get("schema") or "").strip() \
+             or ""
+    if schema:
+        if conn_type == "duckdb":
+            conn.execute(f"SET schema = '{schema}'")
+        elif conn_type == "oracle":
+            cur = conn.cursor()
+            cur.execute(f"ALTER SESSION SET CURRENT_SCHEMA = {schema}")
+            cur.close()
+        logger.info("REPORT session schema = '%s'", schema)
+
     logger.info(
         "REPORT csv export | db=%s sql_dir=%s out_dir=%s files=%d compression=%s",
         conn_label, sql_dir, out_dir, len(sql_files), compression,

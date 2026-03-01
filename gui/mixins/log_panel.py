@@ -47,6 +47,8 @@ class LogPanelMixin:
         level = self._log_filter.get()
         if level == "ALL":
             return True
+        if level == "SUM":
+            return tag in ("SYS", "STAGE_HEADER", "STAGE_DONE", "SUMMARY", "ERROR", "WARN")
         if level == "WARN+":
             return tag in ("WARN", "ERROR", "STAGE_HEADER", "STAGE_DONE", "SYS")
         if level == "ERR":

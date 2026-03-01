@@ -61,37 +61,26 @@ def _insert_history(conn, schema: str, job_name: str, table_name: str, csv_file:
 
 
 def _table_exists(conn, schema: str, table_name: str) -> bool:
-    if schema:
-        rows = conn.execute(
-            """
-            SELECT 1 FROM information_schema.tables
-             WHERE table_schema = ? AND table_name = ?
-             LIMIT 1
-            """,
-            [schema, table_name],
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT 1 FROM information_schema.tables WHERE table_name = ? LIMIT 1",
-            [table_name],
-        ).fetchall()
+    sch = schema or conn.execute("SELECT current_schema()").fetchone()[0]
+    rows = conn.execute(
+        """
+        SELECT 1 FROM information_schema.tables
+         WHERE table_schema = ? AND table_name = ?
+         LIMIT 1
+        """,
+        [sch, table_name],
+    ).fetchall()
     return bool(rows)
 
 
 def _get_table_columns(conn, schema: str, table_name: str) -> set:
     """테이블 컬럼명 집합 반환"""
-    if schema:
-        rows = conn.execute(
-            "SELECT column_name FROM information_schema.columns "
-            "WHERE table_schema = ? AND table_name = ?",
-            [schema, table_name],
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            "SELECT column_name FROM information_schema.columns "
-            "WHERE table_name = ?",
-            [table_name],
-        ).fetchall()
+    sch = schema or conn.execute("SELECT current_schema()").fetchone()[0]
+    rows = conn.execute(
+        "SELECT column_name FROM information_schema.columns "
+        "WHERE table_schema = ? AND table_name = ?",
+        [sch, table_name],
+    ).fetchall()
     return {row[0] for row in rows}
 
 

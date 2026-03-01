@@ -14,14 +14,17 @@ export:
   overwrite: true
   parallel_workers: 1
   compression: gzip
+  csv_name_style: full
+  csv_strip_prefix: false
   format: csv
 load:
   mode: replace
 target:
-  type: oracle
+  type: duckdb
+  db_path: data/local/result.duckdb
   schema: MYDATAMART
 transform:
-  sql_dir: sql/transform/oracle
+  sql_dir: sql/transform/duckdb
   on_error: continue
   schema: MYDATAMART
 report:
@@ -34,5 +37,6 @@ report:
     enabled: true
     out_dir: data/report
     max_files: 10
+  csv_union_dir: .
 params:
   clsYymm: 202303:202412~1

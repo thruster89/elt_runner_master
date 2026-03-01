@@ -190,16 +190,16 @@ TOOLTIPS = {
     "compression":  "CSV compression\ngzip: smaller files / none: no compression",
     # Load
     "load_mode":    "replace: DROP + CREATE\ntruncate: TRUNCATE + INSERT\n"
-                    "delete: DELETE with param WHERE + INSERT\nappend: INSERT only",
+                    "delete: DELETE with param WHERE + INSERT\nappend: INSERT only (skip if exists)",
     # Transform
-    "schema":       "Used for @{schema} substitution in SQL\nDefault schema if empty",
+    "schema":       "Session schema for SQL execution\nDuckDB: SET schema / Oracle: ALTER SESSION",
     "on_error":     "Behavior on error\nstop: abort immediately / continue: run remaining",
     # Report
     "excel":        "Generate Excel(.xlsx) report",
     "csv":          "Generate CSV report",
     "max_files":    "Max sheets per Excel file (1~100)\nCreates new file when exceeded",
-    "skip_sql":     "Skip SQL execution\nPerform CSV union only",
-    "union_dir":    "CSV union source folder\nSpecify to merge external CSVs",
+    "skip_sql":     "Skip SQL execution\nConvert union_dir CSVs directly to Excel",
+    "union_dir":    "CSV source folder\nUsed when skip_sql=ON to merge CSVs into Excel",
     "name_style":   "CSV filename param format\nfull: key_value (clsYymm_202003)\ncompact: value only (202003)",
     "strip_prefix": "Remove numeric prefix from SQL filename\nON: 01_contract → contract\nOFF: 01_contract (keep as-is)",
 }

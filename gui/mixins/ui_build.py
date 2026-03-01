@@ -138,7 +138,8 @@ class UiBuildMixin:
             import subprocess, sys, random
             cur = self._theme_var.get()
             others = [t for t in THEMES if t != cur]
-            env = {**os.environ, "ELT_GUI_THEME": random.choice(others)}
+            env = {**os.environ, "ELT_GUI_THEME": random.choice(others),
+                   "ELT_GUI_NEW_WINDOW": "1"}
             subprocess.Popen([sys.executable, "batch_runner_gui.py"],
                              cwd=self._work_dir.get(), env=env)
         bar1 = tk.Frame(grid, bg=C["crust"])
@@ -176,9 +177,16 @@ class UiBuildMixin:
                  bg=C["crust"], fg=C["subtext"]).grid(row=1, column=0, sticky="w", padx=(0, 6))
 
         self._job_combo = ttk.Combobox(grid, textvariable=self.job_var,
-                                       state="readonly", font=FONTS["mono_small"])
+                                       font=FONTS["mono_small"])
         self._job_combo.grid(row=1, column=1, sticky="ew", pady=(2, 0), ipady=2)
         self._job_combo.bind("<<ComboboxSelected>>", self._on_job_change)
+        # 텍스트 선택/복사는 허용하되, 키보드 입력은 차단
+        self._job_combo.bind("<Key>", lambda e: "break"
+                             if e.keysym not in ("Left", "Right", "Home", "End",
+                                                 "Shift_L", "Shift_R",
+                                                 "Control_L", "Control_R")
+                             and not (e.state & 0x4 and e.keysym in ("a", "c"))  # Ctrl+A, Ctrl+C
+                             else None)
 
         def _browse_job():
             d = filedialog.askopenfilename(
@@ -228,8 +236,11 @@ class UiBuildMixin:
         env_frame.grid(row=1, column=5, sticky="ew", pady=(2, 0))
         def _browse_env():
             wd = self._work_dir.get()
+            env_dir = str((Path(wd) / self._env_path_var.get()).parent)
+            if not Path(env_dir).is_dir():
+                env_dir = wd
             d = filedialog.askopenfilename(
-                initialdir=wd, title="Select env file",
+                initialdir=env_dir, title="Select env file",
                 filetypes=[("YAML", "*.yml *.yaml"), ("All", "*.*")])
             if d:
                 try:
@@ -254,7 +265,11 @@ class UiBuildMixin:
 
     # ── 좌측 옵션 패널 ───────────────────────────────────────
     def _build_left(self: "BatchRunnerGUI", parent):
-        # 스크롤 가능하게
+        # Stage 토글바 — 스크롤 위 고정
+        self._build_stage_toggle_bar(parent)
+        ttk.Separator(parent, orient="horizontal").pack(fill="x")
+
+        # 스크롤 가능 영역
         canvas = tk.Canvas(parent, bg=C["mantle"], highlightthickness=0)
         vsb = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
         canvas.configure(yscrollcommand=vsb.set)
@@ -273,13 +288,6 @@ class UiBuildMixin:
         self._build_option_sections(inner)
 
     def _build_option_sections(self: "BatchRunnerGUI", parent):
-        tk.Label(parent, text="Settings", font=FONTS["h1"],
-                 bg=C["mantle"], fg=C["text"]).pack(pady=(14, 4), padx=12, anchor="w")
-        ttk.Separator(parent, orient="horizontal").pack(fill="x", padx=8)
-
-        # Stage 토글바 — 최상단 (항상 보임)
-        self._build_stage_toggle_bar(parent)
-
         # 섹션들 — 각 메서드가 CollapsibleSection 반환, Stage와 1:1 매핑
         self._param_entries: list[tuple[tk.StringVar, tk.StringVar]] = []
         self._export_section    = self._build_export_section(parent)     # EXPORT ↔ Source 통합
@@ -390,15 +398,18 @@ class UiBuildMixin:
     def _build_inline_params(self: "BatchRunnerGUI", body, stage, color_key):
         """각 섹션 하단에 인라인 Params 영역 생성, frame 반환"""
         ttk.Separator(body, orient="horizontal").pack(fill="x", padx=12, pady=4)
-        tk.Label(body, text="Params", font=FONTS["body_bold"],
-                 bg=C["mantle"], fg=C[color_key]).pack(anchor="w", padx=12, pady=(4, 2))
-        frame = tk.Frame(body, bg=C["mantle"])
-        frame.pack(fill="x", padx=12)
-        tk.Button(body, text="+ add param", font=FONTS["mono_small"],
-                  bg=C["surface0"], fg=C["subtext"], relief="flat", padx=6, pady=2,
+        # Params 라벨 + add 버튼을 한 줄에 배치
+        hdr = tk.Frame(body, bg=C["mantle"])
+        hdr.pack(fill="x", padx=12, pady=(4, 2))
+        tk.Label(hdr, text="Params", font=FONTS["body_bold"],
+                 bg=C["mantle"], fg=C[color_key]).pack(side="left")
+        tk.Button(hdr, text="+ add", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["subtext"], relief="flat", padx=6, pady=1,
                   activebackground=C["surface1"],
                   command=lambda: self._add_param_row(stage=stage)
-                  ).pack(anchor="w", padx=12, pady=(2, 6))
+                  ).pack(side="right")
+        frame = tk.Frame(body, bg=C["mantle"])
+        frame.pack(fill="x", padx=12, pady=(0, 6))
         return frame
 
     # ── 헬퍼 ─────────────────────────────────────────────────
@@ -459,17 +470,32 @@ class UiBuildMixin:
         sec.pack(fill="x")
         body = sec.body
 
-        # Target Type
-        row1 = tk.Frame(body, bg=C["mantle"])
-        row1.pack(fill="x", padx=12, pady=(8, 2))
-        tk.Label(row1, text="Target Type", font=FONTS["mono_small"],
-                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w").pack(side="left")
+        # Target Type + Load Mode — 한 줄 2열
+        top_row = tk.Frame(body, bg=C["mantle"])
+        top_row.pack(fill="x", padx=12, pady=(8, 4))
+
+        col_l = tk.Frame(top_row, bg=C["mantle"])
+        col_l.pack(side="left", fill="x", expand=True)
+        tk.Label(col_l, text="Target Type", font=FONTS["mono_small"],
+                 bg=C["mantle"], fg=C["subtext"]).pack(anchor="w")
         self._target_type_combo = ttk.Combobox(
-            row1, textvariable=self._target_type_var,
+            col_l, textvariable=self._target_type_var,
             values=["duckdb", "sqlite3", "oracle"],
-            state="readonly", font=FONTS["mono"], width=14)
-        self._target_type_combo.pack(side="left", fill="x", expand=True)
+            state="readonly", font=FONTS["mono"])
+        self._target_type_combo.pack(fill="x", pady=(2, 0))
         self._target_type_combo.bind("<<ComboboxSelected>>", self._on_target_type_change)
+
+        col_r = tk.Frame(top_row, bg=C["mantle"])
+        col_r.pack(side="left", fill="x", expand=True, padx=(8, 0))
+        _lm_lbl = tk.Label(col_r, text="Load Mode", font=FONTS["mono_small"],
+                 bg=C["mantle"], fg=C["subtext"])
+        _lm_lbl.pack(anchor="w")
+        Tooltip(_lm_lbl, TOOLTIPS["load_mode"])
+        self._load_mode_combo = ttk.Combobox(
+            col_r, textvariable=self._ov_load_mode,
+            values=["replace", "truncate", "append"],
+            state="readonly", font=FONTS["mono"])
+        self._load_mode_combo.pack(fill="x", pady=(2, 0))
 
         # DB Path (duckdb/sqlite3)
         self._db_path_row = tk.Frame(body, bg=C["mantle"])
@@ -503,18 +529,6 @@ class UiBuildMixin:
         tk.Entry(self._schema_row, textvariable=self._target_schema,
                  bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
                  relief="flat", font=FONTS["mono"], width=16).pack(side="left", fill="x", expand=True, ipady=2)
-
-        # Load Mode
-        self._load_mode_row = tk.Frame(body, bg=C["mantle"])
-        _lm_lbl = tk.Label(self._load_mode_row, text="Load Mode", font=FONTS["mono_small"],
-                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w")
-        _lm_lbl.pack(side="left")
-        Tooltip(_lm_lbl, TOOLTIPS["load_mode"])
-        self._load_mode_combo = ttk.Combobox(
-            self._load_mode_row, textvariable=self._ov_load_mode,
-            values=["replace", "truncate", "append"],
-            state="readonly", font=FONTS["mono"], width=14)
-        self._load_mode_combo.pack(side="left", fill="x", expand=True)
 
         self._update_target_visibility()
 
@@ -687,36 +701,38 @@ class UiBuildMixin:
         sec.pack(fill="x")
         body = sec.body
 
+        # ─── Step 1: SQL → CSV ───────────────────────────────
+        hdr1 = tk.Frame(body, bg=C["mantle"])
+        hdr1.pack(fill="x", padx=12, pady=(8, 2))
+        tk.Label(hdr1, text="SQL \u2192 CSV", font=FONTS["body_bold"],
+                 bg=C["mantle"], fg=C["peach"]).pack(side="left")
+        tk.Checkbutton(hdr1, variable=self._ov_csv, text="",
+                       bg=C["mantle"], fg=C["text"], selectcolor=C["surface0"],
+                       activebackground=C["mantle"],
+                       command=self._refresh_preview).pack(side="right")
+
         self._path_row(body, "sql_dir", self._report_sql_dir, "Select report SQL dir")
         self._path_row(body, "out_dir", self._report_out_dir, "Select report output dir")
 
-        def _w_excel(r):
-            tk.Checkbutton(r, variable=self._ov_excel, text="",
-                           bg=C["mantle"], fg=C["text"], selectcolor=C["surface0"],
-                           activebackground=C["mantle"],
-                           command=self._refresh_preview).pack(side="left")
-        self._ov_row(body, "excel", _w_excel, tooltip=TOOLTIPS["excel"])
+        def _w_rpt_schema(r):
+            tk.Entry(r, textvariable=self._report_schema,
+                     bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
+                     relief="flat", font=FONTS["mono_small"], width=16).pack(side="left", fill="x", expand=True, ipady=2)
+        self._ov_row(body, "schema", _w_rpt_schema, tooltip=TOOLTIPS["schema"])
 
-        def _w_csv(r):
-            tk.Checkbutton(r, variable=self._ov_csv, text="",
-                           bg=C["mantle"], fg=C["text"], selectcolor=C["surface0"],
-                           activebackground=C["mantle"],
-                           command=self._refresh_preview).pack(side="left")
-        self._ov_row(body, "csv", _w_csv, tooltip=TOOLTIPS["csv"])
+        # --- Params (report) ---
+        self._report_params_frame = self._build_inline_params(body, "report", "peach")
 
-        def _w_max_files(r):
-            tk.Spinbox(r, from_=1, to=100, width=4, textvariable=self._ov_max_files,
-                       bg=C["surface0"], fg=C["text"], buttonbackground=C["surface1"],
-                       relief="flat", font=FONTS["mono_small"],
-                       command=self._refresh_preview).pack(side="left")
-        self._ov_row(body, "max_files", _w_max_files, tooltip=TOOLTIPS["max_files"])
-
-        def _w_skip_sql(r):
-            tk.Checkbutton(r, variable=self._ov_skip_sql, text="",
-                           bg=C["mantle"], fg=C["text"], selectcolor=C["surface0"],
-                           activebackground=C["mantle"],
-                           command=self._refresh_preview).pack(side="left")
-        self._ov_row(body, "skip_sql", _w_skip_sql, tooltip=TOOLTIPS["skip_sql"])
+        # ─── Step 2: CSV → Excel ─────────────────────────────
+        ttk.Separator(body, orient="horizontal").pack(fill="x", padx=12, pady=4)
+        hdr2 = tk.Frame(body, bg=C["mantle"])
+        hdr2.pack(fill="x", padx=12, pady=(4, 2))
+        tk.Label(hdr2, text="CSV \u2192 Excel", font=FONTS["body_bold"],
+                 bg=C["mantle"], fg=C["peach"]).pack(side="left")
+        tk.Checkbutton(hdr2, variable=self._ov_excel, text="",
+                       bg=C["mantle"], fg=C["text"], selectcolor=C["surface0"],
+                       activebackground=C["mantle"],
+                       command=self._refresh_preview).pack(side="right")
 
         # report.csv_union_dir
         union_row = tk.Frame(body, bg=C["mantle"])
@@ -743,8 +759,12 @@ class UiBuildMixin:
                   activebackground=C["surface1"],
                   command=_browse_union).pack(side="left", padx=(2, 0))
 
-        # --- Params (report) ---
-        self._report_params_frame = self._build_inline_params(body, "report", "peach")
+        def _w_max_files(r):
+            tk.Spinbox(r, from_=1, to=100, width=4, textvariable=self._ov_max_files,
+                       bg=C["surface0"], fg=C["text"], buttonbackground=C["surface1"],
+                       relief="flat", font=FONTS["mono_small"],
+                       command=self._refresh_preview).pack(side="left")
+        self._ov_row(body, "max_files", _w_max_files, tooltip=TOOLTIPS["max_files"])
 
         return sec
 
@@ -761,7 +781,7 @@ class UiBuildMixin:
 
         # 로그 필터 버튼
         self._log_filter_btns = {}
-        for level in ("ALL", "WARN+", "ERR"):
+        for level in ("ALL", "SUM", "WARN+", "ERR"):
             btn = tk.Button(header, text=f"[{level}]", font=FONTS["shortcut"],
                             relief="flat", padx=4, pady=0, bd=0,
                             command=lambda lv=level: self._set_log_filter(lv))
@@ -866,6 +886,8 @@ class UiBuildMixin:
         self._log.tag_config("STAGE_DONE", foreground=C["teal"],
                              font=(FONT_MONO, 10, "bold"),
                              spacing3=8)
+        self._log.tag_config("SUMMARY", foreground=C["green"],
+                             font=(FONT_MONO, 10, "bold"))
         self._log.tag_config("HIGHLIGHT", background=C["yellow"], foreground=C["crust"])
 
         # 로그 우클릭 컨텍스트 메뉴

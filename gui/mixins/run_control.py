@@ -121,7 +121,7 @@ class RunControlMixin:
             elapsed_str = f"{m:02d}:{s:02d}"
 
         if ret == 0:
-            self._log_write(f"Done  ({elapsed_str})", "SUCCESS")
+            self._log_write(f"Done  ({elapsed_str})", "SUMMARY")
             self._set_status("● done", C["green"])
             self._progress_bar["value"] = 100
             self._progress_label.config(text=f"Done  {elapsed_str}")
@@ -229,7 +229,14 @@ class RunControlMixin:
 
     def _guess_tag(self: "BatchRunnerGUI", line: str) -> str:
         low = line.lower()
-        # STAGE 시작/끝 패턴 (최우선)
+        stripped = line.strip()
+        # [N/M] STAGE_NAME (DONE 없음) → STAGE_HEADER
+        if re.search(r"\[\d+/\d+\]\s+\w+\s*$", stripped):
+            return "STAGE_HEADER"
+        # [N/M] STAGE_NAME DONE → STAGE_DONE
+        if re.search(r"\[\d+/\d+\]\s+\w+\s+DONE\b", stripped, re.IGNORECASE):
+            return "STAGE_DONE"
+        # STAGE 시작/끝 패턴 (키워드 fallback)
         if any(k in low for k in ("=== stage", "--- stage", "stage start", "[stage")):
             return "STAGE_HEADER"
         if any(k in low for k in ("stage done", "stage complete", "stage finish")):
@@ -237,12 +244,18 @@ class RunControlMixin:
         # 구분선 / 배너
         if any(k in low for k in ("===", "---", "pipeline", "job start", "job finish")):
             return "SYS"
-        # summary 줄: failed=N 값으로 판단 (failed=0이면 SUCCESS)
+        # JOB START 블록 내 정보 줄 (INFO | prefix 허용)
+        if re.search(r"(?:^|\| )\s*(Job Name|Run ID|Job File|Start|Mode|SQL Dir|Export Dir|"
+                     r"Overwrite|Workers|Timeout|Params|Expanded|Total tasks|"
+                     r"Stages total|Work Dir|Log File|"
+                     r"\[SOURCE\]|\[TARGET\])\b", line):
+            return "SYS"
+        # summary 줄: failed=N 값으로 판단 (failed>0이면 ERROR)
         if "summary" in low:
             m = re.search(r"failed=(\d+)", low)
             if m and int(m.group(1)) > 0:
                 return "ERROR"
-            return "SUCCESS"
+            return "SUMMARY"
         # 에러 (명확한 에러 패턴)
         if any(k in low for k in ("exception", "traceback")):
             return "ERROR"
