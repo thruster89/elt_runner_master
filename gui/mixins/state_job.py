@@ -517,8 +517,8 @@ class StateJobMixin:
                                          if hasattr(self, "_env_path_var") else "config/env.yml")
         self._sync_combos()
 
-        self._log_sys(f"Project loaded: {wd}  (jobs={len(self._jobs)}, "
-                      f"env hosts={sum(len(v) for v in self._env_hosts.values())})")
+        self._log_write(f"Project loaded: {wd}  (jobs={len(self._jobs)}, "
+                        f"env hosts={sum(len(v) for v in self._env_hosts.values())})", "INFO")
 
     def _sync_combos(self: "BatchRunnerGUI"):
         """콤보박스 values 재설정 + 현재 job/source 반영 (파일 I/O 없음)"""
@@ -704,7 +704,7 @@ class StateJobMixin:
         self._refresh_param_rows_grouped(grouped)
         if all_detected != getattr(self, "_last_detected_params", set()):
             self._last_detected_params = set(all_detected)
-            self._log_sys(f"SQL params detected: {', '.join(sorted(all_detected))}")
+            self._log_write(f"SQL params detected: {', '.join(sorted(all_detected))}", "INFO")
 
     # ── SQL 선택 ─────────────────────────────────────────────
     def _open_sql_selector(self: "BatchRunnerGUI"):

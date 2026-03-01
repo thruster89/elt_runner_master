@@ -39,7 +39,7 @@ class LogPanelMixin:
         cur = self._log_filter.get()
         for lv, btn in self._log_filter_btns.items():
             if lv == cur:
-                btn.config(bg=C["blue"], fg=C["crust"], activebackground=C["sky"])
+                btn.config(bg=C["text"], fg=C["crust"], activebackground=C["subtext"])
             else:
                 btn.config(bg=C["surface0"], fg=C["subtext"], activebackground=C["surface1"])
 
@@ -48,7 +48,7 @@ class LogPanelMixin:
         if level == "ALL":
             return True
         if level == "SUM":
-            return tag in ("SYS", "STAGE_HEADER", "STAGE_DONE", "SUMMARY", "ERROR", "WARN")
+            return tag in ("SYS", "JOB_INFO", "STAGE_HEADER", "STAGE_DONE", "SUMMARY", "ERROR", "WARN")
         if level == "WARN+":
             return tag in ("WARN", "ERROR", "STAGE_HEADER", "STAGE_DONE", "SYS")
         if level == "ERR":

@@ -127,8 +127,8 @@ C = dict(THEMES["Mocha"])
 # ─────────────────────────────────────────────────────────────
 # 폰트 시스템
 # ─────────────────────────────────────────────────────────────
-FONT_FAMILY = "Malgun Gothic"
-FONT_MONO   = "Consolas"
+FONT_FAMILY = "Noto Sans KR Medium"
+FONT_MONO   = "Noto Sans KR Medium"
 
 def _load_bundled_fonts():
     """fonts/ 폴더의 ttf/otf를 프로세스 전용으로 등록 (시스템 설치 불필요)"""
@@ -158,7 +158,7 @@ FONTS = {
     "small":      (FONT_FAMILY, 9),
     "mono":       (FONT_MONO,   10),
     "mono_small": (FONT_MONO,   9),
-    "label":      (FONT_MONO,   10),
+    "label":      (FONT_MONO,   9),
     "log":        (FONT_MONO,   10),
     "cmd":        (FONT_MONO,   10),
     "button":     (FONT_FAMILY, 11, "bold"),

@@ -241,15 +241,15 @@ class RunControlMixin:
             return "STAGE_HEADER"
         if any(k in low for k in ("stage done", "stage complete", "stage finish")):
             return "STAGE_DONE"
-        # 구분선 / 배너
+        # 구분선 / 배너 — JOB START/FINISH 블록은 SUM 필터 포함
         if any(k in low for k in ("===", "---", "pipeline", "job start", "job finish")):
-            return "SYS"
-        # JOB START 블록 내 정보 줄 (INFO | prefix 허용)
+            return "JOB_INFO"
+        # JOB START 블록 내 정보 줄 — SUM 필터에도 표시
         if re.search(r"(?:^|\| )\s*(Job Name|Run ID|Job File|Start|Mode|SQL Dir|Export Dir|"
-                     r"Overwrite|Workers|Timeout|Params|Expanded|Total tasks|"
+                     r"Overwrite|Workers|Timeout|Params|Expanded|Total tasks|Total Tasks|"
                      r"Stages total|Work Dir|Log File|"
                      r"\[SOURCE\]|\[TARGET\])\b", line):
-            return "SYS"
+            return "JOB_INFO"
         # summary 줄: failed=N 값으로 판단 (failed>0이면 ERROR)
         if "summary" in low:
             m = re.search(r"failed=(\d+)", low)
@@ -368,7 +368,19 @@ class RunControlMixin:
 
         self._cmd_preview.config(state="normal")
         self._cmd_preview.delete("1.0", "end")
-        self._cmd_preview.insert("end", text)
+        self._cmd_preview.tag_config("cmd_base", foreground=C["subtext"])
+        self._cmd_preview.tag_config("cmd_flag", foreground=C["blue"])
+        self._cmd_preview.tag_config("cmd_val",  foreground=C["text"])
+        # python runner.py → subtext, --flag → blue, value → text
+        parts = text.split(" ")
+        for i, part in enumerate(parts):
+            tag = "cmd_base"
+            if part.startswith("--"):
+                tag = "cmd_flag"
+            elif i > 0 and parts[i - 1].startswith("--"):
+                tag = "cmd_val"
+            sep = "" if i == 0 else " "
+            self._cmd_preview.insert("end", sep + part, tag)
         self._cmd_preview.config(state="disabled")
 
         if not self._restoring_job:

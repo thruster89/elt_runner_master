@@ -38,9 +38,13 @@ class UiBuildMixin:
         self.option_add("*TCombobox*Listbox.foreground",  C["text"])
         self.option_add("*TCombobox*Listbox.selectBackground", C["blue"])
         self.option_add("*TCombobox*Listbox.selectForeground", C["crust"])
-        self.option_add("*TCombobox*Listbox.font", f"{FONT_MONO} 10")
+        self.option_add("*TCombobox*Listbox.font", f"{{{FONT_MONO}}} 10")
         style.configure("TSeparator", background=C["surface0"])
         style.configure("TScrollbar",
+                        background=C["surface0"],
+                        troughcolor=C["mantle"],
+                        arrowcolor=C["text"])
+        style.configure("Log.Vertical.TScrollbar",
                         background=C["surface0"],
                         troughcolor=C["crust"],
                         arrowcolor=C["text"])
@@ -93,6 +97,9 @@ class UiBuildMixin:
         # 상단 타이틀 바
         self._build_title_bar()
 
+        # 하단 버튼 바 (메인보다 먼저 pack → 항상 표시 보장)
+        self._build_button_bar()
+
         # 메인 영역 (좌 + 우)
         main = tk.Frame(self, bg=C["base"])
         main.pack(fill="both", expand=True, padx=10, pady=(4, 0))
@@ -106,9 +113,6 @@ class UiBuildMixin:
         right = tk.Frame(main, bg=C["mantle"])
         right.pack(side="left", fill="both", expand=True)
         self._build_right(right)
-
-        # 하단 버튼 바
-        self._build_button_bar()
 
         # 마우스휠 바인딩 (위치 기반)
         self._setup_mousewheel()
@@ -145,8 +149,8 @@ class UiBuildMixin:
         bar1 = tk.Frame(grid, bg=C["crust"])
         bar1.grid(row=0, column=2, sticky="w", padx=(3, 0), pady=(0, 2))
         self._reload_btn = tk.Button(bar1, text="↺ Refresh", font=FONTS["mono_small"],
-                  bg=C["blue"], fg=C["crust"], relief="flat", padx=6,
-                  activebackground=C["sky"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
+                  activebackground=C["surface1"],
                   command=self._reload_project)
         self._reload_btn.pack(side="left", padx=(0, 2))
         tk.Button(bar1, text="↗ New Window", font=FONTS["mono_small"],
@@ -205,19 +209,19 @@ class UiBuildMixin:
         bar2 = tk.Frame(grid, bg=C["crust"])
         bar2.grid(row=1, column=2, sticky="w", padx=(3, 0), pady=(2, 0))
         tk.Button(bar2, text="save", font=FONTS["mono_small"],
-                  bg=C["green"], fg=C["crust"], relief="flat", padx=6,
-                  activebackground=C["teal"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
+                  activebackground=C["surface1"],
                   command=self._on_save_yml).pack(side="left", padx=(0, 2))
         tk.Button(bar2, text="save as", font=FONTS["mono_small"],
                   bg=C["surface0"], fg=C["subtext"], relief="flat", padx=6,
                   activebackground=C["surface1"],
                   command=self._on_save_yml_as).pack(side="left", padx=(0, 2))
         tk.Button(bar2, text="dup", font=FONTS["mono_small"],
-                  bg=C["surface0"], fg=C["blue"], relief="flat", padx=6,
+                  bg=C["surface0"], fg=C["subtext"], relief="flat", padx=6,
                   activebackground=C["surface1"],
                   command=self._on_job_duplicate).pack(side="left", padx=(0, 2))
         tk.Button(bar2, text="del", font=FONTS["mono_small"],
-                  bg=C["surface0"], fg=C["red"], relief="flat", padx=6,
+                  bg=C["surface0"], fg=C["subtext"], relief="flat", padx=6,
                   activebackground=C["surface1"],
                   command=self._on_job_delete).pack(side="left", padx=(0, 2))
         tk.Button(bar2, text="…", font=FONTS["mono"],
@@ -341,14 +345,16 @@ class UiBuildMixin:
         tk.Label(hdr, text="Stages", font=FONTS["h2"],
                  bg=C["surface0"], fg=C["text"]).pack(side="left", padx=(4, 0), pady=5)
         tk.Button(hdr, text="Clear", font=FONTS["shortcut"],
-                  bg=C["surface0"], fg=C["subtext"], relief="flat",
-                  padx=4, pady=0, activebackground=C["surface1"],
+                  bg=C["surface1"], fg=C["subtext"], relief="flat",
+                  padx=6, pady=1, bd=0, highlightthickness=0,
+                  activebackground=C["surface2"],
                   command=self._stages_none).pack(side="right", padx=(0, 8))
         tk.Label(hdr, text="\u00b7", font=FONTS["shortcut"],
                  bg=C["surface0"], fg=C["subtext"]).pack(side="right")
         tk.Button(hdr, text="Select All", font=FONTS["shortcut"],
-                  bg=C["surface0"], fg=C["subtext"], relief="flat",
-                  padx=4, pady=0, activebackground=C["surface1"],
+                  bg=C["surface1"], fg=C["subtext"], relief="flat",
+                  padx=6, pady=1, bd=0, highlightthickness=0,
+                  activebackground=C["surface2"],
                   command=self._stages_all).pack(side="right")
 
         # Stage 토글 버튼
@@ -418,7 +424,7 @@ class UiBuildMixin:
         row = tk.Frame(parent_frame, bg=C["mantle"])
         row.pack(fill="x", padx=12, pady=2)
         tk.Label(row, text=label, font=FONTS["label"],
-                 bg=C["mantle"], fg=C["text"], width=12, anchor="w").pack(side="left")
+                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w").pack(side="left")
         e = tk.Entry(row, textvariable=var, bg=C["surface0"], fg=C["text"],
                      insertbackground=C["text"], relief="flat",
                      font=FONTS["mono"], **kw)
@@ -429,7 +435,7 @@ class UiBuildMixin:
         r = tk.Frame(parent_frame, bg=C["mantle"])
         r.pack(fill="x", padx=12, pady=2)
         lbl = tk.Label(r, text=label, font=FONTS["label"], width=12, anchor="w",
-                       bg=C["mantle"], fg=C["text"])
+                       bg=C["mantle"], fg=C["subtext"])
         lbl.pack(side="left")
         if tooltip:
             Tooltip(lbl, tooltip)
@@ -443,7 +449,7 @@ class UiBuildMixin:
         row = tk.Frame(parent_frame, bg=C["mantle"])
         row.pack(fill="x", padx=12, pady=2)
         tk.Label(row, text=label, font=FONTS["label"],
-                 bg=C["mantle"], fg=C["text"], width=12, anchor="w").pack(side="left")
+                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w").pack(side="left")
         def _browse():
             wd = self._work_dir.get()
             d = filedialog.askdirectory(initialdir=var.get() or wd, title=browse_title)
@@ -478,7 +484,7 @@ class UiBuildMixin:
         col_l = tk.Frame(top_row, bg=C["mantle"])
         col_l.pack(side="left", fill="x", expand=True)
         tk.Label(col_l, text="Target Type", font=FONTS["label"],
-                 bg=C["mantle"], fg=C["text"]).pack(anchor="w")
+                 bg=C["mantle"], fg=C["subtext"]).pack(anchor="w")
         self._target_type_combo = ttk.Combobox(
             col_l, textvariable=self._target_type_var,
             values=["duckdb", "sqlite3", "oracle"],
@@ -489,7 +495,7 @@ class UiBuildMixin:
         col_r = tk.Frame(top_row, bg=C["mantle"])
         col_r.pack(side="left", fill="x", expand=True, padx=(8, 0))
         _lm_lbl = tk.Label(col_r, text="Load Mode", font=FONTS["label"],
-                 bg=C["mantle"], fg=C["text"])
+                 bg=C["mantle"], fg=C["subtext"])
         _lm_lbl.pack(anchor="w")
         Tooltip(_lm_lbl, TOOLTIPS["load_mode"])
         self._load_mode_combo = ttk.Combobox(
@@ -502,7 +508,7 @@ class UiBuildMixin:
         self._db_path_row = tk.Frame(body, bg=C["mantle"])
         self._db_path_row.pack(fill="x", padx=12, pady=2)
         tk.Label(self._db_path_row, text="DB Path", font=FONTS["label"],
-                 bg=C["mantle"], fg=C["text"], width=12, anchor="w").pack(side="left")
+                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w").pack(side="left")
         tk.Entry(self._db_path_row, textvariable=self._target_db_path,
                  bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
                  relief="flat", font=FONTS["mono"], width=16).pack(side="left", fill="x", expand=True, ipady=2)
@@ -526,7 +532,7 @@ class UiBuildMixin:
         # Schema (oracle)
         self._schema_row = tk.Frame(body, bg=C["mantle"])
         tk.Label(self._schema_row, text="Schema", font=FONTS["label"],
-                 bg=C["mantle"], fg=C["text"], width=12, anchor="w").pack(side="left")
+                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w").pack(side="left")
         tk.Entry(self._schema_row, textvariable=self._target_schema,
                  bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
                  relief="flat", font=FONTS["mono"], width=16).pack(side="left", fill="x", expand=True, ipady=2)
@@ -548,7 +554,7 @@ class UiBuildMixin:
         col_l = tk.Frame(src_row, bg=C["mantle"])
         col_l.pack(side="left", fill="x", expand=True)
         tk.Label(col_l, text="Source Type", font=FONTS["label"],
-                 bg=C["mantle"], fg=C["text"]).pack(anchor="w")
+                 bg=C["mantle"], fg=C["subtext"]).pack(anchor="w")
         self._source_type_combo = ttk.Combobox(
             col_l, textvariable=self._source_type_var,
             state="readonly", font=FONTS["mono"])
@@ -558,7 +564,7 @@ class UiBuildMixin:
         col_r = tk.Frame(src_row, bg=C["mantle"])
         col_r.pack(side="left", fill="x", expand=True, padx=(8, 0))
         tk.Label(col_r, text="Host", font=FONTS["label"],
-                 bg=C["mantle"], fg=C["text"]).pack(anchor="w")
+                 bg=C["mantle"], fg=C["subtext"]).pack(anchor="w")
         self._host_combo = ttk.Combobox(
             col_r, textvariable=self._source_host_var,
             state="readonly", font=FONTS["mono"])
@@ -572,7 +578,7 @@ class UiBuildMixin:
         sql_row = tk.Frame(body, bg=C["mantle"])
         sql_row.pack(fill="x", padx=12, pady=2)
         tk.Label(sql_row, text="sql_dir", font=FONTS["label"],
-                 bg=C["mantle"], fg=C["text"], width=12, anchor="w").pack(side="left")
+                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w").pack(side="left")
         def _browse_sql():
             wd = self._work_dir.get()
             d = filedialog.askdirectory(initialdir=self._export_sql_dir.get() or wd,
@@ -613,7 +619,7 @@ class UiBuildMixin:
         opt_grid.pack(fill="x", padx=12, pady=2)
         # row 0: overwrite ☐  |  compression [gzip]
         _ow_lbl = tk.Label(opt_grid, text="overwrite", font=FONTS["label"],
-                 bg=C["mantle"], fg=C["text"], width=12, anchor="w")
+                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w")
         _ow_lbl.grid(row=0, column=0, sticky="w")
         Tooltip(_ow_lbl, TOOLTIPS["overwrite"])
         tk.Checkbutton(opt_grid, variable=self._ov_overwrite, text="",
@@ -621,44 +627,44 @@ class UiBuildMixin:
                        activebackground=C["mantle"],
                        command=self._refresh_preview).grid(row=0, column=1, sticky="w")
         _cp_lbl = tk.Label(opt_grid, text="compression", font=FONTS["label"],
-                 bg=C["mantle"], fg=C["text"])
+                 bg=C["mantle"], fg=C["subtext"])
         _cp_lbl.grid(row=0, column=2, sticky="w", padx=(16, 4))
         Tooltip(_cp_lbl, TOOLTIPS["compression"])
         ttk.Combobox(opt_grid, textvariable=self._ov_compression,
                      values=["gzip", "none"], state="readonly",
-                     font=FONTS["mono_small"], width=8).grid(row=0, column=3, sticky="w")
+                     font=FONTS["mono"], width=8).grid(row=0, column=3, sticky="w")
 
         # row 1: workers [1]  |  timeout [1800] sec
         _wk_lbl = tk.Label(opt_grid, text="workers", font=FONTS["label"],
-                 bg=C["mantle"], fg=C["text"], width=12, anchor="w")
+                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w")
         _wk_lbl.grid(row=1, column=0, sticky="w", pady=2)
         Tooltip(_wk_lbl, TOOLTIPS["workers"])
         tk.Spinbox(opt_grid, from_=1, to=16, width=4, textvariable=self._ov_workers,
                    bg=C["surface0"], fg=C["text"], buttonbackground=C["surface1"],
-                   relief="flat", font=FONTS["mono_small"],
+                   relief="flat", font=FONTS["mono"],
                    command=self._refresh_preview).grid(row=1, column=1, sticky="w", pady=2)
         _to_lbl = tk.Label(opt_grid, text="timeout", font=FONTS["label"],
-                 bg=C["mantle"], fg=C["text"])
+                 bg=C["mantle"], fg=C["subtext"])
         _to_lbl.grid(row=1, column=2, sticky="w", padx=(16, 4), pady=2)
         Tooltip(_to_lbl, TOOLTIPS["timeout"])
         to_frame = tk.Frame(opt_grid, bg=C["mantle"])
         to_frame.grid(row=1, column=3, sticky="w", pady=2)
         tk.Entry(to_frame, textvariable=self._ov_timeout,
                  bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
-                 relief="flat", font=FONTS["mono_small"], width=6).pack(side="left", ipady=2)
+                 relief="flat", font=FONTS["mono"], width=6).pack(side="left", ipady=2)
         tk.Label(to_frame, text="sec", font=FONTS["shortcut"],
                  bg=C["mantle"], fg=C["subtext"]).pack(side="left", padx=(4, 0))
 
         # row 2: name_style [full] | strip_prefix ☐
         _ns_lbl = tk.Label(opt_grid, text="name_style", font=FONTS["label"],
-                 bg=C["mantle"], fg=C["text"], width=12, anchor="w")
+                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w")
         _ns_lbl.grid(row=2, column=0, sticky="w", pady=2)
         Tooltip(_ns_lbl, TOOLTIPS["name_style"])
         ttk.Combobox(opt_grid, textvariable=self._ov_name_style,
                      values=["full", "compact"], state="readonly",
-                     font=FONTS["mono_small"], width=8).grid(row=2, column=1, sticky="w", pady=2)
+                     font=FONTS["mono"], width=8).grid(row=2, column=1, sticky="w", pady=2)
         _sp_lbl = tk.Label(opt_grid, text="strip_prefix", font=FONTS["label"],
-                 bg=C["mantle"], fg=C["text"])
+                 bg=C["mantle"], fg=C["subtext"])
         _sp_lbl.grid(row=2, column=2, sticky="w", padx=(16, 4), pady=2)
         Tooltip(_sp_lbl, TOOLTIPS["strip_prefix"])
         tk.Checkbutton(opt_grid, variable=self._ov_strip_prefix, text="",
@@ -682,13 +688,13 @@ class UiBuildMixin:
         def _w_tfm_schema(r):
             tk.Entry(r, textvariable=self._transform_schema,
                      bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
-                     relief="flat", font=FONTS["mono_small"], width=16).pack(side="left", fill="x", expand=True, ipady=2)
-        self._ov_row(body, "schema", _w_tfm_schema, tooltip=TOOLTIPS["schema"])
+                     relief="flat", font=FONTS["mono"], width=16).pack(side="left", fill="x", expand=True, ipady=2)
+        self._ov_row(body, "Schema", _w_tfm_schema, tooltip=TOOLTIPS["schema"])
 
         def _w_on_error(r):
             ttk.Combobox(r, textvariable=self._ov_on_error,
                          values=["stop", "continue"], state="readonly",
-                         font=FONTS["mono_small"], width=8).pack(side="left")
+                         font=FONTS["mono"], width=8).pack(side="left")
         self._ov_row(body, "on_error", _w_on_error, tooltip=TOOLTIPS["on_error"])
 
         # --- Params (transform) ---
@@ -718,8 +724,8 @@ class UiBuildMixin:
         def _w_rpt_schema(r):
             tk.Entry(r, textvariable=self._report_schema,
                      bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
-                     relief="flat", font=FONTS["mono_small"], width=16).pack(side="left", fill="x", expand=True, ipady=2)
-        self._ov_row(body, "schema", _w_rpt_schema, tooltip=TOOLTIPS["schema"])
+                     relief="flat", font=FONTS["mono"], width=16).pack(side="left", fill="x", expand=True, ipady=2)
+        self._ov_row(body, "Schema", _w_rpt_schema, tooltip=TOOLTIPS["schema"])
 
         # --- Params (report) ---
         self._report_params_frame = self._build_inline_params(body, "report", "peach")
@@ -744,7 +750,7 @@ class UiBuildMixin:
         Tooltip(_union_lbl, TOOLTIPS["union_dir"])
         tk.Entry(union_row, textvariable=self._ov_union_dir,
                  bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
-                 relief="flat", font=FONTS["mono_small"], width=12).pack(side="left", fill="x", expand=True, ipady=2)
+                 relief="flat", font=FONTS["mono"], width=12).pack(side="left", fill="x", expand=True, ipady=2)
         def _browse_union():
             d = filedialog.askdirectory(
                 initialdir=self._ov_union_dir.get() or self._work_dir.get(),
@@ -767,6 +773,8 @@ class UiBuildMixin:
                        command=self._refresh_preview).pack(side="left")
         self._ov_row(body, "max_files", _w_max_files, tooltip=TOOLTIPS["max_files"])
 
+        tk.Frame(body, bg=C["mantle"], height=6).pack(fill="x")
+
         return sec
 
     # ── 우측 로그 패널 ───────────────────────────────────────
@@ -783,16 +791,18 @@ class UiBuildMixin:
         # 로그 필터 버튼
         self._log_filter_btns = {}
         for level in ("ALL", "SUM", "WARN+", "ERR"):
-            btn = tk.Button(header, text=f"[{level}]", font=FONTS["shortcut"],
-                            relief="flat", padx=4, pady=0, bd=0,
+            btn = tk.Button(header, text=level, font=FONTS["shortcut"],
+                            relief="flat", padx=6, pady=1, bd=0,
+                            highlightthickness=0,
                             command=lambda lv=level: self._set_log_filter(lv))
             btn.pack(side="left", padx=(0, 2))
             self._log_filter_btns[level] = btn
         self._refresh_log_filter_btns()
 
         # 타임스탬프 토글 버튼
-        self._time_btn = tk.Button(header, text="[Time]", font=FONTS["shortcut"],
-                                   relief="flat", padx=4, pady=0, bd=0,
+        self._time_btn = tk.Button(header, text="Time", font=FONTS["shortcut"],
+                                   relief="flat", padx=6, pady=1, bd=0,
+                                   highlightthickness=0,
                                    command=self._toggle_show_time)
         self._time_btn.pack(side="left", padx=(4, 0))
         self._refresh_time_btn()
@@ -802,7 +812,8 @@ class UiBuildMixin:
         self._status_label.pack(side="right", padx=10)
 
         tk.Button(header, text="Clear", font=FONTS["mono_small"],
-                  bg=C["surface0"], fg=C["text"], relief="flat", padx=8,
+                  bg=C["surface0"], fg=C["subtext"], relief="flat", padx=8,
+                  bd=0, highlightthickness=0,
                   activebackground=C["surface1"],
                   command=self._clear_log).pack(side="right", padx=4)
 
@@ -827,13 +838,13 @@ class UiBuildMixin:
         preview_frame.pack(fill="x", padx=8, pady=(6, 0))
         tk.Label(preview_frame, text="Command", font=FONTS["mono_small"],
                  bg=C["mantle"], fg=C["subtext"]).pack(anchor="w", padx=4)
-        self._cmd_preview = tk.Text(preview_frame, bg=C["crust"], fg=C["green"],
+        self._cmd_preview = tk.Text(preview_frame, bg=C["crust"], fg=C["text"],
                                     font=FONTS["cmd"], height=3, relief="flat",
                                     bd=4, wrap="word", state="disabled")
         self._cmd_preview.pack(fill="x", padx=4, pady=(2, 6))
         ttk.Separator(parent, orient="horizontal").pack(fill="x", padx=8)
 
-        log_outer = tk.Frame(parent, bg=C["crust"])
+        log_outer = tk.Frame(parent, bg=C["mantle"])
         log_outer.pack(fill="both", expand=True, padx=8, pady=8)
 
         # 검색 바 (Ctrl+F — 초기 숨김, 로그 내부 상단)
@@ -870,24 +881,24 @@ class UiBuildMixin:
             font=FONTS["log"], relief="flat", bd=8, wrap="word",
             spacing1=3, spacing3=3
         )
-        log_vsb = ttk.Scrollbar(log_frame, orient="vertical", command=self._log.yview)
+        log_vsb = ttk.Scrollbar(log_frame, orient="vertical", command=self._log.yview,
+                                style="Log.Vertical.TScrollbar")
         self._log.configure(yscrollcommand=log_vsb.set)
         log_vsb.pack(side="right", fill="y")
         self._log.pack(side="left", fill="both", expand=True)
 
         for tag, fg in [("INFO", C["text"]), ("SUCCESS", C["green"]),
                         ("WARN",  C["yellow"]), ("ERROR", C["red"]),
-                        ("SYS",   C["blue"]),   ("TIME",  C["subtext"]),
-                        ("DIM",   C["subtext"])]:
+                        ("SYS",   C["overlay1"]),  ("TIME",  C["overlay1"]),
+                        ("DIM",   C["overlay0"]), ("JOB_INFO", C["text"])]:
             self._log.tag_config(tag, foreground=fg)
-        self._log.tag_config("STAGE_HEADER", foreground=C["mauve"],
-                             font=(FONT_MONO, 11, "bold"),
-                             background=C["surface0"],
+        self._log.tag_config("STAGE_HEADER", foreground=C["blue"],
+                             font=(FONT_MONO, 10, "bold"),
                              spacing1=12, spacing3=4)
         self._log.tag_config("STAGE_DONE", foreground=C["teal"],
                              font=(FONT_MONO, 10, "bold"),
                              spacing3=8)
-        self._log.tag_config("SUMMARY", foreground=C["green"],
+        self._log.tag_config("SUMMARY", foreground=C["text"],
                              font=(FONT_MONO, 10, "bold"))
         self._log.tag_config("HIGHLIGHT", background=C["yellow"], foreground=C["crust"])
 
@@ -898,7 +909,7 @@ class UiBuildMixin:
     # ── 하단 버튼 바 ─────────────────────────────────────────
     def _build_button_bar(self: "BatchRunnerGUI"):
         bar = tk.Frame(self, bg=C["crust"], pady=8)
-        bar.pack(fill="x", padx=10, pady=(4, 8))
+        bar.pack(side="bottom", fill="x", padx=10, pady=(4, 8))
 
         def _make_run_cmd(mode):
             def _cmd():
@@ -953,7 +964,7 @@ class UiBuildMixin:
         self._schedule_entry.bind("<FocusOut>", self._on_schedule_focus_out)
         self._schedule_entry.bind("<Return>", lambda e: self._on_schedule())
         self._schedule_btn = tk.Button(
-            bar, text="⏱ Reserve", font=FONTS["mono_small"],
+            bar, text="⏱ Schedule", font=FONTS["mono_small"],
             bg=C["surface0"], fg=C["subtext"], relief="flat", padx=8,
             activebackground=C["surface1"], command=self._on_schedule)
         self._schedule_btn.pack(side="left", padx=(0, 4))
