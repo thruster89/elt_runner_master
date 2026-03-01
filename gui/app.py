@@ -29,7 +29,7 @@ class BatchRunnerGUI(
         super().__init__()
         self.title(f"ELT Runner  v{APP_VERSION}")
         self.geometry("1340x800")
-        self.minsize(1000, 620)
+        self.minsize(1000, 660)
         self.configure(bg=C["base"])
 
         self._process: subprocess.Popen | None = None

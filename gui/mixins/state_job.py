@@ -515,7 +515,13 @@ class StateJobMixin:
         self._jobs = load_jobs(wd)
         self._env_hosts = load_env_hosts(wd, self._env_path_var.get()
                                          if hasattr(self, "_env_path_var") else "config/env.yml")
+        self._sync_combos()
 
+        self._log_sys(f"Project loaded: {wd}  (jobs={len(self._jobs)}, "
+                      f"env hosts={sum(len(v) for v in self._env_hosts.values())})")
+
+    def _sync_combos(self: "BatchRunnerGUI"):
+        """콤보박스 values 재설정 + 현재 job/source 반영 (파일 I/O 없음)"""
         job_names = list(self._jobs.keys())
         if hasattr(self, "_job_combo"):
             self._job_combo["values"] = job_names
@@ -533,9 +539,6 @@ class StateJobMixin:
                 if self._source_type_var.get() not in src_types:
                     self._source_type_var.set(src_types[0])
                 self._on_source_type_change()
-
-        self._log_sys(f"Project loaded: {wd}  (jobs={len(self._jobs)}, "
-                      f"env hosts={sum(len(v) for v in self._env_hosts.values())})")
 
     def _browse_workdir(self: "BatchRunnerGUI"):
         from tkinter import filedialog
@@ -605,6 +608,8 @@ class StateJobMixin:
                 self._ov_load_mode.set("replace")
 
     def _on_export_sql_dir_change(self: "BatchRunnerGUI"):
+        if self._restoring_job:
+            return
         sql_dir = self._export_sql_dir.get()
         if sql_dir:
             suggested = sql_dir.replace("sql/", "data/", 1)
@@ -616,9 +621,12 @@ class StateJobMixin:
     def _scan_and_suggest_params(self: "BatchRunnerGUI"):
         """
         export / transform / report SQL 디렉토리를 스테이지별로 스캔해서
+        (참고: _restoring_job 중이면 스킵 — 테마 전환 시 불필요한 재스캔 방지)
         발견된 파라미터를 Params 섹션에 그룹별 자동 제시.
         이미 사용자가 입력한 값은 항상 유지.
         """
+        if self._restoring_job:
+            return
         wd = Path(self._work_dir.get())
 
         def _resolve(rel):

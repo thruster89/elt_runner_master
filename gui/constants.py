@@ -145,19 +145,8 @@ def _load_bundled_fonts():
             gdi32.AddFontResourceExW(str(f.resolve()), FR_PRIVATE, 0)
 
 def _resolve_font():
-    """번들 폰트 로드 후, 없으면 Malgun Gothic fallback"""
-    global FONT_FAMILY
+    """번들 폰트 로드 (Tk 인스턴스 불필요 — 폰트 등록만 수행)"""
     _load_bundled_fonts()
-    try:
-        import tkinter as _tk
-        _r = _tk.Tk()
-        _r.withdraw()
-        available = _r.tk.call("font", "families")
-        _r.destroy()
-        if FONT_FAMILY not in available:
-            FONT_FAMILY = "Malgun Gothic"
-    except Exception:
-        FONT_FAMILY = "Malgun Gothic"
 
 _resolve_font()
 
@@ -169,6 +158,7 @@ FONTS = {
     "small":      (FONT_FAMILY, 9),
     "mono":       (FONT_MONO,   10),
     "mono_small": (FONT_MONO,   9),
+    "label":      (FONT_MONO,   10),
     "log":        (FONT_MONO,   10),
     "cmd":        (FONT_MONO,   10),
     "button":     (FONT_FAMILY, 11, "bold"),

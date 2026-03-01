@@ -39,5 +39,3 @@ report:
     out_dir: data/report
     max_files: 10
   csv_union_dir: .
-params:
-  clsYymm: '202303'

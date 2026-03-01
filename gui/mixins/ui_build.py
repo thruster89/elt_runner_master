@@ -302,26 +302,27 @@ class UiBuildMixin:
             "report":    self._report_params_frame,
         }
 
-        # 변경 감지 → preview 갱신
-        for ov_var in (self._ov_compression, self._ov_on_error,
-                       self._ov_load_mode, self._ov_union_dir, self._ov_timeout,
-                       self._export_sql_dir, self._export_out_dir,
-                       self._target_db_path, self._target_schema,
-                       self._transform_sql_dir, self._report_sql_dir,
-                       self._report_out_dir, self._source_host_var):
-            ov_var.trace_add("write", lambda *_: self._refresh_preview())
-        for var in (self.job_var, self.mode_var, self._env_path_var, self._debug_var):
-            var.trace_add("write", lambda *_: self._refresh_preview())
-        # auto-suggest 트리거 (export / transform / report sql_dir 변경 시 파라미터 재스캔)
-        self._export_sql_dir.trace_add("write", lambda *_: self.after(300, self._on_export_sql_dir_change))
-        self._transform_sql_dir.trace_add("write", lambda *_: self.after(300, self._scan_and_suggest_params))
-        self._report_sql_dir.trace_add("write", lambda *_: self.after(300, self._scan_and_suggest_params))
-        self._target_type_var.trace_add("write", lambda *_: self._refresh_preview())
-
-        # Stage BooleanVar → 가시성 연동
-        for stage_var in (self._stage_export, self._stage_load_local,
-                          self._stage_transform, self._stage_report):
-            stage_var.trace_add("write", lambda *_: self._update_section_visibility())
+        # 변경 감지 trace — 최초 1회만 등록 (테마 전환 시 중복 방지)
+        if not getattr(self, "_traces_registered", False):
+            for ov_var in (self._ov_compression, self._ov_on_error,
+                           self._ov_load_mode, self._ov_union_dir, self._ov_timeout,
+                           self._export_sql_dir, self._export_out_dir,
+                           self._target_db_path, self._target_schema,
+                           self._transform_sql_dir, self._report_sql_dir,
+                           self._report_out_dir, self._source_host_var):
+                ov_var.trace_add("write", lambda *_: self._refresh_preview())
+            for var in (self.job_var, self.mode_var, self._env_path_var, self._debug_var):
+                var.trace_add("write", lambda *_: self._refresh_preview())
+            # auto-suggest 트리거 (sql_dir 변경 시 파라미터 재스캔)
+            self._export_sql_dir.trace_add("write", lambda *_: self.after(300, self._on_export_sql_dir_change))
+            self._transform_sql_dir.trace_add("write", lambda *_: self.after(300, self._scan_and_suggest_params))
+            self._report_sql_dir.trace_add("write", lambda *_: self.after(300, self._scan_and_suggest_params))
+            self._target_type_var.trace_add("write", lambda *_: self._refresh_preview())
+            # Stage BooleanVar → 가시성 연동
+            for stage_var in (self._stage_export, self._stage_load_local,
+                              self._stage_transform, self._stage_report):
+                stage_var.trace_add("write", lambda *_: self._update_section_visibility())
+            self._traces_registered = True
 
         # 초기 가시성 설정
         self._update_section_visibility()
@@ -416,8 +417,8 @@ class UiBuildMixin:
     def _entry_row(self: "BatchRunnerGUI", parent_frame, label, var, **kw):
         row = tk.Frame(parent_frame, bg=C["mantle"])
         row.pack(fill="x", padx=12, pady=2)
-        tk.Label(row, text=label, font=FONTS["mono_small"],
-                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w").pack(side="left")
+        tk.Label(row, text=label, font=FONTS["label"],
+                 bg=C["mantle"], fg=C["text"], width=12, anchor="w").pack(side="left")
         e = tk.Entry(row, textvariable=var, bg=C["surface0"], fg=C["text"],
                      insertbackground=C["text"], relief="flat",
                      font=FONTS["mono"], **kw)
@@ -427,8 +428,8 @@ class UiBuildMixin:
     def _ov_row(self: "BatchRunnerGUI", parent_frame, label, widget_fn, note="", tooltip=""):
         r = tk.Frame(parent_frame, bg=C["mantle"])
         r.pack(fill="x", padx=12, pady=2)
-        lbl = tk.Label(r, text=label, font=FONTS["mono_small"], width=12, anchor="w",
-                       bg=C["mantle"], fg=C["subtext"])
+        lbl = tk.Label(r, text=label, font=FONTS["label"], width=12, anchor="w",
+                       bg=C["mantle"], fg=C["text"])
         lbl.pack(side="left")
         if tooltip:
             Tooltip(lbl, tooltip)
@@ -441,8 +442,8 @@ class UiBuildMixin:
         """경로 입력 + ... 버튼 행 (경로+버튼 우측 정렬)"""
         row = tk.Frame(parent_frame, bg=C["mantle"])
         row.pack(fill="x", padx=12, pady=2)
-        tk.Label(row, text=label, font=FONTS["mono_small"],
-                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w").pack(side="left")
+        tk.Label(row, text=label, font=FONTS["label"],
+                 bg=C["mantle"], fg=C["text"], width=12, anchor="w").pack(side="left")
         def _browse():
             wd = self._work_dir.get()
             d = filedialog.askdirectory(initialdir=var.get() or wd, title=browse_title)
@@ -476,8 +477,8 @@ class UiBuildMixin:
 
         col_l = tk.Frame(top_row, bg=C["mantle"])
         col_l.pack(side="left", fill="x", expand=True)
-        tk.Label(col_l, text="Target Type", font=FONTS["mono_small"],
-                 bg=C["mantle"], fg=C["subtext"]).pack(anchor="w")
+        tk.Label(col_l, text="Target Type", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["text"]).pack(anchor="w")
         self._target_type_combo = ttk.Combobox(
             col_l, textvariable=self._target_type_var,
             values=["duckdb", "sqlite3", "oracle"],
@@ -487,8 +488,8 @@ class UiBuildMixin:
 
         col_r = tk.Frame(top_row, bg=C["mantle"])
         col_r.pack(side="left", fill="x", expand=True, padx=(8, 0))
-        _lm_lbl = tk.Label(col_r, text="Load Mode", font=FONTS["mono_small"],
-                 bg=C["mantle"], fg=C["subtext"])
+        _lm_lbl = tk.Label(col_r, text="Load Mode", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["text"])
         _lm_lbl.pack(anchor="w")
         Tooltip(_lm_lbl, TOOLTIPS["load_mode"])
         self._load_mode_combo = ttk.Combobox(
@@ -500,8 +501,8 @@ class UiBuildMixin:
         # DB Path (duckdb/sqlite3)
         self._db_path_row = tk.Frame(body, bg=C["mantle"])
         self._db_path_row.pack(fill="x", padx=12, pady=2)
-        tk.Label(self._db_path_row, text="DB Path", font=FONTS["mono_small"],
-                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w").pack(side="left")
+        tk.Label(self._db_path_row, text="DB Path", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["text"], width=12, anchor="w").pack(side="left")
         tk.Entry(self._db_path_row, textvariable=self._target_db_path,
                  bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
                  relief="flat", font=FONTS["mono"], width=16).pack(side="left", fill="x", expand=True, ipady=2)
@@ -524,8 +525,8 @@ class UiBuildMixin:
 
         # Schema (oracle)
         self._schema_row = tk.Frame(body, bg=C["mantle"])
-        tk.Label(self._schema_row, text="Schema", font=FONTS["mono_small"],
-                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w").pack(side="left")
+        tk.Label(self._schema_row, text="Schema", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["text"], width=12, anchor="w").pack(side="left")
         tk.Entry(self._schema_row, textvariable=self._target_schema,
                  bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
                  relief="flat", font=FONTS["mono"], width=16).pack(side="left", fill="x", expand=True, ipady=2)
@@ -546,8 +547,8 @@ class UiBuildMixin:
 
         col_l = tk.Frame(src_row, bg=C["mantle"])
         col_l.pack(side="left", fill="x", expand=True)
-        tk.Label(col_l, text="Source Type", font=FONTS["mono_small"],
-                 bg=C["mantle"], fg=C["subtext"]).pack(anchor="w")
+        tk.Label(col_l, text="Source Type", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["text"]).pack(anchor="w")
         self._source_type_combo = ttk.Combobox(
             col_l, textvariable=self._source_type_var,
             state="readonly", font=FONTS["mono"])
@@ -556,8 +557,8 @@ class UiBuildMixin:
 
         col_r = tk.Frame(src_row, bg=C["mantle"])
         col_r.pack(side="left", fill="x", expand=True, padx=(8, 0))
-        tk.Label(col_r, text="Host", font=FONTS["mono_small"],
-                 bg=C["mantle"], fg=C["subtext"]).pack(anchor="w")
+        tk.Label(col_r, text="Host", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["text"]).pack(anchor="w")
         self._host_combo = ttk.Combobox(
             col_r, textvariable=self._source_host_var,
             state="readonly", font=FONTS["mono"])
@@ -570,8 +571,8 @@ class UiBuildMixin:
         # sql_dir + filter 버튼 (한 줄)
         sql_row = tk.Frame(body, bg=C["mantle"])
         sql_row.pack(fill="x", padx=12, pady=2)
-        tk.Label(sql_row, text="sql_dir", font=FONTS["mono_small"],
-                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w").pack(side="left")
+        tk.Label(sql_row, text="sql_dir", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["text"], width=12, anchor="w").pack(side="left")
         def _browse_sql():
             wd = self._work_dir.get()
             d = filedialog.askdirectory(initialdir=self._export_sql_dir.get() or wd,
@@ -611,16 +612,16 @@ class UiBuildMixin:
         opt_grid = tk.Frame(body, bg=C["mantle"])
         opt_grid.pack(fill="x", padx=12, pady=2)
         # row 0: overwrite ☐  |  compression [gzip]
-        _ow_lbl = tk.Label(opt_grid, text="overwrite", font=FONTS["mono_small"],
-                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w")
+        _ow_lbl = tk.Label(opt_grid, text="overwrite", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["text"], width=12, anchor="w")
         _ow_lbl.grid(row=0, column=0, sticky="w")
         Tooltip(_ow_lbl, TOOLTIPS["overwrite"])
         tk.Checkbutton(opt_grid, variable=self._ov_overwrite, text="",
                        bg=C["mantle"], fg=C["text"], selectcolor=C["surface0"],
                        activebackground=C["mantle"],
                        command=self._refresh_preview).grid(row=0, column=1, sticky="w")
-        _cp_lbl = tk.Label(opt_grid, text="compression", font=FONTS["mono_small"],
-                 bg=C["mantle"], fg=C["subtext"])
+        _cp_lbl = tk.Label(opt_grid, text="compression", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["text"])
         _cp_lbl.grid(row=0, column=2, sticky="w", padx=(16, 4))
         Tooltip(_cp_lbl, TOOLTIPS["compression"])
         ttk.Combobox(opt_grid, textvariable=self._ov_compression,
@@ -628,16 +629,16 @@ class UiBuildMixin:
                      font=FONTS["mono_small"], width=8).grid(row=0, column=3, sticky="w")
 
         # row 1: workers [1]  |  timeout [1800] sec
-        _wk_lbl = tk.Label(opt_grid, text="workers", font=FONTS["mono_small"],
-                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w")
+        _wk_lbl = tk.Label(opt_grid, text="workers", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["text"], width=12, anchor="w")
         _wk_lbl.grid(row=1, column=0, sticky="w", pady=2)
         Tooltip(_wk_lbl, TOOLTIPS["workers"])
         tk.Spinbox(opt_grid, from_=1, to=16, width=4, textvariable=self._ov_workers,
                    bg=C["surface0"], fg=C["text"], buttonbackground=C["surface1"],
                    relief="flat", font=FONTS["mono_small"],
                    command=self._refresh_preview).grid(row=1, column=1, sticky="w", pady=2)
-        _to_lbl = tk.Label(opt_grid, text="timeout", font=FONTS["mono_small"],
-                 bg=C["mantle"], fg=C["subtext"])
+        _to_lbl = tk.Label(opt_grid, text="timeout", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["text"])
         _to_lbl.grid(row=1, column=2, sticky="w", padx=(16, 4), pady=2)
         Tooltip(_to_lbl, TOOLTIPS["timeout"])
         to_frame = tk.Frame(opt_grid, bg=C["mantle"])
@@ -649,15 +650,15 @@ class UiBuildMixin:
                  bg=C["mantle"], fg=C["subtext"]).pack(side="left", padx=(4, 0))
 
         # row 2: name_style [full] | strip_prefix ☐
-        _ns_lbl = tk.Label(opt_grid, text="name_style", font=FONTS["mono_small"],
-                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w")
+        _ns_lbl = tk.Label(opt_grid, text="name_style", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["text"], width=12, anchor="w")
         _ns_lbl.grid(row=2, column=0, sticky="w", pady=2)
         Tooltip(_ns_lbl, TOOLTIPS["name_style"])
         ttk.Combobox(opt_grid, textvariable=self._ov_name_style,
                      values=["full", "compact"], state="readonly",
                      font=FONTS["mono_small"], width=8).grid(row=2, column=1, sticky="w", pady=2)
-        _sp_lbl = tk.Label(opt_grid, text="strip_prefix", font=FONTS["mono_small"],
-                 bg=C["mantle"], fg=C["subtext"])
+        _sp_lbl = tk.Label(opt_grid, text="strip_prefix", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["text"])
         _sp_lbl.grid(row=2, column=2, sticky="w", padx=(16, 4), pady=2)
         Tooltip(_sp_lbl, TOOLTIPS["strip_prefix"])
         tk.Checkbutton(opt_grid, variable=self._ov_strip_prefix, text="",
@@ -737,8 +738,8 @@ class UiBuildMixin:
         # report.csv_union_dir
         union_row = tk.Frame(body, bg=C["mantle"])
         union_row.pack(fill="x", padx=12, pady=2)
-        _union_lbl = tk.Label(union_row, text="union_dir", font=FONTS["mono_small"],
-                 width=12, anchor="w", bg=C["mantle"], fg=C["subtext"])
+        _union_lbl = tk.Label(union_row, text="union_dir", font=FONTS["label"],
+                 width=12, anchor="w", bg=C["mantle"], fg=C["text"])
         _union_lbl.pack(side="left")
         Tooltip(_union_lbl, TOOLTIPS["union_dir"])
         tk.Entry(union_row, textvariable=self._ov_union_dir,
@@ -867,7 +868,7 @@ class UiBuildMixin:
         self._log = tk.Text(
             log_frame, bg=C["crust"], fg=C["text"],
             font=FONTS["log"], relief="flat", bd=8, wrap="word",
-            spacing1=2, spacing3=2
+            spacing1=3, spacing3=3
         )
         log_vsb = ttk.Scrollbar(log_frame, orient="vertical", command=self._log.yview)
         self._log.configure(yscrollcommand=log_vsb.set)

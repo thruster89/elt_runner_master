@@ -148,12 +148,19 @@ class DialogsMixin:
         self._build_style()
         # UI 재빌드
         self._build_ui()
-        # 상태 복원
+        # 상태 복원 — 파일 I/O·job 재파싱 없이 콤보 옵션만 복원
+        self._restoring_job = True
         self._work_dir.set(wd)
-        self._reload_project()
-        # 테마 드롭다운을 새 theme_var에 연결
+        if hasattr(self, "_job_combo"):
+            self._job_combo["values"] = list(self._jobs.keys())
+        if hasattr(self, "_source_type_combo"):
+            src_types = list(self._env_hosts.keys())
+            if src_types:
+                self._source_type_combo["values"] = src_types
         self._theme_var.set(theme_name)
         self._restore_snapshot(snap)
+        self._restoring_job = False
+        self._capture_loaded_snapshot()
 
     def _open_in_explorer(self: "BatchRunnerGUI", path_str):
         """OS 파일 탐색기에서 경로를 연다"""
