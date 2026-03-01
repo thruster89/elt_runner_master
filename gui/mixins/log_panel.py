@@ -48,9 +48,9 @@ class LogPanelMixin:
         if level == "ALL":
             return True
         if level == "SUM":
-            return tag in ("SYS", "JOB_INFO", "STAGE_HEADER", "STAGE_DONE", "SUMMARY", "ERROR", "WARN")
+            return tag in ("SYS", "JOB_INFO", "STAGE_HEADER", "STAGE_DONE", "SUMMARY", "SUCCESS", "ERROR", "WARN")
         if level == "WARN+":
-            return tag in ("WARN", "ERROR", "STAGE_HEADER", "STAGE_DONE", "SYS")
+            return tag in ("WARN", "ERROR", "STAGE_HEADER", "STAGE_DONE", "SYS", "JOB_INFO")
         if level == "ERR":
             return tag in ("ERROR",)
         return True

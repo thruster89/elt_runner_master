@@ -95,7 +95,7 @@ class RunControlMixin:
             m = stage_pat.search(line)
             if m:
                 cur, total = int(m.group(1)), int(m.group(2))
-                pct = int((cur - 1) / total * 100)
+                pct = int(cur / total * 100)
                 label = f"Stage {cur}/{total}"
                 self.after(0, self._update_progress, pct, label)
         ret = self._process.wait()

@@ -179,6 +179,7 @@ class StateJobMixin:
                 "compression": self._ov_compression.get(),
                 "csv_name_style": self._ov_name_style.get(),
                 "csv_strip_prefix": self._ov_strip_prefix.get(),
+                "timeout_seconds": int(self._ov_timeout.get() or 1800),
                 "format": "csv",
             },
             "load": {
@@ -308,6 +309,7 @@ class StateJobMixin:
         self._target_db_path.set(tgt.get("db_path", "data/local/result.duckdb"))
         self._target_schema.set(tgt.get("schema", ""))
         self._update_target_visibility()
+        self._update_load_mode_options()
 
         # Export paths
         exp = cfg.get("export", {})
@@ -338,6 +340,7 @@ class StateJobMixin:
         self._ov_compression.set(str(exp.get("compression", "gzip")))
         self._ov_name_style.set(str(exp.get("csv_name_style", "full")))
         self._ov_strip_prefix.set(bool(exp.get("csv_strip_prefix", False)))
+        self._ov_timeout.set(str(exp.get("timeout_seconds", "1800")))
         self._ov_load_mode.set(str(cfg.get("load", {}).get("mode", "replace")))
         self._ov_on_error.set(str(tfm.get("on_error", "stop")))
         self._ov_excel.set(bool(rep.get("excel", {}).get("enabled", True)))
