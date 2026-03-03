@@ -526,6 +526,18 @@ def main():
     run_dir = export_base / job_name / run_id
     write_run_info(run_dir, ctx, start_time_str)
 
+    # ── Pre-run Validation ────────────────────────────────
+    from engine.validator import validate_pre_run
+    val_errors, val_warnings = validate_pre_run(ctx)
+    if val_warnings:
+        for w in val_warnings:
+            logger.warning("VALIDATE | %s", w)
+    if val_errors:
+        for e in val_errors:
+            logger.error("VALIDATE | %s", e)
+        logger.error("Pre-run validation failed (%d errors). Aborting.", len(val_errors))
+        sys.exit(1)
+
     run_pipeline(ctx)
     elapsed = time.time() - job_start_time   
     logger.info("Job finished | elapsed=%.2fs", elapsed)  
