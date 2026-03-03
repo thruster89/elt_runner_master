@@ -110,6 +110,7 @@ def _run_csv_export(ctx, report_cfg, cfg) -> list:
              or ""
     if schema:
         if conn_type == "duckdb":
+            conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
             conn.execute(f"SET schema = '{schema}'")
         elif conn_type == "oracle":
             cur = conn.cursor()
