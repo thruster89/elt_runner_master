@@ -68,7 +68,6 @@ def get_thread_connection(source_type, env_cfg, host_name):
     """
     thread마다 connection 1개 재사용.
     Oracle thick 모드에서만 _conn_recycle_interval마다 연결 갱신 (OCI 메모리 누적 방지).
-    생성된 connection은 _thread_connections에 추적하여 나중에 일괄 정리.
     """
     use_count = getattr(_thread_local, "use_count", 0)
 
@@ -76,11 +75,17 @@ def get_thread_connection(source_type, env_cfg, host_name):
         if not _need_recycle(source_type, use_count):
             _thread_local.use_count = use_count + 1
             return _thread_local.conn
-        # 재활용 한도 도달 → 기존 연결 닫고 새로 생성
+        # 재활용 한도 도달 → 기존 연결 닫고 리스트에서도 제거
+        old_conn = _thread_local.conn
         try:
-            _thread_local.conn.close()
+            old_conn.close()
         except Exception:
             pass
+        with _conn_list_lock:
+            try:
+                _thread_connections.remove(old_conn)
+            except ValueError:
+                pass
         _thread_local.conn = None
 
     conn = _new_connection(source_type, env_cfg, host_name)
@@ -725,9 +730,19 @@ def run(ctx: RunContext):
                                 rows=rows or 0, elapsed=elapsed)
 
         except Exception as e:
-            # 커넥션 오류 시 thread-local에서 제거 → 다음 task에서 새 커넥션 생성
-            _thread_local.__dict__.pop("conn", None)
+            # 커넥션 오류 시 즉시 close + thread-local에서 제거 → 다음 task에서 새 커넥션 생성
+            bad_conn = _thread_local.__dict__.pop("conn", None)
             _thread_local.__dict__.pop("use_count", None)
+            if bad_conn:
+                try:
+                    bad_conn.close()
+                except Exception:
+                    pass
+                with _conn_list_lock:
+                    try:
+                        _thread_connections.remove(bad_conn)
+                    except ValueError:
+                        pass
             logger.exception("%s EXPORT failed: %s", prefix, e)
             _update_task_status(run_info_path, task_key, "failed", error=str(e))
 
