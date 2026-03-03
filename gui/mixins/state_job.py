@@ -541,7 +541,16 @@ class StateJobMixin:
                 self._source_type_combo["values"] = src_types
                 if self._source_type_var.get() not in src_types:
                     self._source_type_var.set(src_types[0])
-                self._on_source_type_change()
+                    self._on_source_type_change()
+                else:
+                    # source type 유지 → 호스트 목록만 갱신, 기존 선택 보존
+                    src_type = self._source_type_var.get()
+                    hosts = self._env_hosts.get(src_type, [])
+                    if hasattr(self, "_host_combo"):
+                        self._host_combo["values"] = hosts
+                    if self._source_host_var.get() not in hosts:
+                        self._source_host_var.set(hosts[0] if hosts else "")
+                    self._refresh_preview()
 
     def _browse_workdir(self: "BatchRunnerGUI"):
         from tkinter import filedialog
