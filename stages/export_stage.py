@@ -272,6 +272,35 @@ def backup_existing_file(file_path: Path, backup_dir: Path, keep: int = 10):
         backups.pop(0)
 
 
+def _cleanup_alt_ext(out_file: Path, backup_dir: Path, keep: int, logger):
+    """compression 전환 시 반대 확장자의 orphan 파일(+meta.json) 정리.
+
+    예: gzip→csv 전환 시, 같은 이름의 .csv.gz 가 남아있으면
+    LOAD에서 중복 로드되므로 백업 후 제거한다.
+    """
+    name = out_file.name
+    if name.endswith(".csv.gz"):
+        alt = out_file.parent / (name[:-len(".gz")])       # .csv.gz → .csv
+    elif name.endswith(".csv"):
+        alt = out_file.parent / (name + ".gz")             # .csv → .csv.gz
+    else:
+        return
+
+    if alt.exists():
+        logger.info("Removing orphan (alt extension): %s", alt.name)
+        backup_existing_file(alt, backup_dir, keep)
+        # 대응하는 orphan meta.json도 정리
+        alt_stem = alt.name[:-len(".csv.gz")] if alt.name.endswith(".csv.gz") else alt.name[:-len(".csv")]
+        alt_meta = alt.parent / (alt_stem + ".meta.json")
+        if alt_meta.exists():
+            # meta.json은 현재 파일의 것과 같은 이름이므로 중복 삭제하지 않음
+            # (out_file과 alt의 stem이 동일하면 같은 meta.json을 공유)
+            out_stem = name[:-len(".csv.gz")] if name.endswith(".csv.gz") else name[:-len(".csv")]
+            if alt_stem != out_stem:
+                alt_meta.unlink()
+                logger.debug("Removed orphan meta: %s", alt_meta.name)
+
+
 def build_log_prefix(sql_file: Path, params: dict) -> str:
     if not params:
         return f"[{sql_file.stem}]"
@@ -673,6 +702,9 @@ def run(ctx: RunContext):
                 size_mb,
                 elapsed
             )
+
+            # compression 전환 시 이전 확장자 orphan 제거 (.csv ↔ .csv.gz)
+            _cleanup_alt_ext(out_file, out_dir / "_backup", backup_keep, logger)
 
             _update_task_status(run_info_path, task_key, "success",
                                 rows=rows or 0, elapsed=elapsed)
