@@ -86,9 +86,13 @@ class DialogsMixin:
         selected_stages = [s for s in ("export", "load_local", "transform", "report")
                            if getattr(self, f"_stage_{s}").get()]
         stages_str = " → ".join(selected_stages) if selected_stages else "(all)"
-        params = {k.get().strip(): v.get().strip()
-                  for k, v in self._param_entries
-                  if k.get().strip() and v.get().strip()}
+        params = {}
+        for stage in ("export", "transform", "report"):
+            if getattr(self, f"_stage_{stage}").get():
+                for k_var, v_var in self._stage_param_entries.get(stage, []):
+                    k, v = k_var.get().strip(), v_var.get().strip()
+                    if k and v:
+                        params[k] = v
         params_str = ", ".join(f"{k}={v}" for k, v in params.items())
         timeout_val = self._ov_timeout.get().strip() or "1800"
         ov_on = self._ov_overwrite.get()

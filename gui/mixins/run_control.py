@@ -209,11 +209,16 @@ class RunControlMixin:
         if self._debug_var.get():
             cmd.append("--debug")
 
-        # params (yml에도 있지만 CLI 전달도 유지)
-        for k_var, v_var in self._param_entries:
-            k, v = k_var.get().strip(), v_var.get().strip()
-            if k and v:
-                cmd += ["--param", f"{k}={v}"]
+        # params — 활성 스테이지의 params만 포함
+        seen_params: set[str] = set()
+        for stage in ("export", "transform", "report"):
+            stage_var = f"_stage_{stage}"
+            if getattr(self, stage_var).get():
+                for k_var, v_var in self._stage_param_entries.get(stage, []):
+                    k, v = k_var.get().strip(), v_var.get().strip()
+                    if k and v and k not in seen_params:
+                        cmd += ["--param", f"{k}={v}"]
+                        seen_params.add(k)
 
         # stages (전부 선택이거나 아무것도 없으면 생략)
         selected_stages = [s for s in ("export", "load_local", "transform", "report")

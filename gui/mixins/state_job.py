@@ -47,7 +47,12 @@ class StateJobMixin:
             "stage_transform":  self._stage_transform.get(),
             "stage_report":     self._stage_report.get(),
             "param_mode":  self._param_mode_var.get(),
-            "params":      [(k.get(), v.get()) for k, v in self._param_entries],
+            "transform_param_mode": self._transform_param_mode_var.get(),
+            "report_param_mode":    self._report_param_mode_var.get(),
+            "stage_params": {
+                stage: [(k.get(), v.get()) for k, v in entries]
+                for stage, entries in self._stage_param_entries.items()
+            },
             "overrides": {
                 "overwrite":    self._ov_overwrite.get(),
                 "workers":      self._ov_workers.get(),
@@ -96,7 +101,14 @@ class StateJobMixin:
             self._refresh_stage_buttons()
 
         self._param_mode_var.set(snap.get("param_mode", "product"))
-        self._refresh_param_rows(snap.get("params", []))
+        self._transform_param_mode_var.set(snap.get("transform_param_mode", "product"))
+        self._report_param_mode_var.set(snap.get("report_param_mode", "product"))
+        stage_params = snap.get("stage_params")
+        if stage_params and isinstance(stage_params, dict):
+            self._refresh_param_rows_from_stages(stage_params)
+        else:
+            # 구 형식 호환: flat list → export 스테이지에 배치
+            self._refresh_param_rows(snap.get("params", []))
 
         self.mode_var.set(snap.get("mode", "run"))
         self._env_path_var.set(snap.get("env_path", "config/env.yml"))
@@ -165,8 +177,15 @@ class StateJobMixin:
         """GUI 전체 상태를 job yml dict로 조립"""
         stages = [s for s in ("export", "load_local", "transform", "report")
                   if getattr(self, f"_stage_{s}").get()]
-        params = {k.get().strip(): v.get().strip()
-                  for k, v in self._param_entries if k.get().strip() and v.get().strip()}
+        # 활성 스테이지의 params만 수집 (top-level 병합용)
+        params = {}
+        for stage in ("export", "transform", "report"):
+            stage_var = f"_stage_{stage}"
+            if getattr(self, stage_var).get():
+                for k_var, v_var in self._stage_param_entries.get(stage, []):
+                    k, v = k_var.get().strip(), v_var.get().strip()
+                    if k and v:
+                        params[k] = v
 
         cfg = {
             "job_name": self._jobs.get(self.job_var.get(), {}).get("job_name", "gui_run"),
@@ -185,6 +204,11 @@ class StateJobMixin:
                 "csv_strip_prefix": self._ov_strip_prefix.get(),
                 "timeout_seconds": int(self._ov_timeout.get() or 1800),
                 "format": "csv",
+                **({"params": {k.get().strip(): v.get().strip()
+                    for k, v in self._stage_param_entries.get("export", [])
+                    if k.get().strip() and v.get().strip()}}
+                   if any(k.get().strip() for k, _ in self._stage_param_entries.get("export", [])) else {}),
+                "param_mode": self._param_mode_var.get(),
             },
             "load": {
                 "mode": self._ov_load_mode.get(),
@@ -199,6 +223,11 @@ class StateJobMixin:
                 "on_error": self._ov_on_error.get(),
                 **({"schema": self._transform_schema.get().strip()}
                    if self._transform_schema.get().strip() else {}),
+                **({"params": {k.get().strip(): v.get().strip()
+                    for k, v in self._stage_param_entries.get("transform", [])
+                    if k.get().strip() and v.get().strip()}}
+                   if any(k.get().strip() for k, _ in self._stage_param_entries.get("transform", [])) else {}),
+                "param_mode": self._transform_param_mode_var.get(),
             },
             "report": {
                 "source": "target",
@@ -214,6 +243,11 @@ class StateJobMixin:
                     "out_dir": self._report_out_dir.get(),
                     "max_files": self._ov_max_files.get(),
                 },
+                **({"params": {k.get().strip(): v.get().strip()
+                    for k, v in self._stage_param_entries.get("report", [])
+                    if k.get().strip() and v.get().strip()}}
+                   if any(k.get().strip() for k, _ in self._stage_param_entries.get("report", [])) else {}),
+                "param_mode": self._report_param_mode_var.get(),
             },
         }
         if params:
@@ -364,12 +398,28 @@ class StateJobMixin:
         self._ov_max_files.set(int(rep.get("excel", {}).get("max_files", 10)))
         self._ov_union_dir.set(str(rep.get("csv_union_dir", "")))
 
-        # Param mode
-        self._param_mode_var.set(cfg.get("param_mode", "product"))
+        # Param mode (per-stage)
+        self._param_mode_var.set(exp.get("param_mode", cfg.get("param_mode", "product")))
+        self._transform_param_mode_var.set(tfm.get("param_mode", "product"))
+        self._report_param_mode_var.set(rep.get("param_mode", "product"))
 
-        # Params
-        params = cfg.get("params", {})
-        self._refresh_param_rows(list(params.items()))
+        # Params — per-stage 우선, 없으면 top-level fallback
+        exp_params = exp.get("params", {})
+        tfm_params = tfm.get("params", {})
+        rep_params = rep.get("params", {})
+        if exp_params or tfm_params or rep_params:
+            grouped = []
+            if exp_params:
+                grouped.append(("export", list(exp_params.items())))
+            if tfm_params:
+                grouped.append(("transform", list(tfm_params.items())))
+            if rep_params:
+                grouped.append(("report", list(rep_params.items())))
+            self._refresh_param_rows_grouped(grouped)
+        else:
+            # 구 형식: top-level params → export에 배치 후 scan으로 재분배
+            params = cfg.get("params", {})
+            self._refresh_param_rows(list(params.items()))
         self.after(50, self._scan_and_suggest_params)
 
         # SQL 선택 초기화
@@ -727,12 +777,19 @@ class StateJobMixin:
         if not all_detected:
             return
 
-        # 현재 params (사용자 입력값)
-        current = {k.get(): v.get() for k, v in self._param_entries if k.get()}
+        # 현재 params (사용자 입력값) — 모든 스테이지에서 수집
+        current = {}
+        for entries in self._stage_param_entries.values():
+            for k, v in entries:
+                if k.get():
+                    current[k.get()] = v.get()
 
-        # yml 기본값 (job 선택 시 참조)
+        # yml 기본값 (job 선택 시 참조) — per-stage + top-level 병합
         fname = self.job_var.get()
-        yml_params = self._jobs.get(fname, {}).get("params", {}) if fname else {}
+        yml_cfg = self._jobs.get(fname, {}) if fname else {}
+        yml_params = dict(yml_cfg.get("params", {}))
+        for s in ("export", "transform", "report"):
+            yml_params.update(yml_cfg.get(s, {}).get("params", {}))
 
         def _val(p):
             if p in current:
@@ -856,7 +913,7 @@ class StateJobMixin:
         for frame in self._stage_params_frames.values():
             for w in frame.winfo_children():
                 w.destroy()
-        self._param_entries = []
+        self._stage_param_entries = {"export": [], "transform": [], "report": []}
         for k, v in pairs:
             self._add_param_row(k, str(v), stage="export")
 
@@ -865,9 +922,20 @@ class StateJobMixin:
         for frame in self._stage_params_frames.values():
             for w in frame.winfo_children():
                 w.destroy()
-        self._param_entries = []
+        self._stage_param_entries = {"export": [], "transform": [], "report": []}
 
         for stage, pairs in grouped:
+            target = stage if stage in self._stage_params_frames else "export"
+            for k, v in pairs:
+                self._add_param_row(k, str(v), stage=target)
+
+    def _refresh_param_rows_from_stages(self: "BatchRunnerGUI", stage_data: dict):
+        """per-stage params dict에서 복원 (스냅샷용)"""
+        for frame in self._stage_params_frames.values():
+            for w in frame.winfo_children():
+                w.destroy()
+        self._stage_param_entries = {"export": [], "transform": [], "report": []}
+        for stage, pairs in stage_data.items():
             target = stage if stage in self._stage_params_frames else "export"
             for k, v in pairs:
                 self._add_param_row(k, str(v), stage=target)
@@ -876,7 +944,9 @@ class StateJobMixin:
         frame = self._stage_params_frames.get(stage, self._export_params_frame)
         k_var = tk.StringVar(value=key)
         v_var = tk.StringVar(value=value)
-        self._param_entries.append((k_var, v_var))
+        if stage not in self._stage_param_entries:
+            self._stage_param_entries[stage] = []
+        self._stage_param_entries[stage].append((k_var, v_var))
         k_var.trace_add("write", lambda *_: self._refresh_preview())
         v_var.trace_add("write", lambda *_: self._refresh_preview())
 
@@ -892,10 +962,10 @@ class StateJobMixin:
                  insertbackground=C["text"], relief="flat", font=FONTS["mono"],
                  width=8).pack(side="left", padx=(2, 0), fill="x", expand=True, ipady=2)
 
-        def remove(r=row, pair=(k_var, v_var)):
+        def remove(r=row, pair=(k_var, v_var), s=stage):
             r.destroy()
-            if pair in self._param_entries:
-                self._param_entries.remove(pair)
+            if pair in self._stage_param_entries.get(s, []):
+                self._stage_param_entries[s].remove(pair)
             self._refresh_preview()
         tk.Button(row, text="X", font=FONTS["shortcut"], bg=C["mantle"],
                   fg=C["subtext"], relief="flat", padx=4,
