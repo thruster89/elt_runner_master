@@ -181,6 +181,8 @@ TOOLTIPS = {
     # Load
     "load_mode":    "replace: DROP + CREATE\ntruncate: TRUNCATE + INSERT\n"
                     "delete: param WHERE 조건 DELETE + INSERT\nappend: INSERT만 (이미 있으면 건너뜀)",
+    "csv_dir":      "Load 대상 CSV 디렉토리\n비워두면 Export Output Dir 사용\n"
+                    "Export 없이 Load만 실행 시 별도 지정",
     # Transform
     "schema":       "SQL 실행 시 세션 스키마\nDuckDB: SET schema / Oracle: ALTER SESSION",
     "on_error":     "에러 발생 시 동작\nstop: 즉시 중단 / continue: 나머지 계속 실행",

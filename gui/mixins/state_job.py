@@ -36,6 +36,7 @@ class StateJobMixin:
             "target_schema":  self._target_schema.get(),
             "export_sql_dir": self._export_sql_dir.get(),
             "export_out_dir": self._export_out_dir.get(),
+            "load_csv_dir":   self._load_csv_dir.get(),
             "transform_schema":  self._transform_schema.get(),
             "transform_sql_dir": self._transform_sql_dir.get(),
             "report_sql_dir":    self._report_sql_dir.get(),
@@ -79,6 +80,7 @@ class StateJobMixin:
 
         self._export_sql_dir.set(snap.get("export_sql_dir", "sql/export"))
         self._export_out_dir.set(snap.get("export_out_dir", "data/export"))
+        self._load_csv_dir.set(snap.get("load_csv_dir", ""))
         self._transform_schema.set(snap.get("transform_schema", ""))
         self._transform_sql_dir.set(snap.get("transform_sql_dir", "sql/transform/duckdb"))
         self._report_sql_dir.set(snap.get("report_sql_dir", "sql/report"))
@@ -184,6 +186,8 @@ class StateJobMixin:
             },
             "load": {
                 "mode": self._ov_load_mode.get(),
+                **({"csv_dir": self._load_csv_dir.get().strip()}
+                   if self._load_csv_dir.get().strip() else {}),
             },
             "target": {
                 "type": self._target_type_var.get(),
@@ -315,6 +319,10 @@ class StateJobMixin:
         exp = cfg.get("export", {})
         self._export_sql_dir.set(exp.get("sql_dir", "sql/export"))
         self._export_out_dir.set(exp.get("out_dir", "data/export"))
+
+        # Load
+        load_cfg = cfg.get("load", {})
+        self._load_csv_dir.set(load_cfg.get("csv_dir", ""))
 
         # Transform / Report paths
         tfm = cfg.get("transform", {})

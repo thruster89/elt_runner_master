@@ -67,21 +67,28 @@ def run(ctx: RunContext):
 
     # logger.info("LOAD stage start")
 
+    load_cfg   = job_cfg.get("load", {})
     export_cfg = job_cfg.get("export", {})
-    if not export_cfg:
-        logger.info("LOAD stage skipped (no export config)")
-        return
 
     target_cfg = job_cfg.get("target", {})
     if not target_cfg:
         logger.info("LOAD stage skipped (no target config)")
         return
 
-    export_base = resolve_path(ctx, export_cfg.get("out_dir", "data/export"))
+    # csv_dir 결정: load.csv_dir 우선, 없으면 export.out_dir 폴백
+    csv_dir_str = (load_cfg.get("csv_dir") or "").strip()
+    if csv_dir_str:
+        export_base = resolve_path(ctx, csv_dir_str)
+    elif export_cfg:
+        export_base = resolve_path(ctx, export_cfg.get("out_dir", "data/export"))
+    else:
+        logger.info("LOAD stage skipped (no csv_dir / export config)")
+        return
+
     export_dir = export_base / ctx.job_name
     if not export_dir.exists():
         if ctx.mode == "plan":
-            logger.info("LOAD [PLAN] export dir not found: %s (export 실행 후 확인 가능)", export_dir)
+            logger.info("LOAD [PLAN] csv dir not found: %s (export 실행 후 확인 가능)", export_dir)
             return
         export_dir = export_base
 
