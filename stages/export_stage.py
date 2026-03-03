@@ -10,6 +10,7 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from adapters.sources.oracle_client import init_oracle_client, get_oracle_conn
+from adapters.sources import oracle_client as _oc
 from adapters.sources.vertica_client import get_vertica_conn
 from engine.context import RunContext
 from engine.path_utils import resolve_path
@@ -54,16 +55,25 @@ def _new_connection(source_type, env_cfg, host_name):
     raise ValueError(f"Unsupported source type: {source_type}")
 
 
+def _need_recycle(source_type, use_count):
+    """Oracle thick 모드에서만 OCI 메모리 누적 방지를 위해 recycle 필요."""
+    if source_type != "oracle":
+        return False
+    if _oc._oracle_client_mode != "thick":
+        return False
+    return use_count >= _conn_recycle_interval
+
+
 def get_thread_connection(source_type, env_cfg, host_name):
     """
     thread마다 connection 1개 재사용.
-    _conn_recycle_interval 횟수마다 연결을 갱신하여 OCI 메모리 누적 방지.
+    Oracle thick 모드에서만 _conn_recycle_interval마다 연결 갱신 (OCI 메모리 누적 방지).
     생성된 connection은 _thread_connections에 추적하여 나중에 일괄 정리.
     """
     use_count = getattr(_thread_local, "use_count", 0)
 
     if hasattr(_thread_local, "conn") and _thread_local.conn:
-        if use_count < _conn_recycle_interval:
+        if not _need_recycle(source_type, use_count):
             _thread_local.use_count = use_count + 1
             return _thread_local.conn
         # 재활용 한도 도달 → 기존 연결 닫고 새로 생성
