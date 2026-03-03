@@ -241,17 +241,16 @@ def _run_load_loop(ctx, logger, csv_files, sql_map, tgt_type, load_fn):
             table_name = resolve_table_name(sql_file)
             override_mode = None
         else:
-            # SQL 없음 → 파일명(__앞부분)을 테이블명으로 사용, INSERT 모드 강제
+            # SQL 없음 → 파일명(__앞부분)을 테이블명으로 사용
             table_name = sqlname
-            override_mode = "append"
+            override_mode = None
 
         file_hash = _sha256_file(csv_path)
 
-        if override_mode:
-            logger.info("LOAD [%d/%d] | table=%s (direct) | file=%s | mode=append",
-                        i, total, table_name, csv_path.name)
-        else:
+        if sql_file:
             logger.info("LOAD [%d/%d] | table=%s | file=%s", i, total, table_name, csv_path.name)
+        else:
+            logger.info("LOAD [%d/%d] | table=%s (direct) | file=%s", i, total, table_name, csv_path.name)
 
         try:
             result = load_fn(table_name, csv_path, file_hash, override_mode)
