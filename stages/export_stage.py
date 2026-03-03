@@ -164,7 +164,11 @@ def expand_range_value(value: str):
     return result
 
 
-def expand_params(params: dict, mode: str = "product"):
+MAX_PARAM_COMBINATIONS = 10_000
+
+
+def expand_params(params: dict, mode: str = "product",
+                  max_combinations: int | None = None):
     """파라미터 값을 확장하여 조합 리스트 반환.
 
     mode:
@@ -175,11 +179,16 @@ def expand_params(params: dict, mode: str = "product"):
         "|" — 다중 값 확장 (예: critYm=201809|202001)
         ":" — 범위 확장   (예: critYm=201801:201812)
         ","  — 그대로 전달 (SQL IN 절 등에서 사용)
+
+    max_combinations:
+        조합수 상한. None이면 MAX_PARAM_COMBINATIONS 사용.
+        초과 시 ValueError 발생.
     """
     from itertools import product as iproduct
     import logging
 
     logger = logging.getLogger(__name__)
+    limit = max_combinations if max_combinations is not None else MAX_PARAM_COMBINATIONS
 
     multi_keys = []
     values = []
@@ -199,6 +208,18 @@ def expand_params(params: dict, mode: str = "product"):
         else:
             values.append([v_str])
 
+    # 조합수 사전 검증 (product 모드)
+    if mode != "zip" and values:
+        total = 1
+        for v in values:
+            total *= len(v)
+            if total > limit:
+                detail = ", ".join(f"{k}={len(v)}" for k, v in zip(multi_keys, values))
+                raise ValueError(
+                    f"파라미터 조합수가 상한({limit:,})을 초과합니다: "
+                    f"총 {total:,}+ 조합 ({detail})"
+                )
+
     expanded = []
     if mode == "zip":
         # 다중값(2개 이상) 파라미터들의 길이가 같은지 검증
@@ -211,6 +232,11 @@ def expand_params(params: dict, mode: str = "product"):
                     f"zip 모드에서는 다중값 파라미터의 개수가 같아야 합니다: {detail}"
                 )
             zip_len = multi_lengths[0][1]
+            if zip_len > limit:
+                raise ValueError(
+                    f"파라미터 조합수가 상한({limit:,})을 초과합니다: "
+                    f"{zip_len:,} 조합"
+                )
             # 단일값 파라미터는 zip_len만큼 반복
             aligned = [v if len(v) > 1 else v * zip_len for v in values]
         else:

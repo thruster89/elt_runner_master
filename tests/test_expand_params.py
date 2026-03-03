@@ -1,6 +1,6 @@
 """expand_params / expand_range_value 단위 테스트."""
 import pytest
-from stages.export_stage import expand_params, expand_range_value
+from stages.export_stage import expand_params, expand_range_value, MAX_PARAM_COMBINATIONS
 
 
 # =====================================================================
@@ -179,3 +179,55 @@ class TestExpandParamsZip:
         assert len(result) == 3
         assert result[0] == {"ym": "202301", "code": "A"}
         assert result[2] == {"ym": "202303", "code": "C"}
+
+
+# =====================================================================
+# expand_params — 조합수 상한
+# =====================================================================
+class TestExpandParamsLimit:
+    """조합수 상한 초과 시 ValueError 테스트."""
+
+    def test_product_exceeds_default_limit(self):
+        """기본 상한(MAX_PARAM_COMBINATIONS) 초과 시 ValueError."""
+        # 200 * 200 = 40,000 > 10,000
+        vals_200 = "|".join(str(i) for i in range(200))
+        with pytest.raises(ValueError, match="상한"):
+            expand_params({"a": vals_200, "b": vals_200})
+
+    def test_product_within_limit(self):
+        """상한 이내면 정상 동작."""
+        vals_10 = "|".join(str(i) for i in range(10))
+        result = expand_params({"a": vals_10, "b": vals_10})
+        assert len(result) == 100
+
+    def test_custom_max_combinations(self):
+        """max_combinations 파라미터로 상한 커스텀."""
+        vals_5 = "1|2|3|4|5"
+        # 5 * 5 = 25 > 10
+        with pytest.raises(ValueError, match="상한"):
+            expand_params({"a": vals_5, "b": vals_5}, max_combinations=10)
+        # 25 <= 25 이면 통과
+        result = expand_params({"a": vals_5, "b": vals_5}, max_combinations=25)
+        assert len(result) == 25
+
+    def test_zip_exceeds_limit(self):
+        """zip 모드도 상한 초과 시 ValueError."""
+        vals = "|".join(str(i) for i in range(20))
+        with pytest.raises(ValueError, match="상한"):
+            expand_params({"a": vals}, mode="zip", max_combinations=10)
+
+    def test_zip_within_limit(self):
+        """zip 모드 상한 이내 정상."""
+        vals = "1|2|3"
+        result = expand_params({"a": vals, "b": "X|Y|Z"}, mode="zip",
+                               max_combinations=5)
+        assert len(result) == 3
+
+    def test_single_param_no_limit_issue(self):
+        """단일 파라미터 단일 값은 상한 문제 없음."""
+        result = expand_params({"a": "hello"}, max_combinations=1)
+        assert result == [{"a": "hello"}]
+
+    def test_default_limit_value(self):
+        """기본 상한값 확인."""
+        assert MAX_PARAM_COMBINATIONS == 10_000
