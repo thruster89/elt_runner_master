@@ -777,12 +777,14 @@ class StateJobMixin:
         if not all_detected:
             return
 
-        # 현재 params (사용자 입력값) — 모든 스테이지에서 수집
-        current = {}
-        for entries in self._stage_param_entries.values():
-            for k, v in entries:
-                if k.get():
-                    current[k.get()] = v.get()
+        # 현재 params (사용자 입력값) — 스테이지별로 수집
+        current_by_stage: dict[str, dict[str, str]] = {}
+        for stage, entries in self._stage_param_entries.items():
+            current_by_stage[stage] = {k.get(): v.get() for k, v in entries if k.get()}
+        # flat fallback (yml 값 lookup용)
+        current_flat: dict[str, str] = {}
+        for d in current_by_stage.values():
+            current_flat.update(d)
 
         # yml 기본값 (job 선택 시 참조) — per-stage + top-level 병합
         fname = self.job_var.get()
@@ -791,27 +793,27 @@ class StateJobMixin:
         for s in ("export", "transform", "report"):
             yml_params.update(yml_cfg.get(s, {}).get("params", {}))
 
-        def _val(p):
-            if p in current:
-                return current[p]
+        def _val(p, stage=None):
+            # 해당 스테이지에 이미 입력된 값 우선
+            if stage and p in current_by_stage.get(stage, {}):
+                return current_by_stage[stage][p]
+            if p in current_flat:
+                return current_flat[p]
             if p in yml_params:
                 return str(yml_params[p])
             return ""
 
-        # 스테이지별 (key, value) 리스트 구성
+        # 스테이지별 (key, value) 리스트 구성 — 중복 제거 없이 각 스테이지 독립
         grouped: list[tuple[str, list[tuple[str, str]]]] = []
-        shown = set()
         for stage in ("export", "transform", "report"):
             params = stage_params.get(stage, set())
-            new_params = sorted(params - shown)
-            if new_params:
-                grouped.append((stage, [(p, _val(p)) for p in new_params]))
-                shown |= params
+            if params:
+                grouped.append((stage, [(p, _val(p, stage)) for p in sorted(params)]))
 
         # 사용자가 직접 추가한 값 (자동감지 아닌 것) 보존
         prev_detected = getattr(self, "_last_detected_params", set())
-        custom_pairs = [(k, v) for k, v in current.items()
-                        if k not in shown and k not in prev_detected]
+        custom_pairs = [(k, v) for k, v in current_flat.items()
+                        if k not in all_detected and k not in prev_detected]
         if custom_pairs:
             grouped.append(("custom", custom_pairs))
 
