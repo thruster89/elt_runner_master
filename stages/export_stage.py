@@ -663,8 +663,11 @@ def run(ctx: RunContext):
             _update_task_status(run_info_path, task_key, "failed", error=str(e))
 
     set_recycle_interval(parallel_workers)
-    logger.info("Parallel workers=%d  conn_recycle_interval=%d",
-                parallel_workers, _conn_recycle_interval)
+    if source_type == "oracle" and _oc._oracle_client_mode == "thick":
+        logger.info("Parallel workers=%d  conn_recycle_interval=%d",
+                    parallel_workers, _conn_recycle_interval)
+    else:
+        logger.info("Parallel workers=%d", parallel_workers)
 
     tasks = []
     for idx, sql_file in enumerate(sql_files, 1):

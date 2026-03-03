@@ -526,13 +526,16 @@ class StateJobMixin:
     def _sync_combos(self: "BatchRunnerGUI"):
         """콤보박스 values 재설정 + 현재 job/source 반영 (파일 I/O 없음)"""
         job_names = list(self._jobs.keys())
+        job_loaded = False
         if hasattr(self, "_job_combo"):
             self._job_combo["values"] = job_names
             if self.job_var.get() in job_names:
                 self._on_job_change()
+                job_loaded = True
             elif not self.job_var.get() and "_default.yml" in job_names:
                 self.job_var.set("_default.yml")
                 self._on_job_change()
+                job_loaded = True
 
         # source type combo 갱신
         if hasattr(self, "_source_type_combo"):
@@ -541,7 +544,9 @@ class StateJobMixin:
                 self._source_type_combo["values"] = src_types
                 if self._source_type_var.get() not in src_types:
                     self._source_type_var.set(src_types[0])
-                self._on_source_type_change()
+                # job 로드 시 _on_job_change()가 이미 host를 설정했으므로 중복 호출 방지
+                if not job_loaded:
+                    self._on_source_type_change()
 
     def _browse_workdir(self: "BatchRunnerGUI"):
         from tkinter import filedialog
@@ -570,9 +575,11 @@ class StateJobMixin:
         hosts = self._env_hosts.get(src_type, [])
         if hasattr(self, "_host_combo"):
             self._host_combo["values"] = hosts
-        prev = self._source_host_var.get()
-        if prev not in hosts:
-            self._source_host_var.set(hosts[0] if hosts else "")
+        # 복원 중에는 host를 강제 리셋하지 않음 (호출자가 직접 설정)
+        if not getattr(self, "_restoring_job", False):
+            prev = self._source_host_var.get()
+            if prev not in hosts:
+                self._source_host_var.set(hosts[0] if hosts else "")
         self._refresh_preview()
 
     def _on_target_type_change(self: "BatchRunnerGUI", *_):
