@@ -133,14 +133,14 @@ class SqlSelectorDialog(tk.Toplevel):
             child_frame = tk.Frame(parent_frame, bg=C["crust"])
             child_frame.pack(fill="x")
 
-            def make_toggle(cf, tv, btn_ref):
+            def make_toggle(cf, tv, btn_ref, k=key):
                 def toggle():
                     if tv.get():
                         cf.pack_forget()
-                        btn_ref.config(text=f"  ▶  {key}")
+                        btn_ref.config(text=f"  ▶  {k}")
                     else:
                         cf.pack(fill="x")
-                        btn_ref.config(text=f"  ▼  {key}")
+                        btn_ref.config(text=f"  ▼  {k}")
                     tv.set(not tv.get())
                 return toggle
 

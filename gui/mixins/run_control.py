@@ -57,6 +57,7 @@ class RunControlMixin:
         self._set_left_panel_state(False)
         self._anim_dots = 0
         self._anim_id = self.after(500, self._animate_run_btn)
+        self._manually_stopped = False
         self._stop_idle_timer()
 
         env = os.environ.copy()
@@ -78,7 +79,7 @@ class RunControlMixin:
                 creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP
                                if sys.platform == "win32" else 0),
             )
-        except FileNotFoundError as e:
+        except Exception as e:
             self._log_write(f"[Error] Failed to start: {e}", "ERROR")
             self._reset_buttons()
             return
@@ -144,7 +145,9 @@ class RunControlMixin:
             self._notify_os("ELT Runner", f"{job_name} Stopped ({elapsed_str})")
         else:
             self._notify_os("ELT Runner ✖", f"{job_name} Error (code={ret}, {elapsed_str})")
-        self._reset_buttons()
+        # 수동 Stop 시 이미 _reset_buttons 호출됨 → 이중 호출 방지
+        if not getattr(self, "_manually_stopped", False):
+            self._reset_buttons()
         self._start_idle_timer()
 
     def _on_stop(self: "BatchRunnerGUI"):
@@ -156,6 +159,7 @@ class RunControlMixin:
         if not self._themed_confirm("Stop", _body, ok_text="Stop", ok_color="red", ok_active="peach"):
             return
         self._log_write("Stopping process...", "WARN")
+        self._manually_stopped = True
         if sys.platform == "win32":
             self._process.send_signal(signal.CTRL_BREAK_EVENT)
         else:

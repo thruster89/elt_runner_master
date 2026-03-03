@@ -22,6 +22,14 @@ if TYPE_CHECKING:
 
 class StateJobMixin:
 
+    @staticmethod
+    def _safe_int(val, default: int = 0) -> int:
+        """문자열을 int로 변환. 실패 시 default 반환."""
+        try:
+            return int(val)
+        except (ValueError, TypeError):
+            return default
+
     # ── 스냅샷 ────────────────────────────────────────────────
     def _snapshot(self: "BatchRunnerGUI") -> dict:
         """현재 GUI 설정 전체를 dict로 반환"""
@@ -192,7 +200,7 @@ class StateJobMixin:
                 "compression": self._ov_compression.get(),
                 "csv_name_style": self._ov_name_style.get(),
                 "csv_strip_prefix": self._ov_strip_prefix.get(),
-                "timeout_seconds": int(self._ov_timeout.get() or 1800),
+                "timeout_seconds": self._safe_int(self._ov_timeout.get(), 1800),
                 "format": "csv",
                 **({"params": {k.get().strip(): v.get().strip()
                     for k, v in self._stage_param_entries.get("export", [])
@@ -300,6 +308,11 @@ class StateJobMixin:
                 return
             if ans:  # Yes
                 self._on_save_yml()
+        # 예약/타이머 정리 (destroy 후 TclError 방지)
+        if getattr(self, "_schedule_id", None):
+            self.after_cancel(self._schedule_id)
+            self._schedule_id = None
+        self._stop_idle_timer()
         self._save_geometry()
         self.destroy()
 
@@ -312,10 +325,12 @@ class StateJobMixin:
 
         # 미저장 변경 경고
         if not self._restoring_job and self._is_dirty():
+            prev_job = self._job_loaded_snapshot.get("job", "") if self._job_loaded_snapshot else ""
             ans = messagebox.askyesnocancel(
                 "Unsaved Changes",
                 "You have unsaved changes.\nSave now?")
-            if ans is None:  # Cancel
+            if ans is None:  # Cancel → 이전 job으로 롤백
+                self.job_var.set(prev_job)
                 return
             if ans:  # Yes → 저장
                 self._on_save_yml()
@@ -632,14 +647,17 @@ class StateJobMixin:
             self._host_combo["values"] = hosts
         # 복원 중에는 host를 강제 리셋하지 않음 (호출자가 직접 설정)
         if not getattr(self, "_restoring_job", False):
-            prev = self._source_host_var.get()
-            if prev not in hosts:
-                self._source_host_var.set(hosts[0] if hosts else "")
+            # Type 변경 시 항상 첫 번째 host로 초기화
+            self._source_host_var.set(hosts[0] if hosts else "")
         self._refresh_preview()
 
     def _on_target_type_change(self: "BatchRunnerGUI", *_):
         tgt = self._target_type_var.get()
-        self._transform_sql_dir.set(f"sql/transform/{tgt}")
+        # 기본 패턴(sql/transform/<type>)일 때만 자동 변경, 사용자 커스텀 경로는 유지
+        import re
+        cur = self._transform_sql_dir.get()
+        if not cur or re.match(r"^sql/transform/\w+$", cur):
+            self._transform_sql_dir.set(f"sql/transform/{tgt}")
         self._update_target_visibility()
         self._update_transform_target_visibility()
         self._update_load_mode_options()
