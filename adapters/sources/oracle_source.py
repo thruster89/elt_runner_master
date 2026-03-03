@@ -61,14 +61,14 @@ def export_sql_to_csv(
             try:
                 conn.call_timeout = call_timeout_ms
             except Exception:
-                pass
+                logger.debug("conn.call_timeout 설정 실패", exc_info=True)
 
         # cursor 레벨(지원되는 경우)
         if hasattr(cursor, "call_timeout"):
             try:
                 cursor.call_timeout = call_timeout_ms
             except Exception:
-                pass
+                logger.debug("cursor.call_timeout 설정 실패", exc_info=True)
 
         cursor.execute(sql_text)
 
@@ -160,4 +160,4 @@ def export_sql_to_csv(
         try:
             cursor.close()
         except Exception:
-            pass
+            logger.debug("cursor close 실패", exc_info=True)

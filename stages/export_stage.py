@@ -84,7 +84,7 @@ def get_thread_connection(source_type, env_cfg, host_name):
         try:
             old_conn.close()
         except Exception:
-            pass
+            logger.debug("커넥션 재활용 close 실패", exc_info=True)
         with _conn_list_lock:
             try:
                 _thread_connections.remove(old_conn)
@@ -108,7 +108,7 @@ def _close_all_connections(logger):
             conn.close()
             closed += 1
         except Exception:
-            pass
+            logger.debug("커넥션 close 실패", exc_info=True)
     _thread_connections.clear()
     _thread_local.__dict__.pop("conn", None)
     if closed:
@@ -676,7 +676,7 @@ def run(ctx: RunContext):
                 try:
                     bad_conn.close()
                 except Exception:
-                    pass
+                    logger.debug("오류 커넥션 close 실패", exc_info=True)
                 with _conn_list_lock:
                     try:
                         _thread_connections.remove(bad_conn)
@@ -739,7 +739,7 @@ def run(ctx: RunContext):
             elif st == "skipped":
                 skipped += 1
     except Exception:
-        pass
+        logger.warning("EXPORT summary 집계 실패", exc_info=True)
     logger.info("EXPORT summary | success=%d failed=%d skipped=%d total=%d",
                 success, failed, skipped, len(tasks))
     ctx.report_stage_result("export", success=success, failed=failed, skipped=skipped)

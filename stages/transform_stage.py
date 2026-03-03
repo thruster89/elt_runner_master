@@ -12,7 +12,7 @@ job.yml 설정:
 import re
 import time
 
-from engine.connection import connect_target
+from engine.connection import connect_target, set_session_schema
 from engine.context import RunContext
 from engine.path_utils import resolve_path
 from engine.sql_utils import sort_sql_files, render_sql
@@ -89,14 +89,7 @@ def run(ctx: RunContext):
 
     # 세션 기본 스키마 지정 (schema 입력 = 해당 스키마에서 SQL 실행)
     if schema:
-        if conn_type == "duckdb":
-            conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
-            conn.execute(f"SET schema = '{schema}'")
-        elif conn_type == "oracle":
-            cur = conn.cursor()
-            cur.execute(f"ALTER SESSION SET CURRENT_SCHEMA = {schema}")
-            cur.close()
-        logger.info("TRANSFORM session schema = '%s'", schema)
+        set_session_schema(conn, conn_type, schema, logger)
 
     # @{param} 스키마 접두사에 사용된 스키마 자동 생성 (DuckDB)
     if conn_type == "duckdb" and stage_params:

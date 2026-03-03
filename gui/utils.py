@@ -2,9 +2,12 @@
 gui/utils.py  ─  순수 유틸리티 함수 (프로젝트 데이터 읽기)
 """
 
+import logging
 import re
 import yaml
 from pathlib import Path
+
+_log = logging.getLogger(__name__)
 
 
 def load_jobs(work_dir: Path) -> dict:
@@ -17,7 +20,7 @@ def load_jobs(work_dir: Path) -> dict:
                 data = yaml.safe_load(f.read_text(encoding="utf-8"))
                 jobs[f.name] = data
             except Exception:
-                pass
+                _log.debug("job yml 파싱 실패: %s", f, exc_info=True)
     return jobs
 
 
@@ -35,7 +38,7 @@ def load_env_hosts(work_dir: Path, env_path: str = "config/env.yml") -> dict:
             if hosts:
                 result[src_type] = hosts
     except Exception:
-        pass
+        _log.debug("env.yml 파싱 실패: %s", p, exc_info=True)
     return result
 
 
@@ -111,7 +114,7 @@ def scan_sql_params(sql_dir: Path) -> list[str]:
                 text = sql_file.read_text(encoding="utf-8", errors="ignore")
                 found |= _extract_params(text)
             except Exception:
-                pass
+                _log.debug("SQL 파일 파싱 실패: %s", sql_file, exc_info=True)
     return sorted(found)
 
 
@@ -123,7 +126,7 @@ def _scan_params_from_files(files: list) -> list[str]:
             text = Path(sql_file).read_text(encoding="utf-8", errors="ignore")
             found |= _extract_params(text)
         except Exception:
-            pass
+            _log.debug("SQL 파일 파싱 실패: %s", sql_file, exc_info=True)
     return sorted(found)
 
 

@@ -115,4 +115,4 @@ def export_sql_to_csv(
         try:
             cursor.close()
         except Exception:
-            pass
+            logger.debug("cursor close 실패", exc_info=True)
