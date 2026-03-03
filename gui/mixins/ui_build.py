@@ -387,6 +387,7 @@ class UiBuildMixin:
 
         if self._stage_load_local.get():
             self._load_section.pack(fill="x")
+            self._update_target_visibility()  # export 토글 → csv_dir 가시성 갱신
 
         if self._stage_transform.get():
             self._transform_section.pack(fill="x")
@@ -471,6 +472,7 @@ class UiBuildMixin:
         tk.Entry(row, textvariable=var, bg=C["surface0"], fg=C["text"],
                  insertbackground=C["text"], relief="flat",
                  font=FONTS["mono"], width=16).pack(side="right", fill="x", expand=True, ipady=2)
+        return row
 
     # ── 1) Load (구 Target) ───────────────────────────────────
     def _build_load_section(self: "BatchRunnerGUI", parent):
@@ -530,9 +532,9 @@ class UiBuildMixin:
                   activebackground=C["surface1"],
                   command=_browse_db).pack(side="left", padx=(2, 0))
 
-        # CSV Dir (load 단독 모드용)
-        self._path_row(body, "csv_dir", self._load_csv_dir,
-                       "Select CSV load directory")
+        # CSV Dir (load 단독 모드용 — export 스테이지 OFF 시만 표시)
+        self._csv_dir_row = self._path_row(body, "csv_dir", self._load_csv_dir,
+                                           "Select CSV load directory")
 
         # Schema (oracle)
         self._schema_row = tk.Frame(body, bg=C["mantle"])

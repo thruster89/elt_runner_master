@@ -603,10 +603,15 @@ class StateJobMixin:
             return
         # forget all dynamic rows to ensure correct pack order
         self._db_path_row.pack_forget()
+        if hasattr(self, "_csv_dir_row"):
+            self._csv_dir_row.pack_forget()
         self._schema_row.pack_forget()
 
         if tgt in ("duckdb", "sqlite3"):
             self._db_path_row.pack(fill="x", padx=12, pady=2)
+        # csv_dir — export 스테이지 OFF 시만 표시 (load 단독 모드용)
+        if hasattr(self, "_csv_dir_row") and not self._stage_export.get():
+            self._csv_dir_row.pack(fill="x", padx=12, pady=2)
         # Schema — 모든 target type에서 표시 (DuckDB: main 외 스키마, Oracle: 대상 스키마)
         self._schema_row.pack(fill="x", padx=12, pady=2)
 

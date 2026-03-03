@@ -49,7 +49,7 @@ def _collect_csv_info(csv_files, sql_map):
     for csv_path in csv_files:
         sqlname = extract_sqlname_from_csv(csv_path)
         sql_file = sql_map.get(sqlname)
-        table_name = resolve_table_name(sql_file) if sql_file else None
+        table_name = resolve_table_name(sql_file) if sql_file else sqlname
         size = csv_path.stat().st_size
         items.append({
             "csv_file": csv_path.name,
@@ -164,9 +164,9 @@ def run(ctx: RunContext):
                 _ensure_schema(conn, schema)
             _ensure_history(conn, schema)
             _run_load_loop(ctx, logger, csv_files, sql_map, conn_type,
-                           load_fn=lambda table, csv_path, file_hash:
+                           load_fn=lambda table, csv_path, file_hash, lm=None:
                                load_csv(conn, ctx.job_name, table, csv_path, file_hash,
-                                        ctx.mode, schema, load_mode=load_mode,
+                                        ctx.mode, schema, load_mode=lm or load_mode,
                                         params=_extract_params(csv_path)))
 
         elif conn_type == "sqlite3":
@@ -175,17 +175,17 @@ def run(ctx: RunContext):
             if schema:
                 logger.info("SQLite: schema not supported, ignoring schema setting (schema=%s)", schema)
             _run_load_loop(ctx, logger, csv_files, sql_map, conn_type,
-                           load_fn=lambda table, csv_path, file_hash:
+                           load_fn=lambda table, csv_path, file_hash, lm=None:
                                load_csv(conn, ctx.job_name, table, csv_path, file_hash,
-                                        ctx.mode, load_mode=load_mode,
+                                        ctx.mode, load_mode=lm or load_mode,
                                         params=_extract_params(csv_path)))
 
         elif conn_type == "oracle":
             from adapters.targets.oracle_target import load_csv
             _run_load_loop(ctx, logger, csv_files, sql_map, conn_type,
-                           load_fn=lambda table, csv_path, file_hash:
+                           load_fn=lambda table, csv_path, file_hash, lm=None:
                                load_csv(conn, ctx.job_name, table, csv_path, file_hash,
-                                        ctx.mode, schema, load_mode=load_mode,
+                                        ctx.mode, schema, load_mode=lm or load_mode,
                                         params=_extract_params(csv_path)))
     finally:
         conn.close()
@@ -197,8 +197,8 @@ def _run_load_plan(ctx, logger, csv_files, sql_map, tgt_type, schema, load_mode)
     """PLAN 모드: 로드 대상 파일 목록·테이블 매핑을 사전 확인한다."""
     items = _collect_csv_info(csv_files, sql_map)
 
-    loadable = [it for it in items if it["sql_found"]]
-    no_sql   = [it for it in items if not it["sql_found"]]
+    sql_mapped = [it for it in items if it["sql_found"]]
+    direct     = [it for it in items if not it["sql_found"]]
 
     logger.info("")
     logger.info("LOAD [PLAN] ── 사전 확인 리포트 ──")
@@ -206,21 +206,22 @@ def _run_load_plan(ctx, logger, csv_files, sql_map, tgt_type, schema, load_mode)
                 f" (schema={schema})" if schema else "")
     logger.info("  Load Mode  : %s", load_mode)
     logger.info("  CSV Dir    : %s", csv_files[0].parent if csv_files else "?")
-    total_size = sum(it["size"] for it in loadable)
-    logger.info("  Total Files: %d  (loadable=%d, no_sql=%d)",
-                len(items), len(loadable), len(no_sql))
+    total_size = sum(it["size"] for it in items)
+    logger.info("  Total Files: %d  (sql_mapped=%d, direct=%d)",
+                len(items), len(sql_mapped), len(direct))
     logger.info("  Total Size : %s", _human_size(total_size))
     logger.info("")
 
-    for i, it in enumerate(loadable, 1):
+    for i, it in enumerate(sql_mapped, 1):
         logger.info("  [%d/%d] %s → %s  (%s)",
-                     i, len(loadable), it["csv_file"], it["table"], it["size_h"])
+                     i, len(sql_mapped), it["csv_file"], it["table"], it["size_h"])
 
-    if no_sql:
+    if direct:
         logger.info("")
-        logger.info("  ── SQL 매핑 없음 (스킵 예정) ──")
-        for it in no_sql:
-            logger.info("    %s  (%s)", it["csv_file"], it["size_h"])
+        logger.info("  ── CSV 파일명 기반 매핑 (INSERT) ──")
+        for i, it in enumerate(direct, 1):
+            logger.info("  [%d/%d] %s → %s  (%s)",
+                         i, len(direct), it["csv_file"], it["table"], it["size_h"])
 
     logger.info("")
     logger.info("LOAD [PLAN] 완료 — 실제 로드는 run 모드에서 실행하세요.")
@@ -236,18 +237,24 @@ def _run_load_loop(ctx, logger, csv_files, sql_map, tgt_type, load_fn):
         sqlname = extract_sqlname_from_csv(csv_path)
         sql_file = sql_map.get(sqlname)
 
-        if not sql_file:
-            logger.warning("CSV[%d/%d] skip (sql not found): %s", i, total, csv_path.name)
-            skipped += 1
-            continue
+        if sql_file:
+            table_name = resolve_table_name(sql_file)
+            override_mode = None
+        else:
+            # SQL 없음 → 파일명(__앞부분)을 테이블명으로 사용, INSERT 모드 강제
+            table_name = sqlname
+            override_mode = "append"
 
-        table_name = resolve_table_name(sql_file)
         file_hash = _sha256_file(csv_path)
 
-        logger.info("LOAD [%d/%d] | table=%s | file=%s", i, total, table_name, csv_path.name)
+        if override_mode:
+            logger.info("LOAD [%d/%d] | table=%s (direct) | file=%s | mode=append",
+                        i, total, table_name, csv_path.name)
+        else:
+            logger.info("LOAD [%d/%d] | table=%s | file=%s", i, total, table_name, csv_path.name)
 
         try:
-            result = load_fn(table_name, csv_path, file_hash)
+            result = load_fn(table_name, csv_path, file_hash, override_mode)
             if result == -1:
                 skipped += 1
             else:
