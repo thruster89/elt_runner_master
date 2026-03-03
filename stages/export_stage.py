@@ -24,34 +24,50 @@ _thread_local = threading.local()
 _thread_connections = []
 _conn_list_lock = threading.Lock()
 
+# Thick 모드 OCI 메모리 누적 방지: N회 사용마다 연결 갱신
+_CONN_RECYCLE_INTERVAL = 100
+
+
+def _new_connection(source_type, env_cfg, host_name):
+    """소스 타입에 맞는 새 연결 생성."""
+    if source_type == "oracle":
+        oracle_cfg = env_cfg["sources"]["oracle"]
+        host_cfg = oracle_cfg["hosts"].get(host_name)
+        if not host_cfg:
+            raise RuntimeError(f"Oracle host not found: {host_name}")
+        init_oracle_client(oracle_cfg)
+        return get_oracle_conn(host_cfg)
+
+    if source_type == "vertica":
+        vertica_cfg = env_cfg["sources"]["vertica"]
+        host_cfg = vertica_cfg["hosts"].get(host_name)
+        return get_vertica_conn(host_cfg)
+
+    raise ValueError(f"Unsupported source type: {source_type}")
+
 
 def get_thread_connection(source_type, env_cfg, host_name):
     """
     thread마다 connection 1개 재사용.
+    _CONN_RECYCLE_INTERVAL 횟수마다 연결을 갱신하여 OCI 메모리 누적 방지.
     생성된 connection은 _thread_connections에 추적하여 나중에 일괄 정리.
     """
+    use_count = getattr(_thread_local, "use_count", 0)
+
     if hasattr(_thread_local, "conn") and _thread_local.conn:
-        return _thread_local.conn
+        if use_count < _CONN_RECYCLE_INTERVAL:
+            _thread_local.use_count = use_count + 1
+            return _thread_local.conn
+        # 재활용 한도 도달 → 기존 연결 닫고 새로 생성
+        try:
+            _thread_local.conn.close()
+        except Exception:
+            pass
+        _thread_local.conn = None
 
-    if source_type == "oracle":
-        oracle_cfg = env_cfg["sources"]["oracle"]
-        host_cfg = oracle_cfg["hosts"].get(host_name)
-
-        if not host_cfg:
-            raise RuntimeError(f"Oracle host not found: {host_name}")
-
-        init_oracle_client(oracle_cfg)
-        conn = get_oracle_conn(host_cfg)
-
-    elif source_type == "vertica":
-        vertica_cfg = env_cfg["sources"]["vertica"]
-        host_cfg = vertica_cfg["hosts"].get(host_name)
-        conn = get_vertica_conn(host_cfg)
-
-    else:
-        raise ValueError(f"Unsupported source type: {source_type}")
-
+    conn = _new_connection(source_type, env_cfg, host_name)
     _thread_local.conn = conn
+    _thread_local.use_count = 1
     with _conn_list_lock:
         _thread_connections.append(conn)
     return conn
@@ -624,6 +640,7 @@ def run(ctx: RunContext):
         except Exception as e:
             # 커넥션 오류 시 thread-local에서 제거 → 다음 task에서 새 커넥션 생성
             _thread_local.__dict__.pop("conn", None)
+            _thread_local.__dict__.pop("use_count", None)
             logger.exception("%s EXPORT failed: %s", prefix, e)
             _update_task_status(run_info_path, task_key, "failed", error=str(e))
 
