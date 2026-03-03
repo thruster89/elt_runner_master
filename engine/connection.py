@@ -6,14 +6,37 @@ connect_target(ctx, target_cfg) → (conn, conn_type, label)
   - DuckDB / SQLite3 / Oracle 분기를 한 곳에서 처리
 """
 
+import re
+import logging
 from datetime import datetime
 
 from engine.path_utils import resolve_path
+
+_log = logging.getLogger(__name__)
+
+# Oracle/DuckDB 식별자로 허용할 문자: 영문, 숫자, _, $, #  (최대 128자)
+_SAFE_IDENTIFIER = re.compile(r'^[A-Za-z_][A-Za-z0-9_$#]{0,127}$')
 
 
 def now_str() -> str:
     """공통 타임스탬프 문자열 (adapter에서 공유)"""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def set_session_schema(conn, conn_type: str, schema: str, logger=None):
+    """세션 기본 스키마를 설정한다. schema 값을 검증하여 SQL 인젝션을 방지."""
+    if not _SAFE_IDENTIFIER.match(schema):
+        raise ValueError(f"유효하지 않은 schema 이름: {schema!r}")
+
+    log = logger or _log
+    if conn_type == "duckdb":
+        conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+        conn.execute(f"SET schema = '{schema}'")
+    elif conn_type == "oracle":
+        cur = conn.cursor()
+        cur.execute(f'ALTER SESSION SET CURRENT_SCHEMA = "{schema.upper()}"')
+        cur.close()
+    log.info("Session schema = '%s'", schema)
 
 
 def connect_target(ctx, target_cfg: dict) -> tuple:

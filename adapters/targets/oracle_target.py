@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 from engine.connection import now_str
+from engine.delete_utils import build_delete_condition
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,13 @@ def _ensure_schema(cur, conn, schema: str, password: str):
         logger.debug("Schema exists: %s", schema.upper())
         return
 
-    pwd = password or schema  # 비밀번호 미지정 시 스키마명과 동일
+    if not password:
+        logger.warning(
+            "schema_password 미설정 — 스키마명(%s)을 비밀번호로 사용합니다. "
+            "운영 환경에서는 job.yml에 schema_password를 명시하세요.",
+            schema.upper(),
+        )
+    pwd = password or schema
     s = schema.upper()
 
     logger.info("Schema not found, creating: %s", s)
@@ -273,48 +280,11 @@ def _get_table_columns(cur, schema: str, table_name: str) -> list:
 def _delete_by_params(cur, conn, schema: str, table_name: str, params: dict):
     """params 기반 WHERE 조건으로 DELETE 실행 (엄격 모드: params 필수, 컬럼 매칭 필수)"""
     tbl = _qualified(schema, table_name)
+    table_cols = set(_get_table_columns(cur, schema, table_name))
+    matched, _ = build_delete_condition(params, table_cols, tbl)
 
-    if not params:
-        raise ValueError(
-            f"DELETE 모드는 params가 필수입니다: {tbl} — "
-            f"전체 삭제가 필요하면 load.mode=truncate를 사용하세요."
-        )
-
-    # Column matching with underscore-removal normalization (clsYymm -> CLS_YYMM)
-    table_cols = _get_table_columns(cur, schema, table_name)
-    norm_map = {col.replace("_", "").lower(): col for col in table_cols}
-
-    conditions = []
-    values = []
-    skipped = []
-    idx = 1
-    for key, val in params.items():
-        col_upper = key.upper()
-        if col_upper in table_cols:
-            matched_col = col_upper
-        else:
-            norm_key = key.replace("_", "").lower()
-            matched_col = norm_map.get(norm_key)
-            if matched_col:
-                logger.debug("DELETE param mapped: %s -> %s", key, matched_col)
-            else:
-                skipped.append(key)
-                continue
-        conditions.append(f'"{matched_col}" = :{idx}')
-        values.append(val)
-        idx += 1
-
-    if not conditions:
-        raise ValueError(
-            f"DELETE 조건 컬럼 매칭 실패: {tbl} — "
-            f"params={list(params.keys())} 중 일치하는 컬럼이 없습니다. "
-            f"전체 삭제가 필요하면 load.mode=truncate를 사용하세요."
-        )
-
-    if skipped:
-        logger.warning("DELETE 조건에서 제외된 파라미터 (컬럼 없음): %s.%s", tbl, skipped)
-
-    where = " AND ".join(conditions)
+    where = " AND ".join(f'"{col}" = :{i}' for i, (col, _) in enumerate(matched, 1))
+    values = [val for _, val in matched]
     cur.execute(f"DELETE FROM {tbl} WHERE {where}", values)
     logger.info("DELETE %s | %d rows | WHERE %s", tbl, cur.rowcount, where)
 

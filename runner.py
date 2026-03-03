@@ -100,6 +100,7 @@ def resolve_retry_run_id(base_dir: Path, job_name: str, logger) -> str:
                 logger.info("RETRY: retry target run_id = %s", d.name)
                 return d.name
         except Exception:
+            logger.debug("run_info 파싱 실패 (skip): %s", run_info_path, exc_info=True)
             continue
     logger.info("RETRY: no failed previous run found → generating new run_id")
     return generate_run_id(base_dir, job_name)
@@ -114,7 +115,8 @@ def write_run_info(run_dir: Path, ctx: RunContext, start_time: str):
             with open(run_info_path, encoding="utf-8") as f:
                 existing_tasks = json.load(f).get("tasks", {})
         except Exception:
-            pass
+            logging.getLogger(__name__).debug("기존 run_info 파싱 실패 (초기화 진행): %s",
+                                              run_info_path, exc_info=True)
     info = {
         "job_name": ctx.job_name,
         "run_id": ctx.run_id,
@@ -507,7 +509,7 @@ def main():
                     count = len(v_str.split("|"))
                     logger.info(" [%s] Expanded: %s=%d values", display_name, k, count)
         except Exception:
-            pass
+            logger.debug("Param expand preview 실패: %s", display_name, exc_info=True)
 
     _log_stage_params("export", "EXPORT")
     _log_stage_params("transform", "TRANSFORM")

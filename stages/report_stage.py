@@ -27,7 +27,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from engine.connection import connect_target
+from engine.connection import connect_target, set_session_schema
 from engine.context import RunContext
 from engine.path_utils import resolve_path
 from engine.sql_utils import sort_sql_files, render_sql
@@ -175,14 +175,7 @@ def _run_csv_export(ctx, report_cfg, cfg, *,
              or (ctx.job_config.get("target", {}).get("schema") or "").strip() \
              or ""
     if schema:
-        if conn_type == "duckdb":
-            conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
-            conn.execute(f"SET schema = '{schema}'")
-        elif conn_type == "oracle":
-            cur = conn.cursor()
-            cur.execute(f"ALTER SESSION SET CURRENT_SCHEMA = {schema}")
-            cur.close()
-        logger.info("REPORT session schema = '%s'", schema)
+        set_session_schema(conn, conn_type, schema, logger)
 
     logger.info(
         "REPORT csv export | db=%s sql_dir=%s out_dir=%s files=%d compression=%s",

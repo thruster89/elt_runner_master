@@ -36,7 +36,7 @@ def init_run_info(run_info_path: Path, *, job_name: str, run_id: str,
             with open(run_info_path, encoding="utf-8") as f:
                 existing_tasks = json.load(f).get("tasks", {})
         except Exception:
-            pass
+            logger.debug("기존 run_info 파싱 실패 (초기화 진행): %s", run_info_path, exc_info=True)
     info = {
         "job_name": job_name,
         "run_id": run_id,
@@ -75,7 +75,7 @@ def update_task_status(run_info_path: Path, task_key: str, status: str,
             with open(run_info_path, "w", encoding="utf-8") as f:
                 json.dump(info, f, indent=2, ensure_ascii=False)
         except Exception:
-            pass  # 상태 기록 실패는 무시
+            logger.warning("task status 기록 실패: %s/%s", task_key, status, exc_info=True)
 
 
 # ── 실패 task 로드 ──────────────────────────────────────────
@@ -110,6 +110,7 @@ def load_failed_tasks(base_dir: Path, job_name: str, run_id: str,
             if "tasks" in info:
                 candidates.append((d, info))
         except Exception:
+            logger.debug("run_info 파싱 실패 (skip): %s", run_info_path, exc_info=True)
             continue
 
     if not candidates:
@@ -152,5 +153,5 @@ def summarize_run_info(run_info_path: Path) -> tuple[int, int, int]:
             elif st == "skipped":
                 skipped += 1
     except Exception:
-        pass
+        logger.warning("run_info 요약 파싱 실패: %s", run_info_path, exc_info=True)
     return success, failed, skipped
