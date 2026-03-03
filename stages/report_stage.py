@@ -51,6 +51,8 @@ def run(ctx: RunContext):
     stage_param_mode = ctx.get_stage_param_mode("report")
 
     generated_csvs = []
+    report_success = 0
+    report_failed = 0
 
     skip_sql = bool(report_cfg.get("skip_sql", False))
 
@@ -70,19 +72,28 @@ def run(ctx: RunContext):
     else:
         export_csv_cfg = report_cfg.get("export_csv", {})
         if export_csv_cfg.get("enabled", False):
-            generated_csvs = _run_csv_export(ctx, report_cfg, export_csv_cfg,
-                                             stage_params=stage_params,
-                                             stage_param_mode=stage_param_mode)
+            generated_csvs, csv_failed = _run_csv_export(
+                ctx, report_cfg, export_csv_cfg,
+                stage_params=stage_params,
+                stage_param_mode=stage_param_mode,
+            )
+            report_success += len(generated_csvs)
+            report_failed += csv_failed
         else:
             logger.info("REPORT csv export skipped")
 
     excel_cfg = report_cfg.get("excel", {})
     if excel_cfg.get("enabled", False):
-        _run_excel_export(ctx, report_cfg, excel_cfg, generated_csvs)
+        try:
+            _run_excel_export(ctx, report_cfg, excel_cfg, generated_csvs)
+            report_success += 1
+        except Exception as e:
+            logger.error("REPORT excel FAILED: %s", e)
+            report_failed += 1
     else:
         logger.info("REPORT excel export skipped")
 
-    # logger.info("REPORT stage end")
+    ctx.report_stage_result("report", success=report_success, failed=report_failed)
 
 
 # ────────────────────────────────────────────────────────────
@@ -156,6 +167,7 @@ def _run_csv_export(ctx, report_cfg, cfg,
     )
 
     generated = []
+    csv_failed = 0
     total = len(sql_files)
     ext = ".csv.gz" if compression == "gzip" else ".csv"
 
@@ -189,10 +201,12 @@ def _run_csv_export(ctx, report_cfg, cfg,
                     generated.append(out_file)
                 except Exception as e:
                     logger.error("%s FAILED (%.2fs): %s", label, time.time() - start, e)
+                    csv_failed += 1
     finally:
         conn.close()
 
-    return generated
+    logger.info("REPORT csv summary | success=%d failed=%d", len(generated), csv_failed)
+    return generated, csv_failed
 
 
 def _open_connection(ctx, report_source: str):

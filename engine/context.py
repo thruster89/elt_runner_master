@@ -20,6 +20,18 @@ class RunContext:
     include_report_patterns: list = field(default_factory=list)     # --include-report 패턴 목록
     stage_filter: list = field(default_factory=list)      # --stage 필터 목록
     param_mode: str = "product"   # "product" (카르테시안 곱) | "zip" (위치별 1:1 매칭)
+    stage_results: dict = field(default_factory=dict, repr=False)  # 스테이지별 실행 결과
+
+    def report_stage_result(self, stage_name: str, *,
+                            success: int = 0, failed: int = 0,
+                            skipped: int = 0, detail: str = ""):
+        """스테이지 실행 결과 기록."""
+        self.stage_results[stage_name] = {
+            "success": success,
+            "failed": failed,
+            "skipped": skipped,
+            "detail": detail,
+        }
 
     def get_stage_params(self, stage_name: str) -> dict:
         """스테이지별 params 반환. 스테이지 section에 params가 있으면 그것만 사용, 없으면 글로벌 params."""

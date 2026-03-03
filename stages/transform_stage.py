@@ -157,6 +157,7 @@ def _run_sql_loop(ctx, conn, conn_type, sql_files, on_error,
                     break
 
     logger.info("TRANSFORM summary | success=%d failed=%d total=%d", success, failed, total)
+    ctx.report_stage_result("transform", success=success, failed=failed)
 
 
 def _ensure_param_schemas(conn, sql_files, params, logger):

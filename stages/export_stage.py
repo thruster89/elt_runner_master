@@ -785,3 +785,22 @@ def run(ctx: RunContext):
                     f.result()
     finally:
         _close_all_connections(logger)
+
+    # ── 결과 요약 ────────────────────────────────────────
+    success = failed = skipped = 0
+    try:
+        with open(run_info_path, encoding="utf-8") as f:
+            info = json.load(f)
+        for entry in info.get("tasks", {}).values():
+            st = entry.get("status", "")
+            if st == "success":
+                success += 1
+            elif st == "failed":
+                failed += 1
+            elif st == "skipped":
+                skipped += 1
+    except Exception:
+        pass
+    logger.info("EXPORT summary | success=%d failed=%d skipped=%d total=%d",
+                success, failed, skipped, len(tasks))
+    ctx.report_stage_result("export", success=success, failed=failed, skipped=skipped)
