@@ -30,8 +30,14 @@ def init_oracle_client(source_cfg):
                 mode = "thick"
                 logger.info("Oracle client initialized (thick) | lib=%s", lib)
             except Exception as e:
-                logger.warning("Oracle thick init failed → fallback to thin")
-                logger.warning("Reason: %s", e)
+                err_msg = str(e)
+                if "DPI-1001" in err_msg or "already been initialized" in err_msg.lower():
+                    # OCI가 이미 초기화됨 → thick 유지
+                    mode = "thick"
+                    logger.info("Oracle client already initialized (thick)")
+                else:
+                    logger.warning("Oracle thick init failed → fallback to thin")
+                    logger.warning("Reason: %s", e)
         else:
             logger.info("Oracle client initialized (thin)")
 
