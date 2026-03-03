@@ -594,6 +594,7 @@ class StateJobMixin:
         tgt = self._target_type_var.get()
         self._transform_sql_dir.set(f"sql/transform/{tgt}")
         self._update_target_visibility()
+        self._update_transform_target_visibility()
         self._update_load_mode_options()
         self._refresh_preview()
 
@@ -603,12 +604,31 @@ class StateJobMixin:
             return
         # forget all dynamic rows to ensure correct pack order
         self._db_path_row.pack_forget()
+        if hasattr(self, "_csv_dir_row"):
+            self._csv_dir_row.pack_forget()
         self._schema_row.pack_forget()
 
         if tgt in ("duckdb", "sqlite3"):
             self._db_path_row.pack(fill="x", padx=12, pady=2)
+        # csv_dir — export 스테이지 OFF 시만 표시 (load 단독 모드용)
+        if hasattr(self, "_csv_dir_row") and not self._stage_export.get():
+            self._csv_dir_row.pack(fill="x", padx=12, pady=2)
         # Schema — 모든 target type에서 표시 (DuckDB: main 외 스키마, Oracle: 대상 스키마)
         self._schema_row.pack(fill="x", padx=12, pady=2)
+
+    def _update_transform_target_visibility(self: "BatchRunnerGUI"):
+        """Load OFF + Transform ON 시 Transform 섹션에 target 선택 UI 표시."""
+        if not hasattr(self, "_transform_target_frame"):
+            return
+        self._transform_target_frame.pack_forget()
+        if not self._stage_load_local.get():
+            self._transform_target_frame.pack(fill="x", before=self._transform_sql_dir_row)
+            # db_path 행: duckdb/sqlite3만 표시
+            tgt = self._target_type_var.get()
+            if tgt in ("duckdb", "sqlite3"):
+                self._tfm_db_row.pack(fill="x", padx=12, pady=2)
+            else:
+                self._tfm_db_row.pack_forget()
 
     def _update_load_mode_options(self: "BatchRunnerGUI"):
         """target type에 따라 load.mode 선택지 자동 전환"""

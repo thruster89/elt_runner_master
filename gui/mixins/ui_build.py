@@ -387,9 +387,11 @@ class UiBuildMixin:
 
         if self._stage_load_local.get():
             self._load_section.pack(fill="x")
+            self._update_target_visibility()  # export 토글 → csv_dir 가시성 갱신
 
         if self._stage_transform.get():
             self._transform_section.pack(fill="x")
+            self._update_transform_target_visibility()
 
         if self._stage_report.get():
             self._report_section.pack(fill="x")
@@ -471,6 +473,7 @@ class UiBuildMixin:
         tk.Entry(row, textvariable=var, bg=C["surface0"], fg=C["text"],
                  insertbackground=C["text"], relief="flat",
                  font=FONTS["mono"], width=16).pack(side="right", fill="x", expand=True, ipady=2)
+        return row
 
     # ── 1) Load (구 Target) ───────────────────────────────────
     def _build_load_section(self: "BatchRunnerGUI", parent):
@@ -530,9 +533,9 @@ class UiBuildMixin:
                   activebackground=C["surface1"],
                   command=_browse_db).pack(side="left", padx=(2, 0))
 
-        # CSV Dir (load 단독 모드용)
-        self._path_row(body, "csv_dir", self._load_csv_dir,
-                       "Select CSV load directory")
+        # CSV Dir (load 단독 모드용 — export 스테이지 OFF 시만 표시)
+        self._csv_dir_row = self._path_row(body, "csv_dir", self._load_csv_dir,
+                                           "Select CSV load directory")
 
         # Schema (oracle)
         self._schema_row = tk.Frame(body, bg=C["mantle"])
@@ -688,7 +691,50 @@ class UiBuildMixin:
         sec.pack(fill="x")
         body = sec.body
 
-        self._path_row(body, "sql_dir", self._transform_sql_dir, "Select transform SQL dir")
+        # ── Target 선택 (Load OFF 시만 표시, Load와 동일 변수 공유) ──
+        self._transform_target_frame = tk.Frame(body, bg=C["mantle"])
+        tf = self._transform_target_frame
+
+        tf_top = tk.Frame(tf, bg=C["mantle"])
+        tf_top.pack(fill="x", padx=12, pady=(8, 4))
+        col_l = tk.Frame(tf_top, bg=C["mantle"])
+        col_l.pack(side="left", fill="x", expand=True)
+        tk.Label(col_l, text="Target Type", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["subtext"]).pack(anchor="w")
+        self._tfm_type_combo = ttk.Combobox(
+            col_l, textvariable=self._target_type_var,
+            values=["duckdb", "sqlite3", "oracle"],
+            state="readonly", font=FONTS["mono"])
+        self._tfm_type_combo.pack(fill="x", pady=(2, 0))
+
+        self._tfm_db_row = tk.Frame(tf, bg=C["mantle"])
+        self._tfm_db_row.pack(fill="x", padx=12, pady=2)
+        tk.Label(self._tfm_db_row, text="DB Path", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w").pack(side="left")
+        tk.Entry(self._tfm_db_row, textvariable=self._target_db_path,
+                 bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
+                 relief="flat", font=FONTS["mono"], width=16).pack(side="left", fill="x", expand=True, ipady=2)
+        def _browse_tfm_db():
+            d = filedialog.asksaveasfilename(
+                initialdir=self._work_dir.get(),
+                defaultextension=".duckdb",
+                filetypes=[("DuckDB", "*.duckdb"), ("SQLite", "*.db *.sqlite3"), ("All", "*.*")],
+                title="Select DB file")
+            if d:
+                try:
+                    rel = Path(d).relative_to(Path(self._work_dir.get()))
+                    self._target_db_path.set(rel.as_posix())
+                except ValueError:
+                    self._target_db_path.set(d)
+        tk.Button(self._tfm_db_row, text="...", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
+                  activebackground=C["surface1"],
+                  command=_browse_tfm_db).pack(side="left", padx=(2, 0))
+
+        ttk.Separator(tf, orient="horizontal").pack(fill="x", padx=12, pady=4)
+
+        self._transform_sql_dir_row = self._path_row(
+            body, "sql_dir", self._transform_sql_dir, "Select transform SQL dir")
 
         def _w_tfm_schema(r):
             tk.Entry(r, textvariable=self._transform_schema,
