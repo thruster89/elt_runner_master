@@ -450,31 +450,42 @@ def main():
     logger.info(" Workers   : %s", export_cfg.get("parallel_workers", 1))
     logger.info(" Timeout   : %ss", export_cfg.get("timeout_seconds", 1800))
 
-    if params:
-        logger.info(" Params    : %s", ", ".join(f"{k}={v}" for k, v in params.items()))
-        if param_mode != "product":
-            logger.info(" ParamMode : %s", param_mode)
-
+    # per-stage params 로그
+    def _log_stage_params(stage_name, display_name):
+        sp = ctx.get_stage_params(stage_name)
+        spm = ctx.get_stage_param_mode(stage_name)
+        if not sp:
+            return
+        logger.info(" [%s] Params: %s", display_name, ", ".join(f"{k}={v}" for k, v in sp.items()))
+        if spm != "product":
+            logger.info(" [%s] ParamMode: %s", display_name, spm)
         try:
-            from stages.export_stage import expand_params, expand_range_value
-            from engine.sql_utils import detect_used_params
-
-            for k, v in params.items():
+            from stages.export_stage import expand_range_value
+            for k, v in sp.items():
                 v_str = str(v).strip()
-
                 if ":" in v_str:
                     vals = expand_range_value(v_str)
-                    logger.info(" Expanded  : %s=%d values", k, len(vals))
-                elif "," in v_str:
-                    count = len(v_str.split(","))
-                    logger.info(" Expanded  : %s=%d values", k, count)
-                else:
-                    logger.info(" Expanded  : %s=1 value (%s)", k, v_str)
+                    logger.info(" [%s] Expanded: %s=%d values", display_name, k, len(vals))
+                elif "|" in v_str:
+                    count = len(v_str.split("|"))
+                    logger.info(" [%s] Expanded: %s=%d values", display_name, k, count)
+        except Exception:
+            pass
 
-            # Total tasks: SQL별 사용 파라미터만 확장하여 정확 계산
+    _log_stage_params("export", "EXPORT")
+    _log_stage_params("transform", "TRANSFORM")
+    _log_stage_params("report", "REPORT")
+
+    # Export Total Tasks 계산
+    export_params = ctx.get_stage_params("export")
+    export_param_mode = ctx.get_stage_param_mode("export")
+    if export_params:
+        try:
+            from stages.export_stage import expand_params
+            from engine.sql_utils import detect_used_params, sort_sql_files
+
             sql_dir_str = export_cfg.get("sql_dir", "")
             if sql_dir_str:
-                from engine.sql_utils import sort_sql_files
                 sql_dir_path = work_dir / sql_dir_str
                 sql_files = sort_sql_files(sql_dir_path)
                 if ctx.include_patterns:
@@ -487,9 +498,9 @@ def main():
                 total_tasks = 0
                 for sf in sql_files:
                     sql_text = sf.read_text(encoding="utf-8")
-                    used = detect_used_params(sql_text, params)
-                    rel = {k: v for k, v in params.items() if k in used}
-                    total_tasks += len(expand_params(rel, mode=param_mode)) if rel else 1
+                    used = detect_used_params(sql_text, export_params)
+                    rel = {k: v for k, v in export_params.items() if k in used}
+                    total_tasks += len(expand_params(rel, mode=export_param_mode)) if rel else 1
                 logger.info(" Total Tasks: %d (sql=%d)", total_tasks, len(sql_files))
         except Exception as e:
             logger.debug("Param expand preview skipped: %s", e)

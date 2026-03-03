@@ -209,14 +209,7 @@ class RunControlMixin:
         if self._debug_var.get():
             cmd.append("--debug")
 
-        # params — 활성 스테이지의 params만 포함 (동일 키는 마지막 값 우선)
-        for stage in ("export", "transform", "report"):
-            stage_var = f"_stage_{stage}"
-            if getattr(self, stage_var).get():
-                for k_var, v_var in self._stage_param_entries.get(stage, []):
-                    k, v = k_var.get().strip(), v_var.get().strip()
-                    if k and v:
-                        cmd += ["--param", f"{k}={v}"]
+        # params는 YAML stage별 섹션에 저장됨 (--param CLI 불필요)
 
         # stages (전부 선택이거나 아무것도 없으면 생략)
         selected_stages = [s for s in ("export", "load_local", "transform", "report")
@@ -246,10 +239,7 @@ class RunControlMixin:
         if timeout_val:
             cmd += ["--timeout", timeout_val]
 
-        # --param-mode
-        pm = self._param_mode_var.get()
-        if pm and pm != "product":
-            cmd += ["--param-mode", pm]
+        # param_mode는 YAML stage별 섹션에 저장됨 (--param-mode CLI 불필요)
 
         return [str(x) for x in cmd]
 

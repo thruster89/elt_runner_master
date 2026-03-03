@@ -434,6 +434,8 @@ class UiBuildMixin:
             mode_combo.pack(side="left", padx=(8, 0))
             if stage == "export":
                 self._param_mode_var.trace_add("write", lambda *_: self._refresh_preview())
+        tk.Label(hdr, text="( | 로 다중값 확장)", font=FONTS["mono_small"],
+                 bg=C["mantle"], fg=C["overlay0"]).pack(side="left", padx=(6, 0))
         tk.Button(hdr, text="+ add", font=FONTS["mono_small"],
                   bg=C["surface0"], fg=C["subtext"], relief="flat", padx=6, pady=1,
                   activebackground=C["surface1"],

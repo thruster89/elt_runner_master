@@ -177,16 +177,6 @@ class StateJobMixin:
         """GUI 전체 상태를 job yml dict로 조립"""
         stages = [s for s in ("export", "load_local", "transform", "report")
                   if getattr(self, f"_stage_{s}").get()]
-        # 활성 스테이지의 params만 수집 (top-level 병합용)
-        params = {}
-        for stage in ("export", "transform", "report"):
-            stage_var = f"_stage_{stage}"
-            if getattr(self, stage_var).get():
-                for k_var, v_var in self._stage_param_entries.get(stage, []):
-                    k, v = k_var.get().strip(), v_var.get().strip()
-                    if k and v:
-                        params[k] = v
-
         cfg = {
             "job_name": self._jobs.get(self.job_var.get(), {}).get("job_name", "gui_run"),
             "pipeline": {"stages": stages},
@@ -250,11 +240,6 @@ class StateJobMixin:
                 "param_mode": self._report_param_mode_var.get(),
             },
         }
-        if params:
-            cfg["params"] = params
-        pm = self._param_mode_var.get()
-        if pm and pm != "product":
-            cfg["param_mode"] = pm
         # target specifics
         tgt_type = self._target_type_var.get()
         if tgt_type in ("duckdb", "sqlite3") and self._target_db_path.get().strip():

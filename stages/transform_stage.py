@@ -29,6 +29,10 @@ def run(ctx: RunContext):
         logger.info("TRANSFORM stage skipped (plan mode)")
         return
 
+    # 스테이지별 독립 params / param_mode
+    stage_params = ctx.get_stage_params("transform")
+    stage_param_mode = ctx.get_stage_param_mode("transform")
+
     sql_dir_str = transform_cfg.get("sql_dir")
     on_error    = (transform_cfg.get("on_error") or "stop").strip().lower()
 
@@ -92,42 +96,65 @@ def run(ctx: RunContext):
         logger.info("TRANSFORM session schema = '%s'", schema)
 
     # @{param} 스키마 접두사에 사용된 스키마 자동 생성 (DuckDB)
-    if conn_type == "duckdb" and ctx.params:
-        _ensure_param_schemas(conn, sql_files, ctx.params, logger)
+    if conn_type == "duckdb" and stage_params:
+        _ensure_param_schemas(conn, sql_files, stage_params, logger)
 
     schema_display = schema if schema else "(default)"
     logger.info("TRANSFORM target=%s | schema=%s | sql_count=%d | on_error=%s",
                 label, schema_display, len(sql_files), on_error)
 
     try:
-        _run_sql_loop(ctx, conn, conn_type, sql_files, on_error)
+        _run_sql_loop(ctx, conn, conn_type, sql_files, on_error,
+                      stage_params=stage_params, stage_param_mode=stage_param_mode)
     finally:
         conn.close()
 
     # logger.info("TRANSFORM stage end")
 
 
-def _run_sql_loop(ctx, conn, conn_type, sql_files, on_error):
+def _run_sql_loop(ctx, conn, conn_type, sql_files, on_error,
+                  stage_params=None, stage_param_mode="product"):
+    from stages.export_stage import expand_params
+    from engine.sql_utils import detect_used_params
+
     logger = ctx.logger
+    if stage_params is None:
+        stage_params = ctx.get_stage_params("transform")
+
     total = len(sql_files)
     success = failed = 0
+    aborted = False
 
     for i, sql_file in enumerate(sql_files, 1):
+        if aborted:
+            break
         sql_text = sql_file.read_text(encoding="utf-8")
-        rendered = render_sql(sql_text, ctx.params)
 
-        logger.info("TRANSFORM [%d/%d] %s", i, total, sql_file.name)
-        start = time.time()
-        try:
-            _execute(conn, conn_type, rendered)
-            logger.info("TRANSFORM [%d/%d] done (%.2fs)", i, total, time.time() - start)
-            success += 1
-        except Exception as e:
-            logger.error("TRANSFORM [%d/%d] FAILED (%.2fs): %s", i, total, time.time() - start, e)
-            failed += 1
-            if on_error == "stop":
-                logger.error("TRANSFORM aborted (on_error=stop)")
-                break
+        # SQL별 사용 파라미터만 확장
+        used_keys = detect_used_params(sql_text, stage_params)
+        relevant_params = {k: v for k, v in stage_params.items() if k in used_keys}
+        param_sets = expand_params(relevant_params, mode=stage_param_mode) if relevant_params else [{}]
+
+        for pi, param_set in enumerate(param_sets, 1):
+            full_params = {**stage_params, **param_set}
+            rendered = render_sql(sql_text, full_params)
+
+            label = f"TRANSFORM [{i}/{total}]" if len(param_sets) == 1 \
+                else f"TRANSFORM [{i}/{total}][{pi}/{len(param_sets)}]"
+            logger.info("%s %s %s", label, sql_file.name,
+                        " ".join(f"{k}={v}" for k, v in param_set.items()) if param_set else "")
+            start = time.time()
+            try:
+                _execute(conn, conn_type, rendered)
+                logger.info("%s done (%.2fs)", label, time.time() - start)
+                success += 1
+            except Exception as e:
+                logger.error("%s FAILED (%.2fs): %s", label, time.time() - start, e)
+                failed += 1
+                if on_error == "stop":
+                    logger.error("TRANSFORM aborted (on_error=stop)")
+                    aborted = True
+                    break
 
     logger.info("TRANSFORM summary | success=%d failed=%d total=%d", success, failed, total)
 
