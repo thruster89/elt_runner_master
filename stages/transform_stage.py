@@ -189,10 +189,16 @@ def _run_sql_loop(ctx, conn, conn_type, sql_files, on_error, *,
                 if run_info_path:
                     update_task_status(run_info_path, task_key, "failed", error=str(e))
                 if on_error == "stop":
-                    # 나머지 task를 pending으로 기록
+                    # 현재 파일의 남은 param_set + 이후 파일 전부를 pending 기록
                     if run_info_path:
+                        # BUG-2 fix: 현재 파일의 남은 param_set도 pending 기록
+                        for remaining_ps in param_sets[pi:]:
+                            rk = make_task_key(sql_file, remaining_ps)
+                            if failed_task_keys is None or rk in failed_task_keys:
+                                update_task_status(run_info_path, rk, "pending")
+                        # BUG-1 fix: remaining 파일의 SQL을 읽어야 함 (sql_file → remaining)
                         for remaining in sql_files[i:]:
-                            rt = sql_file.read_text(encoding="utf-8")
+                            rt = remaining.read_text(encoding="utf-8")
                             ru = detect_used_params(rt, stage_params)
                             rr = {k: v for k, v in stage_params.items() if k in ru}
                             rps = expand_params(rr, mode=stage_param_mode) if rr else [{}]
