@@ -31,6 +31,9 @@ from engine.connection import connect_target
 from engine.context import RunContext
 from engine.path_utils import resolve_path
 from engine.sql_utils import sort_sql_files, render_sql
+from stages.task_tracking import (
+    make_task_key, init_run_info, update_task_status, load_failed_tasks,
+)
 
 
 def run(ctx: RunContext):
@@ -46,7 +49,26 @@ def run(ctx: RunContext):
         logger.info("REPORT stage skipped (plan mode)")
         return
 
+    # 스테이지별 독립 params / param_mode
+    stage_params = ctx.get_stage_params("report")
+    stage_param_mode = ctx.get_stage_param_mode("report")
+
+    # ── run_info.json 초기화 & retry ────────────────────────
+    tracking_base = resolve_path(ctx, report_cfg.get("tracking_dir", "data/report_tracking"))
+    run_info_dir = tracking_base / ctx.job_name / ctx.run_id
+    run_info_path = run_info_dir / "run_info.json"
+
+    init_run_info(run_info_path, job_name=ctx.job_name, run_id=ctx.run_id,
+                  stage="report", mode=ctx.mode, params=ctx.params)
+
+    failed_task_keys = None
+    if ctx.mode == "retry":
+        failed_task_keys = load_failed_tasks(
+            tracking_base, ctx.job_name, ctx.run_id, stage="report")
+
     generated_csvs = []
+    report_success = 0
+    report_failed = 0
 
     skip_sql = bool(report_cfg.get("skip_sql", False))
 
@@ -66,25 +88,46 @@ def run(ctx: RunContext):
     else:
         export_csv_cfg = report_cfg.get("export_csv", {})
         if export_csv_cfg.get("enabled", False):
-            generated_csvs = _run_csv_export(ctx, report_cfg, export_csv_cfg)
+            generated_csvs, csv_failed = _run_csv_export(
+                ctx, report_cfg, export_csv_cfg,
+                stage_params=stage_params,
+                stage_param_mode=stage_param_mode,
+                run_info_path=run_info_path,
+                failed_task_keys=failed_task_keys,
+            )
+            report_success += len(generated_csvs)
+            report_failed += csv_failed
         else:
             logger.info("REPORT csv export skipped")
 
     excel_cfg = report_cfg.get("excel", {})
     if excel_cfg.get("enabled", False):
-        _run_excel_export(ctx, report_cfg, excel_cfg, generated_csvs)
+        try:
+            _run_excel_export(ctx, report_cfg, excel_cfg, generated_csvs)
+            report_success += 1
+        except Exception as e:
+            logger.error("REPORT excel FAILED: %s", e)
+            report_failed += 1
     else:
         logger.info("REPORT excel export skipped")
 
-    # logger.info("REPORT stage end")
+    ctx.report_stage_result("report", success=report_success, failed=report_failed)
 
 
 # ────────────────────────────────────────────────────────────
 # CSV Export
 # ────────────────────────────────────────────────────────────
 
-def _run_csv_export(ctx, report_cfg, cfg) -> list:
+def _run_csv_export(ctx, report_cfg, cfg, *,
+                    stage_params=None, stage_param_mode="product",
+                    run_info_path=None, failed_task_keys=None) -> tuple:
+    """CSV export. 반환: (generated_files, failed_count)."""
+    from stages.export_stage import expand_params
+    from engine.sql_utils import detect_used_params
+
     logger = ctx.logger
+    if stage_params is None:
+        stage_params = ctx.get_stage_params("report")
     sql_dir = resolve_path(ctx, cfg.get("sql_dir", "sql/report"))
     out_dir  = resolve_path(ctx, cfg.get("out_dir",  "data/report"))
     compression = (cfg.get("compression") or "none").strip().lower()
@@ -93,12 +136,12 @@ def _run_csv_export(ctx, report_cfg, cfg) -> list:
 
     if not sql_dir.exists():
         logger.warning("REPORT sql_dir not found: %s", sql_dir)
-        return []
+        return [], 0
 
     sql_files = sort_sql_files(sql_dir)
     if not sql_files:
         logger.info("REPORT no SQL files in %s", sql_dir)
-        return []
+        return [], 0
 
     # ── --include-report 필터 적용 ──────────────────────────
     include_patterns = getattr(ctx, "include_report_patterns", []) or []
@@ -118,7 +161,7 @@ def _run_csv_export(ctx, report_cfg, cfg) -> list:
         )
         if not sql_files:
             logger.warning("REPORT --include filter resulted in no SQL files (patterns=%s)", include_patterns)
-            return []
+            return [], 0
 
     # report.source 결정: 기본값은 "target"
     report_source = (report_cfg.get("source") or "target").strip().lower()
@@ -144,28 +187,65 @@ def _run_csv_export(ctx, report_cfg, cfg) -> list:
     )
 
     generated = []
+    csv_failed = 0
     total = len(sql_files)
+    ext = ".csv.gz" if compression == "gzip" else ".csv"
 
     try:
         for i, sql_file in enumerate(sql_files, 1):
             sql_text = sql_file.read_text(encoding="utf-8")
-            rendered = render_sql(sql_text, ctx.params)
 
-            ext = ".csv.gz" if compression == "gzip" else ".csv"
-            out_file = out_dir / (sql_file.stem + ext)
+            # SQL별 사용 파라미터만 확장
+            used_keys = detect_used_params(sql_text, stage_params)
+            relevant_params = {k: v for k, v in stage_params.items() if k in used_keys}
+            param_sets = expand_params(relevant_params, mode=stage_param_mode) if relevant_params else [{}]
 
-            logger.info("REPORT [%d/%d] %s → %s", i, total, sql_file.name, out_file.name)
-            start = time.time()
-            try:
-                rows = _export_to_csv(conn, conn_type, rendered, out_file, compression)
-                logger.info("REPORT [%d/%d] done | rows=%d elapsed=%.2fs", i, total, rows, time.time() - start)
-                generated.append(out_file)
-            except Exception as e:
-                logger.error("REPORT [%d/%d] FAILED (%.2fs): %s", i, total, time.time() - start, e)
+            for pi, param_set in enumerate(param_sets, 1):
+                task_key = make_task_key(sql_file, param_set)
+
+                # retry 모드: 이전에 성공한 task는 건너뛰기
+                if failed_task_keys is not None and task_key not in failed_task_keys:
+                    logger.info("REPORT [%d/%d][%d/%d] %s RETRY skip (succeeded)",
+                                i, total, pi, len(param_sets), sql_file.name)
+                    continue
+
+                full_params = {**stage_params, **param_set}
+                rendered = render_sql(sql_text, full_params)
+
+                # 파라미터가 여러 세트면 파일명에 파라미터값 포함
+                if len(param_sets) > 1:
+                    suffix = "_".join(str(v) for v in param_set.values())
+                    out_file = out_dir / f"{sql_file.stem}_{suffix}{ext}"
+                else:
+                    out_file = out_dir / (sql_file.stem + ext)
+
+                label = f"REPORT [{i}/{total}]" if len(param_sets) == 1 \
+                    else f"REPORT [{i}/{total}][{pi}/{len(param_sets)}]"
+
+                if run_info_path:
+                    update_task_status(run_info_path, task_key, "running")
+
+                logger.info("%s %s → %s", label, sql_file.name, out_file.name)
+                start = time.time()
+                try:
+                    rows = _export_to_csv(conn, conn_type, rendered, out_file, compression)
+                    elapsed = time.time() - start
+                    logger.info("%s done | rows=%d elapsed=%.2fs", label, rows, elapsed)
+                    generated.append(out_file)
+                    if run_info_path:
+                        update_task_status(run_info_path, task_key, "success",
+                                           rows=rows, elapsed=elapsed)
+                except Exception as e:
+                    elapsed = time.time() - start
+                    logger.error("%s FAILED (%.2fs): %s", label, elapsed, e)
+                    csv_failed += 1
+                    if run_info_path:
+                        update_task_status(run_info_path, task_key, "failed", error=str(e))
     finally:
         conn.close()
 
-    return generated
+    logger.info("REPORT csv summary | success=%d failed=%d", len(generated), csv_failed)
+    return generated, csv_failed
 
 
 def _open_connection(ctx, report_source: str):
@@ -349,13 +429,6 @@ def _run_excel_export(ctx, report_cfg, cfg, csv_files: list):
                     str_max = col_series.str.len().max()
                     max_len = max(str_max if pd.notna(str_max) else 0, len(str(col_name)))
                     ws.column_dimensions[get_column_letter(col_idx)].width = min(int(max_len * 1.2) + 2, 50)
-
-
-                # 숫자 컬럼 포맷
-                # for col_idx, col_name in enumerate(df.columns, start=1):
-                #     if is_integer_dtype(df[col_name]) or is_float_dtype(df[col_name]):
-                #         for row in range(2, ws.max_row + 1):
-                #             ws.cell(row=row, column=col_idx).number_format = "#,##0"
 
                 logger.info("REPORT excel sheet: %s (%d rows)", sheet_name, row_count)
 

@@ -263,3 +263,4 @@ def _run_load_loop(ctx, logger, csv_files, sql_map, tgt_type, load_fn):
             failed += 1
 
     logger.info("LOAD summary | loaded=%d skipped=%d failed=%d", loaded, skipped, failed)
+    ctx.report_stage_result("load", success=loaded, failed=failed, skipped=skipped)

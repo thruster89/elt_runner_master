@@ -68,7 +68,6 @@ def get_thread_connection(source_type, env_cfg, host_name):
     """
     thread마다 connection 1개 재사용.
     Oracle thick 모드에서만 _conn_recycle_interval마다 연결 갱신 (OCI 메모리 누적 방지).
-    생성된 connection은 _thread_connections에 추적하여 나중에 일괄 정리.
     """
     use_count = getattr(_thread_local, "use_count", 0)
 
@@ -76,11 +75,17 @@ def get_thread_connection(source_type, env_cfg, host_name):
         if not _need_recycle(source_type, use_count):
             _thread_local.use_count = use_count + 1
             return _thread_local.conn
-        # 재활용 한도 도달 → 기존 연결 닫고 새로 생성
+        # 재활용 한도 도달 → 기존 연결 닫고 리스트에서도 제거
+        old_conn = _thread_local.conn
         try:
-            _thread_local.conn.close()
+            old_conn.close()
         except Exception:
             pass
+        with _conn_list_lock:
+            try:
+                _thread_connections.remove(old_conn)
+            except ValueError:
+                pass
         _thread_local.conn = None
 
     conn = _new_connection(source_type, env_cfg, host_name)
@@ -161,6 +166,11 @@ def expand_params(params: dict, mode: str = "product"):
     mode:
         "product" — 카르테시안 곱 (기본, 모든 조합)
         "zip"     — 위치별 1:1 매칭 (같은 인덱스끼리 쌍)
+
+    구분자:
+        "|" — 다중 값 확장 (예: critYm=201809|202001)
+        ":" — 범위 확장   (예: critYm=201801:201812)
+        ","  — 그대로 전달 (SQL IN 절 등에서 사용)
     """
     from itertools import product as iproduct
     import logging
@@ -178,8 +188,8 @@ def expand_params(params: dict, mode: str = "product"):
             expanded = expand_range_value(v_str)
             values.append(expanded)
 
-        elif "," in v_str:
-            split_vals = [x.strip() for x in v_str.split(",")]
+        elif "|" in v_str:
+            split_vals = [x.strip() for x in v_str.split("|")]
             values.append(split_vals)
 
         else:
@@ -322,10 +332,15 @@ def _make_task_key(sql_file: Path, param_set: dict) -> str:
 # Plan mode: Dryrun report
 # ---------------------------
 def run_plan(ctx, sql_files, export_cfg, out_dir, ext, name_style="full",
-             strip_prefix=False):
+             strip_prefix=False, stage_params=None, stage_param_mode=None):
     logger = ctx.logger
     source_sel = ctx.job_config.get("source", {})
     host_name = source_sel.get("host", "")
+
+    if stage_params is None:
+        stage_params = ctx.get_stage_params("export")
+    if stage_param_mode is None:
+        stage_param_mode = ctx.get_stage_param_mode("export")
 
     logger.info("EXPORT [PLAN] generating dryrun report...")
 
@@ -334,9 +349,9 @@ def run_plan(ctx, sql_files, export_cfg, out_dir, ext, name_style="full",
         sql_text_raw = sql_file.read_text(encoding="utf-8")
 
         # SQL별 사용 파라미터만 확장
-        used_keys = detect_used_params(sql_text_raw, ctx.params)
-        relevant_params = {k: v for k, v in ctx.params.items() if k in used_keys}
-        param_mode = getattr(ctx, "param_mode", "product")
+        used_keys = detect_used_params(sql_text_raw, stage_params)
+        relevant_params = {k: v for k, v in stage_params.items() if k in used_keys}
+        param_mode = stage_param_mode
         sql_param_sets = expand_params(relevant_params, mode=param_mode) if relevant_params else [{}]
 
         for param_set in sql_param_sets:
@@ -380,7 +395,7 @@ def run_plan(ctx, sql_files, export_cfg, out_dir, ext, name_style="full",
         "run_id": ctx.run_id,
         "mode": "plan",
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "params": ctx.params,
+        "params": stage_params,
         "source": source_sel,
         "export_config": {
             "sql_dir": export_cfg.get("sql_dir"),
@@ -413,7 +428,7 @@ def run_plan(ctx, sql_files, export_cfg, out_dir, ext, name_style="full",
         f.write(f"  Run ID  : {ctx.run_id}\n")
         f.write(f"  At      : {report['generated_at']}\n")
         f.write(f"  Source  : {source_sel.get('type')} / {source_sel.get('host')}\n")
-        f.write(f"  Params  : {ctx.params}\n")
+        f.write(f"  Params  : {stage_params}\n")
         f.write("=" * 70 + "\n\n")
         f.write(f"total tasks    : {len(tasks)}\n")
         f.write(f"tasks with warnings : {report['warning_count']}\n\n")
@@ -561,6 +576,10 @@ def run(ctx: RunContext):
         logger.info("EXPORT stage skipped (no config)")
         return
 
+    # 스테이지별 독립 params / param_mode
+    stage_params = ctx.get_stage_params("export")
+    stage_param_mode = ctx.get_stage_param_mode("export")
+
     sql_dir = resolve_path(ctx, export_cfg["sql_dir"])
     out_dir = resolve_path(ctx, export_cfg["out_dir"]) / ctx.job_name
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -610,7 +629,8 @@ def run(ctx: RunContext):
     # ----------------------------------------
     if ctx.mode == "plan":
         run_plan(ctx, sql_files, export_cfg, out_dir, ext, name_style=name_style,
-                 strip_prefix=strip_prefix)
+                 strip_prefix=strip_prefix,
+                 stage_params=stage_params, stage_param_mode=stage_param_mode)
         return
 
     # ----------------------------------------
@@ -710,9 +730,19 @@ def run(ctx: RunContext):
                                 rows=rows or 0, elapsed=elapsed)
 
         except Exception as e:
-            # 커넥션 오류 시 thread-local에서 제거 → 다음 task에서 새 커넥션 생성
-            _thread_local.__dict__.pop("conn", None)
+            # 커넥션 오류 시 즉시 close + thread-local에서 제거 → 다음 task에서 새 커넥션 생성
+            bad_conn = _thread_local.__dict__.pop("conn", None)
             _thread_local.__dict__.pop("use_count", None)
+            if bad_conn:
+                try:
+                    bad_conn.close()
+                except Exception:
+                    pass
+                with _conn_list_lock:
+                    try:
+                        _thread_connections.remove(bad_conn)
+                    except ValueError:
+                        pass
             logger.exception("%s EXPORT failed: %s", prefix, e)
             _update_task_status(run_info_path, task_key, "failed", error=str(e))
 
@@ -723,13 +753,12 @@ def run(ctx: RunContext):
     else:
         logger.info("Parallel workers=%d", parallel_workers)
 
-    param_mode = getattr(ctx, "param_mode", "product")
     tasks = []
     for idx, sql_file in enumerate(sql_files, 1):
         sql_text_raw = sql_file.read_text(encoding="utf-8")
-        used_keys = detect_used_params(sql_text_raw, ctx.params)
-        relevant_params = {k: v for k, v in ctx.params.items() if k in used_keys}
-        sql_param_sets = expand_params(relevant_params, mode=param_mode) if relevant_params else [{}]
+        used_keys = detect_used_params(sql_text_raw, stage_params)
+        relevant_params = {k: v for k, v in stage_params.items() if k in used_keys}
+        sql_param_sets = expand_params(relevant_params, mode=stage_param_mode) if relevant_params else [{}]
         for param_idx, param_set in enumerate(sql_param_sets, 1):
             tasks.append((sql_file, param_set, idx, len(sql_files), param_idx, len(sql_param_sets)))
 
@@ -756,3 +785,22 @@ def run(ctx: RunContext):
                     f.result()
     finally:
         _close_all_connections(logger)
+
+    # ── 결과 요약 ────────────────────────────────────────
+    success = failed = skipped = 0
+    try:
+        with open(run_info_path, encoding="utf-8") as f:
+            info = json.load(f)
+        for entry in info.get("tasks", {}).values():
+            st = entry.get("status", "")
+            if st == "success":
+                success += 1
+            elif st == "failed":
+                failed += 1
+            elif st == "skipped":
+                skipped += 1
+    except Exception:
+        pass
+    logger.info("EXPORT summary | success=%d failed=%d skipped=%d total=%d",
+                success, failed, skipped, len(tasks))
+    ctx.report_stage_result("export", success=success, failed=failed, skipped=skipped)

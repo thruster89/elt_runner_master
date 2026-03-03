@@ -16,6 +16,9 @@ from engine.connection import connect_target
 from engine.context import RunContext
 from engine.path_utils import resolve_path
 from engine.sql_utils import sort_sql_files, render_sql
+from stages.task_tracking import (
+    make_task_key, init_run_info, update_task_status, load_failed_tasks,
+)
 
 
 def run(ctx: RunContext):
@@ -28,6 +31,10 @@ def run(ctx: RunContext):
     if ctx.mode == "plan":
         logger.info("TRANSFORM stage skipped (plan mode)")
         return
+
+    # 스테이지별 독립 params / param_mode
+    stage_params = ctx.get_stage_params("transform")
+    stage_param_mode = ctx.get_stage_param_mode("transform")
 
     sql_dir_str = transform_cfg.get("sql_dir")
     on_error    = (transform_cfg.get("on_error") or "stop").strip().lower()
@@ -92,44 +99,114 @@ def run(ctx: RunContext):
         logger.info("TRANSFORM session schema = '%s'", schema)
 
     # @{param} 스키마 접두사에 사용된 스키마 자동 생성 (DuckDB)
-    if conn_type == "duckdb" and ctx.params:
-        _ensure_param_schemas(conn, sql_files, ctx.params, logger)
+    if conn_type == "duckdb" and stage_params:
+        _ensure_param_schemas(conn, sql_files, stage_params, logger)
 
     schema_display = schema if schema else "(default)"
     logger.info("TRANSFORM target=%s | schema=%s | sql_count=%d | on_error=%s",
                 label, schema_display, len(sql_files), on_error)
 
+    # ── run_info.json 초기화 & retry ────────────────────────
+    tracking_base = resolve_path(ctx, transform_cfg.get("tracking_dir", "data/transform"))
+    run_info_dir = tracking_base / ctx.job_name / ctx.run_id
+    run_info_path = run_info_dir / "run_info.json"
+
+    init_run_info(run_info_path, job_name=ctx.job_name, run_id=ctx.run_id,
+                  stage="transform", mode=ctx.mode, params=ctx.params)
+
+    failed_task_keys = None
+    if ctx.mode == "retry":
+        failed_task_keys = load_failed_tasks(
+            tracking_base, ctx.job_name, ctx.run_id, stage="transform")
+
     try:
-        _run_sql_loop(ctx, conn, conn_type, sql_files, on_error)
+        _run_sql_loop(ctx, conn, conn_type, sql_files, on_error,
+                      stage_params=stage_params, stage_param_mode=stage_param_mode,
+                      run_info_path=run_info_path,
+                      failed_task_keys=failed_task_keys)
     finally:
         conn.close()
 
-    # logger.info("TRANSFORM stage end")
 
+def _run_sql_loop(ctx, conn, conn_type, sql_files, on_error, *,
+                  stage_params=None, stage_param_mode="product",
+                  run_info_path=None, failed_task_keys=None):
+    from stages.export_stage import expand_params
+    from engine.sql_utils import detect_used_params
 
-def _run_sql_loop(ctx, conn, conn_type, sql_files, on_error):
     logger = ctx.logger
+    if stage_params is None:
+        stage_params = ctx.get_stage_params("transform")
+
     total = len(sql_files)
-    success = failed = 0
+    success = failed = skipped = 0
+    aborted = False
 
     for i, sql_file in enumerate(sql_files, 1):
+        if aborted:
+            break
+
         sql_text = sql_file.read_text(encoding="utf-8")
-        rendered = render_sql(sql_text, ctx.params)
 
-        logger.info("TRANSFORM [%d/%d] %s", i, total, sql_file.name)
-        start = time.time()
-        try:
-            _execute(conn, conn_type, rendered)
-            logger.info("TRANSFORM [%d/%d] done (%.2fs)", i, total, time.time() - start)
-            success += 1
-        except Exception as e:
-            logger.error("TRANSFORM [%d/%d] FAILED (%.2fs): %s", i, total, time.time() - start, e)
-            failed += 1
-            if on_error == "stop":
-                logger.error("TRANSFORM aborted (on_error=stop)")
-                break
+        # SQL별 사용 파라미터만 확장
+        used_keys = detect_used_params(sql_text, stage_params)
+        relevant_params = {k: v for k, v in stage_params.items() if k in used_keys}
+        param_sets = expand_params(relevant_params, mode=stage_param_mode) if relevant_params else [{}]
 
-    logger.info("TRANSFORM summary | success=%d failed=%d total=%d", success, failed, total)
+        for pi, param_set in enumerate(param_sets, 1):
+            task_key = make_task_key(sql_file, param_set)
+
+            # retry 모드: 이전에 성공한 task는 건너뛰기
+            if failed_task_keys is not None and task_key not in failed_task_keys:
+                logger.info("TRANSFORM [%d/%d][%d/%d] %s RETRY skip (succeeded)",
+                            i, total, pi, len(param_sets), sql_file.name)
+                skipped += 1
+                continue
+
+            full_params = {**stage_params, **param_set}
+            rendered = render_sql(sql_text, full_params)
+
+            label = f"TRANSFORM [{i}/{total}]" if len(param_sets) == 1 \
+                else f"TRANSFORM [{i}/{total}][{pi}/{len(param_sets)}]"
+
+            if run_info_path:
+                update_task_status(run_info_path, task_key, "running")
+
+            logger.info("%s %s %s", label, sql_file.name,
+                        " ".join(f"{k}={v}" for k, v in param_set.items()) if param_set else "")
+            start = time.time()
+            try:
+                _execute(conn, conn_type, rendered)
+                elapsed = time.time() - start
+                logger.info("%s done (%.2fs)", label, elapsed)
+                success += 1
+                if run_info_path:
+                    update_task_status(run_info_path, task_key, "success", elapsed=elapsed)
+            except Exception as e:
+                elapsed = time.time() - start
+                logger.error("%s FAILED (%.2fs): %s", label, elapsed, e)
+                failed += 1
+                if run_info_path:
+                    update_task_status(run_info_path, task_key, "failed", error=str(e))
+                if on_error == "stop":
+                    # 나머지 task를 pending으로 기록
+                    if run_info_path:
+                        for remaining in sql_files[i:]:
+                            rt = sql_file.read_text(encoding="utf-8")
+                            ru = detect_used_params(rt, stage_params)
+                            rr = {k: v for k, v in stage_params.items() if k in ru}
+                            rps = expand_params(rr, mode=stage_param_mode) if rr else [{}]
+                            for rp in rps:
+                                rk = make_task_key(remaining, rp)
+                                if failed_task_keys is None or rk in failed_task_keys:
+                                    update_task_status(run_info_path, rk, "pending")
+                    logger.error("TRANSFORM aborted (on_error=stop)")
+                    aborted = True
+                    break
+
+    logger.info("TRANSFORM summary | success=%d failed=%d skipped=%d total=%d",
+                success, failed, skipped, total)
+    ctx.report_stage_result("transform", success=success, failed=failed, skipped=skipped)
 
 
 def _ensure_param_schemas(conn, sql_files, params, logger):
