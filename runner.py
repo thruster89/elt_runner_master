@@ -299,6 +299,10 @@ def main():
         help="params override (예: --param clsYymm=202003)",
     )
     parser.add_argument(
+        "--param-mode", choices=["product", "zip"], default=None,
+        help="파라미터 조합 방식: product(카르테시안 곱, 기본) / zip(위치별 1:1 매칭)",
+    )
+    parser.add_argument(
         "--set", action="append", metavar="PATH=VALUE", dest="overrides",
         help="job yml 항목 override (예: --set export.compression=none\n"
              "                              --set target.db_path=data/my.duckdb\n"
@@ -405,6 +409,7 @@ def main():
 
     start_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+    param_mode = args.param_mode or job_config.get("param_mode", "product")
     ctx = RunContext(
         job_name=job_name,
         run_id=run_id,
@@ -418,6 +423,7 @@ def main():
         include_transform_patterns=args.include_transform_patterns or [],
         include_report_patterns=args.include_report_patterns or [],
         stage_filter=args.stage_filter or [],
+        param_mode=param_mode,
     )
 
     # ── JOB START 헤더 로그 ──────────────────────────────
@@ -446,6 +452,8 @@ def main():
 
     if params:
         logger.info(" Params    : %s", ", ".join(f"{k}={v}" for k, v in params.items()))
+        if param_mode != "product":
+            logger.info(" ParamMode : %s", param_mode)
 
         try:
             from stages.export_stage import expand_params, expand_range_value
@@ -481,7 +489,7 @@ def main():
                     sql_text = sf.read_text(encoding="utf-8")
                     used = detect_used_params(sql_text, params)
                     rel = {k: v for k, v in params.items() if k in used}
-                    total_tasks += len(expand_params(rel)) if rel else 1
+                    total_tasks += len(expand_params(rel, mode=param_mode)) if rel else 1
                 logger.info(" Total Tasks: %d (sql=%d)", total_tasks, len(sql_files))
         except Exception as e:
             logger.debug("Param expand preview skipped: %s", e)

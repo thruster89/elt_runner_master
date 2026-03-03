@@ -46,6 +46,7 @@ class StateJobMixin:
             "stage_load_local": self._stage_load_local.get(),
             "stage_transform":  self._stage_transform.get(),
             "stage_report":     self._stage_report.get(),
+            "param_mode":  self._param_mode_var.get(),
             "params":      [(k.get(), v.get()) for k, v in self._param_entries],
             "overrides": {
                 "overwrite":    self._ov_overwrite.get(),
@@ -94,6 +95,7 @@ class StateJobMixin:
         if self._stage_buttons:
             self._refresh_stage_buttons()
 
+        self._param_mode_var.set(snap.get("param_mode", "product"))
         self._refresh_param_rows(snap.get("params", []))
 
         self.mode_var.set(snap.get("mode", "run"))
@@ -216,6 +218,9 @@ class StateJobMixin:
         }
         if params:
             cfg["params"] = params
+        pm = self._param_mode_var.get()
+        if pm and pm != "product":
+            cfg["param_mode"] = pm
         # target specifics
         tgt_type = self._target_type_var.get()
         if tgt_type in ("duckdb", "sqlite3") and self._target_db_path.get().strip():
@@ -358,6 +363,9 @@ class StateJobMixin:
         self._ov_csv.set(csv_enabled)
         self._ov_max_files.set(int(rep.get("excel", {}).get("max_files", 10)))
         self._ov_union_dir.set(str(rep.get("csv_union_dir", "")))
+
+        # Param mode
+        self._param_mode_var.set(cfg.get("param_mode", "product"))
 
         # Params
         params = cfg.get("params", {})

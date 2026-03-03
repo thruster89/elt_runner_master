@@ -155,8 +155,14 @@ def expand_range_value(value: str):
     return result
 
 
-def expand_params(params: dict):
-    from itertools import product
+def expand_params(params: dict, mode: str = "product"):
+    """파라미터 값을 확장하여 조합 리스트 반환.
+
+    mode:
+        "product" — 카르테시안 곱 (기본, 모든 조합)
+        "zip"     — 위치별 1:1 매칭 (같은 인덱스끼리 쌍)
+    """
+    from itertools import product as iproduct
     import logging
 
     logger = logging.getLogger(__name__)
@@ -170,21 +176,36 @@ def expand_params(params: dict):
 
         if ":" in v_str:
             expanded = expand_range_value(v_str)
-            # logger.info("Param expand | %s -> %d values", v_str, len(expanded))
             values.append(expanded)
 
         elif "," in v_str:
             split_vals = [x.strip() for x in v_str.split(",")]
-            # logger.info("Param expand | %s -> %d values", v_str, len(split_vals))
             values.append(split_vals)
 
         else:
-            # logger.info("Param expand | %s -> 1 value", v_str)
             values.append([v_str])
 
     expanded = []
-    for combo in product(*values):
-        expanded.append(dict(zip(multi_keys, combo)))
+    if mode == "zip":
+        # 다중값(2개 이상) 파라미터들의 길이가 같은지 검증
+        multi_lengths = [(k, len(v)) for k, v in zip(multi_keys, values) if len(v) > 1]
+        if multi_lengths:
+            lengths = set(ln for _, ln in multi_lengths)
+            if len(lengths) > 1:
+                detail = ", ".join(f"{k}={ln}" for k, ln in multi_lengths)
+                raise ValueError(
+                    f"zip 모드에서는 다중값 파라미터의 개수가 같아야 합니다: {detail}"
+                )
+            zip_len = multi_lengths[0][1]
+            # 단일값 파라미터는 zip_len만큼 반복
+            aligned = [v if len(v) > 1 else v * zip_len for v in values]
+        else:
+            aligned = values
+        for combo in zip(*aligned):
+            expanded.append(dict(zip(multi_keys, combo)))
+    else:
+        for combo in iproduct(*values):
+            expanded.append(dict(zip(multi_keys, combo)))
 
     return expanded
 
@@ -251,6 +272,35 @@ def backup_existing_file(file_path: Path, backup_dir: Path, keep: int = 10):
         backups.pop(0)
 
 
+def _cleanup_alt_ext(out_file: Path, backup_dir: Path, keep: int, logger):
+    """compression 전환 시 반대 확장자의 orphan 파일(+meta.json) 정리.
+
+    예: gzip→csv 전환 시, 같은 이름의 .csv.gz 가 남아있으면
+    LOAD에서 중복 로드되므로 백업 후 제거한다.
+    """
+    name = out_file.name
+    if name.endswith(".csv.gz"):
+        alt = out_file.parent / (name[:-len(".gz")])       # .csv.gz → .csv
+    elif name.endswith(".csv"):
+        alt = out_file.parent / (name + ".gz")             # .csv → .csv.gz
+    else:
+        return
+
+    if alt.exists():
+        logger.info("Removing orphan (alt extension): %s", alt.name)
+        backup_existing_file(alt, backup_dir, keep)
+        # 대응하는 orphan meta.json도 정리
+        alt_stem = alt.name[:-len(".csv.gz")] if alt.name.endswith(".csv.gz") else alt.name[:-len(".csv")]
+        alt_meta = alt.parent / (alt_stem + ".meta.json")
+        if alt_meta.exists():
+            # meta.json은 현재 파일의 것과 같은 이름이므로 중복 삭제하지 않음
+            # (out_file과 alt의 stem이 동일하면 같은 meta.json을 공유)
+            out_stem = name[:-len(".csv.gz")] if name.endswith(".csv.gz") else name[:-len(".csv")]
+            if alt_stem != out_stem:
+                alt_meta.unlink()
+                logger.debug("Removed orphan meta: %s", alt_meta.name)
+
+
 def build_log_prefix(sql_file: Path, params: dict) -> str:
     if not params:
         return f"[{sql_file.stem}]"
@@ -286,7 +336,8 @@ def run_plan(ctx, sql_files, export_cfg, out_dir, ext, name_style="full",
         # SQL별 사용 파라미터만 확장
         used_keys = detect_used_params(sql_text_raw, ctx.params)
         relevant_params = {k: v for k, v in ctx.params.items() if k in used_keys}
-        sql_param_sets = expand_params(relevant_params) if relevant_params else [{}]
+        param_mode = getattr(ctx, "param_mode", "product")
+        sql_param_sets = expand_params(relevant_params, mode=param_mode) if relevant_params else [{}]
 
         for param_set in sql_param_sets:
             rendered = sanitize_sql(render_sql(sql_text_raw, param_set))
@@ -652,6 +703,9 @@ def run(ctx: RunContext):
                 elapsed
             )
 
+            # compression 전환 시 이전 확장자 orphan 제거 (.csv ↔ .csv.gz)
+            _cleanup_alt_ext(out_file, out_dir / "_backup", backup_keep, logger)
+
             _update_task_status(run_info_path, task_key, "success",
                                 rows=rows or 0, elapsed=elapsed)
 
@@ -669,12 +723,13 @@ def run(ctx: RunContext):
     else:
         logger.info("Parallel workers=%d", parallel_workers)
 
+    param_mode = getattr(ctx, "param_mode", "product")
     tasks = []
     for idx, sql_file in enumerate(sql_files, 1):
         sql_text_raw = sql_file.read_text(encoding="utf-8")
         used_keys = detect_used_params(sql_text_raw, ctx.params)
         relevant_params = {k: v for k, v in ctx.params.items() if k in used_keys}
-        sql_param_sets = expand_params(relevant_params) if relevant_params else [{}]
+        sql_param_sets = expand_params(relevant_params, mode=param_mode) if relevant_params else [{}]
         for param_idx, param_set in enumerate(sql_param_sets, 1):
             tasks.append((sql_file, param_set, idx, len(sql_files), param_idx, len(sql_param_sets)))
 

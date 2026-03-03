@@ -243,6 +243,11 @@ class RunControlMixin:
         if timeout_val:
             cmd += ["--timeout", timeout_val]
 
+        # --param-mode
+        pm = self._param_mode_var.get()
+        if pm and pm != "product":
+            cmd += ["--param-mode", pm]
+
         return [str(x) for x in cmd]
 
     def _guess_tag(self: "BatchRunnerGUI", line: str) -> str:

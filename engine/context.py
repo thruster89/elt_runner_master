@@ -19,3 +19,4 @@ class RunContext:
     include_transform_patterns: list = field(default_factory=list)  # --include-transform 패턴 목록
     include_report_patterns: list = field(default_factory=list)     # --include-report 패턴 목록
     stage_filter: list = field(default_factory=list)      # --stage 필터 목록
+    param_mode: str = "product"   # "product" (카르테시안 곱) | "zip" (위치별 1:1 매칭)
