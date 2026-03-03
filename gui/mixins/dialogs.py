@@ -165,6 +165,8 @@ class DialogsMixin:
         self._restore_snapshot(snap)
         self._restoring_job = False
         self._capture_loaded_snapshot()
+        # 테마 전환 후 로그 내용 복원 (위젯 재생성으로 Text가 비어 있음)
+        self._refilter_log()
 
     def _open_in_explorer(self: "BatchRunnerGUI", path_str):
         """OS 파일 탐색기에서 경로를 연다"""

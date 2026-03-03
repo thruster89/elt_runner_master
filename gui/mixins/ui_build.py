@@ -432,8 +432,11 @@ class UiBuildMixin:
                 width=7, font=FONTS["mono_small"],
             )
             mode_combo.pack(side="left", padx=(8, 0))
-            if stage == "export":
-                self._param_mode_var.trace_add("write", lambda *_: self._refresh_preview())
+            mode_var = {"export": self._param_mode_var,
+                        "transform": self._transform_param_mode_var,
+                        "report": self._report_param_mode_var}.get(stage)
+            if mode_var and not getattr(self, "_traces_registered", False):
+                mode_var.trace_add("write", lambda *_: self._refresh_preview())
         tk.Label(hdr, text="( | 로 다중값 확장)", font=FONTS["mono_small"],
                  bg=C["mantle"], fg=C["overlay0"]).pack(side="left", padx=(6, 0))
         tk.Button(hdr, text="+ add", font=FONTS["mono_small"],
@@ -1141,7 +1144,7 @@ class UiBuildMixin:
         """전역 단축키 바인딩"""
         self.bind_all("<F5>",         lambda e: self._run_btn.invoke() if self._run_btn["state"] != "disabled" else None)
         self.bind_all("<Control-F5>", lambda e: self._dryrun_btn.invoke() if self._dryrun_btn["state"] != "disabled" else None)
-        self.bind_all("<Escape>",     lambda e: self._on_stop() if self._stop_btn["state"] != "disabled" else None)
+        self.bind_all("<Escape>",     lambda e: self._toggle_search() if self._search_frame.winfo_viewable() else (self._on_stop() if self._stop_btn["state"] != "disabled" else None))
         self.bind_all("<Control-s>",  lambda e: self._on_save_yml())
         self.bind_all("<Control-r>",  lambda e: self._reload_project())
         self.bind_all("<Control-l>",  lambda e: self._export_log())
