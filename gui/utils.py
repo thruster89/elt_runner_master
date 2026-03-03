@@ -144,7 +144,11 @@ def collect_sql_tree(sql_dir: Path) -> dict:
     """
     def _walk(path: Path) -> dict:
         node = {"__files__": []}
-        for item in sorted(path.iterdir()):
+        try:
+            entries = sorted(path.iterdir())
+        except (PermissionError, OSError):
+            return node
+        for item in entries:
             if item.is_file() and item.suffix.lower() == ".sql":
                 node["__files__"].append(item.name)
             elif item.is_dir():
@@ -154,7 +158,11 @@ def collect_sql_tree(sql_dir: Path) -> dict:
     if not sql_dir.exists():
         return {}
     tree = {"__files__": []}
-    for item in sorted(sql_dir.iterdir()):
+    try:
+        entries = sorted(sql_dir.iterdir())
+    except (PermissionError, OSError):
+        return tree
+    for item in entries:
         if item.is_dir():
             tree[item.name] = _walk(item)
         elif item.is_file() and item.suffix.lower() == ".sql":

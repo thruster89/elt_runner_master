@@ -23,6 +23,15 @@ class LogPanelMixin:
             self._insert_log_line(text, tag, ts)
             self._log.see("end")
 
+    def _log_write_batch(self: "BatchRunnerGUI", lines: list[tuple[str, str]]):
+        """여러 줄을 한 번에 기록 (고속 출력 시 GUI 멈춤 방지)"""
+        for text, tag in lines:
+            ts = datetime.now().strftime("%H:%M:%S")
+            self._log_raw_lines.append((text, tag, ts))
+            if self._should_show_line(tag):
+                self._insert_log_line(text, tag, ts)
+        self._log.see("end")
+
     def _log_sys(self: "BatchRunnerGUI", msg):
         self._log_write(msg, "SYS")
 
