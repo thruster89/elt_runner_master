@@ -44,6 +44,9 @@ def validate_pre_run(ctx: RunContext):
     # ── 4. 파라미터 검증 ─────────────────────────────────
     _validate_params(ctx, stages, warnings)
 
+    # ── 5. 스테이지별 설정값 범위 검증 ─────────────────
+    _validate_stage_options(job_cfg, stages, errors, warnings)
+
     return errors, warnings
 
 
@@ -87,6 +90,11 @@ def _validate_source(job_cfg, env_cfg, errors, warnings):
                 f"env.yml에 Vertica 호스트 '{host_name}'이 없습니다. "
                 f"(사용 가능: {list(hosts.keys())})"
             )
+            return
+        host_cfg = hosts[host_name]
+        for field in ("host", "user", "database"):
+            if not host_cfg.get(field):
+                errors.append(f"Vertica 호스트 '{host_name}'에 '{field}' 필드가 없습니다.")
     else:
         warnings.append(f"알 수 없는 소스 타입: '{source_type}'")
 
@@ -169,3 +177,48 @@ def _validate_params(ctx, stages, warnings):
                             f"[{stage_name}] 파라미터 '{k}={v_str}': "
                             f"시작값({start})이 끝값({end})보다 큽니다."
                         )
+
+
+def _validate_stage_options(job_cfg, stages, errors, warnings):
+    """스테이지별 설정값의 유효 범위를 검증한다."""
+
+    # ── export 옵션 ────────────────────────────────────
+    if "export" in stages:
+        export_cfg = job_cfg.get("export", {})
+
+        pw = export_cfg.get("parallel_workers")
+        if pw is not None:
+            try:
+                pw_int = int(pw)
+                if pw_int < 1:
+                    errors.append(f"export.parallel_workers는 1 이상이어야 합니다 (현재: {pw})")
+            except (TypeError, ValueError):
+                errors.append(f"export.parallel_workers가 숫자가 아닙니다: {pw}")
+
+        comp = (export_cfg.get("compression") or "").strip().lower()
+        if comp and comp not in ("none", "gzip"):
+            warnings.append(
+                f"export.compression 값이 유효하지 않습니다: '{comp}' "
+                f"(지원: none, gzip)"
+            )
+
+    # ── load 옵션 ──────────────────────────────────────
+    if "load" in stages:
+        load_cfg = job_cfg.get("load", {})
+        mode = (load_cfg.get("mode") or "").strip().lower()
+        valid_modes = ("replace", "truncate", "append", "delete", "")
+        if mode and mode not in valid_modes:
+            warnings.append(
+                f"load.mode 값이 유효하지 않습니다: '{mode}' "
+                f"(지원: replace, truncate, append, delete)"
+            )
+
+    # ── transform 옵션 ─────────────────────────────────
+    if "transform" in stages:
+        transform_cfg = job_cfg.get("transform", {})
+        on_error = (transform_cfg.get("on_error") or "").strip().lower()
+        if on_error and on_error not in ("stop", "continue"):
+            warnings.append(
+                f"transform.on_error 값이 유효하지 않습니다: '{on_error}' "
+                f"(지원: stop, continue)"
+            )
