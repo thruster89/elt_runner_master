@@ -311,6 +311,7 @@ class UiBuildMixin:
             for ov_var in (self._ov_compression, self._ov_on_error,
                            self._ov_load_mode, self._ov_union_dir, self._ov_timeout,
                            self._export_sql_dir, self._export_out_dir,
+                           self._load_csv_dir,
                            self._target_db_path, self._target_schema,
                            self._transform_sql_dir, self._report_sql_dir,
                            self._report_out_dir, self._source_host_var):
@@ -528,6 +529,10 @@ class UiBuildMixin:
                   bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
                   activebackground=C["surface1"],
                   command=_browse_db).pack(side="left", padx=(2, 0))
+
+        # CSV Dir (load 단독 모드용)
+        self._path_row(body, "csv_dir", self._load_csv_dir,
+                       "Select CSV load directory")
 
         # Schema (oracle)
         self._schema_row = tk.Frame(body, bg=C["mantle"])

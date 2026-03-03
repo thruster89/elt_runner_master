@@ -65,6 +65,8 @@ class BatchRunnerGUI(
         # Export paths
         self._export_sql_dir  = tk.StringVar(value="sql/export")
         self._export_out_dir  = tk.StringVar(value="data/export")
+        # Load
+        self._load_csv_dir    = tk.StringVar(value="")
         # Transform / Report paths
         self._transform_schema  = tk.StringVar(value="")
         self._transform_sql_dir = tk.StringVar(value="sql/transform/duckdb")
