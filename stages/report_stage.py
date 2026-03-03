@@ -69,6 +69,7 @@ def run(ctx: RunContext):
     generated_csvs = []
     report_success = 0
     report_failed = 0
+    report_skipped = 0
 
     skip_sql = bool(report_cfg.get("skip_sql", False))
 
@@ -88,7 +89,7 @@ def run(ctx: RunContext):
     else:
         export_csv_cfg = report_cfg.get("export_csv", {})
         if export_csv_cfg.get("enabled", False):
-            generated_csvs, csv_failed = _run_csv_export(
+            generated_csvs, csv_failed, csv_skipped = _run_csv_export(
                 ctx, report_cfg, export_csv_cfg,
                 stage_params=stage_params,
                 stage_param_mode=stage_param_mode,
@@ -97,6 +98,7 @@ def run(ctx: RunContext):
             )
             report_success += len(generated_csvs)
             report_failed += csv_failed
+            report_skipped += csv_skipped
         else:
             logger.info("REPORT csv export skipped")
 
@@ -111,7 +113,8 @@ def run(ctx: RunContext):
     else:
         logger.info("REPORT excel export skipped")
 
-    ctx.report_stage_result("report", success=report_success, failed=report_failed)
+    ctx.report_stage_result("report", success=report_success, failed=report_failed,
+                            skipped=report_skipped)
 
 
 # ────────────────────────────────────────────────────────────
@@ -188,6 +191,7 @@ def _run_csv_export(ctx, report_cfg, cfg, *,
 
     generated = []
     csv_failed = 0
+    csv_skipped = 0
     total = len(sql_files)
     ext = ".csv.gz" if compression == "gzip" else ".csv"
 
@@ -207,6 +211,7 @@ def _run_csv_export(ctx, report_cfg, cfg, *,
                 if failed_task_keys is not None and task_key not in failed_task_keys:
                     logger.info("REPORT [%d/%d][%d/%d] %s RETRY skip (succeeded)",
                                 i, total, pi, len(param_sets), sql_file.name)
+                    csv_skipped += 1
                     continue
 
                 full_params = {**stage_params, **param_set}
@@ -244,8 +249,9 @@ def _run_csv_export(ctx, report_cfg, cfg, *,
     finally:
         conn.close()
 
-    logger.info("REPORT csv summary | success=%d failed=%d", len(generated), csv_failed)
-    return generated, csv_failed
+    logger.info("REPORT csv summary | success=%d failed=%d skipped=%d",
+                len(generated), csv_failed, csv_skipped)
+    return generated, csv_failed, csv_skipped
 
 
 def _open_connection(ctx, report_source: str):
@@ -470,5 +476,7 @@ def _run_excel_export(ctx, report_cfg, cfg, csv_files: list):
 
     except ImportError as e:
         logger.error("REPORT excel: package not installed (%s) -> pip install pandas openpyxl", e)
+        raise
     except Exception as e:
         logger.exception("REPORT excel generation failed: %s", e)
+        raise
