@@ -293,9 +293,15 @@ class UiBuildMixin:
 
     def _build_option_sections(self: "BatchRunnerGUI", parent):
         # 섹션들 — 각 메서드가 CollapsibleSection 반환, Stage와 1:1 매핑
-        self._param_entries: list[tuple[tk.StringVar, tk.StringVar]] = []
+        self._stage_param_entries: dict[str, list[tuple[tk.StringVar, tk.StringVar]]] = {
+            "export": [], "transform": [], "report": [],
+        }
         if not hasattr(self, "_param_mode_var"):
             self._param_mode_var = tk.StringVar(value="product")
+        if not hasattr(self, "_transform_param_mode_var"):
+            self._transform_param_mode_var = tk.StringVar(value="product")
+        if not hasattr(self, "_report_param_mode_var"):
+            self._report_param_mode_var = tk.StringVar(value="product")
         self._export_section    = self._build_export_section(parent)     # EXPORT ↔ Source 통합
         self._load_section      = self._build_load_section(parent)      # LOAD ↔ 구 Target
         self._transform_section = self._build_transform_section(parent) # TRANSFORM
@@ -415,15 +421,19 @@ class UiBuildMixin:
         hdr.pack(fill="x", padx=12, pady=(4, 2))
         tk.Label(hdr, text="Params", font=FONTS["body_bold"],
                  bg=C["mantle"], fg=C[color_key]).pack(side="left")
-        # param_mode 드롭다운 (export 섹션에만 표시)
-        if stage == "export":
+        # param_mode 드롭다운 (각 스테이지별 표시)
+        pm_var = {"export": self._param_mode_var,
+                  "transform": self._transform_param_mode_var,
+                  "report": self._report_param_mode_var}.get(stage)
+        if pm_var:
             mode_combo = ttk.Combobox(
-                hdr, textvariable=self._param_mode_var,
+                hdr, textvariable=pm_var,
                 values=["product", "zip"], state="readonly",
                 width=7, font=FONTS["mono_small"],
             )
             mode_combo.pack(side="left", padx=(8, 0))
-            self._param_mode_var.trace_add("write", lambda *_: self._refresh_preview())
+            if stage == "export":
+                self._param_mode_var.trace_add("write", lambda *_: self._refresh_preview())
         tk.Button(hdr, text="+ add", font=FONTS["mono_small"],
                   bg=C["surface0"], fg=C["subtext"], relief="flat", padx=6, pady=1,
                   activebackground=C["surface1"],
