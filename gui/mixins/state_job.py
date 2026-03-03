@@ -366,7 +366,11 @@ class StateJobMixin:
 
         # SQL 선택 초기화
         self._selected_sqls = set()
+        self._selected_transform_sqls = set()
+        self._selected_report_sqls = set()
         self._update_sql_preview()
+        self._update_transform_sql_preview()
+        self._update_report_sql_preview()
 
         self._restoring_job = False
         self._refresh_preview()
@@ -687,18 +691,26 @@ class StateJobMixin:
             stage_params["export"] = set(_scan_params_from_files(export_files))
 
         # transform
+        tfm_files = []
         tfm_dir = _resolve(self._transform_sql_dir.get().strip())
-        if tfm_dir:
+        if getattr(self, "_selected_transform_sqls", set()) and tfm_dir:
+            tfm_files = [tfm_dir / p for p in self._selected_transform_sqls
+                         if (tfm_dir / p).exists()]
+        elif tfm_dir:
             tfm_files = list(tfm_dir.rglob("*.sql"))
-            if tfm_files:
-                stage_params["transform"] = set(_scan_params_from_files(tfm_files))
+        if tfm_files:
+            stage_params["transform"] = set(_scan_params_from_files(tfm_files))
 
         # report
+        rpt_files = []
         rpt_dir = _resolve(self._report_sql_dir.get().strip())
-        if rpt_dir:
+        if getattr(self, "_selected_report_sqls", set()) and rpt_dir:
+            rpt_files = [rpt_dir / p for p in self._selected_report_sqls
+                         if (rpt_dir / p).exists()]
+        elif rpt_dir:
             rpt_files = list(rpt_dir.rglob("*.sql"))
-            if rpt_files:
-                stage_params["report"] = set(_scan_params_from_files(rpt_files))
+        if rpt_files:
+            stage_params["report"] = set(_scan_params_from_files(rpt_files))
 
         all_detected = set()
         for s in stage_params.values():
@@ -774,6 +786,60 @@ class StateJobMixin:
             self._sql_count_label.config(text="(all)", fg=C["subtext"])
         else:
             self._sql_count_label.config(text=f"({count})", fg=C["green"])
+
+    # ── Transform SQL 선택 ───────────────────────────────────
+    def _open_transform_sql_selector(self: "BatchRunnerGUI"):
+        sql_dir_rel = self._transform_sql_dir.get() or "sql/transform/duckdb"
+        wd = Path(self._work_dir.get())
+        sql_dir = wd / sql_dir_rel
+        if not sql_dir.exists():
+            messagebox.showwarning("SQL Filter",
+                                   f"transform.sql_dir path not found:\n{sql_dir}",
+                                   parent=self)
+            return
+        pre = set(self._selected_transform_sqls)
+        dlg = SqlSelectorDialog(self, sql_dir, pre_selected=pre)
+        self.wait_window(dlg)
+        self._selected_transform_sqls = set(dlg.selected)
+        self._update_transform_sql_preview()
+        self._scan_and_suggest_params()
+        self._refresh_preview()
+
+    def _update_transform_sql_preview(self: "BatchRunnerGUI"):
+        if not hasattr(self, "_transform_sql_count_label"):
+            return
+        count = len(self._selected_transform_sqls)
+        if count == 0:
+            self._transform_sql_count_label.config(text="(all)", fg=C["subtext"])
+        else:
+            self._transform_sql_count_label.config(text=f"({count})", fg=C["green"])
+
+    # ── Report SQL 선택 ──────────────────────────────────────
+    def _open_report_sql_selector(self: "BatchRunnerGUI"):
+        sql_dir_rel = self._report_sql_dir.get() or "sql/report"
+        wd = Path(self._work_dir.get())
+        sql_dir = wd / sql_dir_rel
+        if not sql_dir.exists():
+            messagebox.showwarning("SQL Filter",
+                                   f"report.sql_dir path not found:\n{sql_dir}",
+                                   parent=self)
+            return
+        pre = set(self._selected_report_sqls)
+        dlg = SqlSelectorDialog(self, sql_dir, pre_selected=pre)
+        self.wait_window(dlg)
+        self._selected_report_sqls = set(dlg.selected)
+        self._update_report_sql_preview()
+        self._scan_and_suggest_params()
+        self._refresh_preview()
+
+    def _update_report_sql_preview(self: "BatchRunnerGUI"):
+        if not hasattr(self, "_report_sql_count_label"):
+            return
+        count = len(self._selected_report_sqls)
+        if count == 0:
+            self._report_sql_count_label.config(text="(all)", fg=C["subtext"])
+        else:
+            self._report_sql_count_label.config(text=f"({count})", fg=C["green"])
 
     # ── Param 행 관리 ────────────────────────────────────────
 

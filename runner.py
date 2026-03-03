@@ -315,6 +315,16 @@ def main():
              "    미지정 시 전체 SQL 실행",
     )
     parser.add_argument(
+        "--include-transform", action="append", metavar="PATTERN", dest="include_transform_patterns",
+        help="Transform stage SQL 파일 필터 (파일명/경로 부분 일치, 여러 개 가능)\n"
+             "미지정 시 전체 SQL 실행",
+    )
+    parser.add_argument(
+        "--include-report", action="append", metavar="PATTERN", dest="include_report_patterns",
+        help="Report stage SQL 파일 필터 (파일명/경로 부분 일치, 여러 개 가능)\n"
+             "미지정 시 전체 SQL 실행",
+    )
+    parser.add_argument(
         "--stage", action="append", metavar="STAGE", dest="stage_filter",
         help="실행할 stage 지정 (여러 개 가능, 미지정 시 전체 실행)\n"
              "예) --stage export --stage transform",
@@ -405,6 +415,8 @@ def main():
         mode=args.mode,
         logger=logger,
         include_patterns=args.include_patterns or [],
+        include_transform_patterns=args.include_transform_patterns or [],
+        include_report_patterns=args.include_report_patterns or [],
         stage_filter=args.stage_filter or [],
     )
 
@@ -476,6 +488,10 @@ def main():
 
     if ctx.include_patterns:
         logger.info(" Include   : %s", ctx.include_patterns)
+    if ctx.include_transform_patterns:
+        logger.info(" Include(T): %s", ctx.include_transform_patterns)
+    if ctx.include_report_patterns:
+        logger.info(" Include(R): %s", ctx.include_report_patterns)
     if ctx.stage_filter:
         logger.info(" Stages    : %s (filtered)", ctx.stage_filter)
     logger.info(" Work Dir  : %s", work_dir)

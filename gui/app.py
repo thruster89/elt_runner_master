@@ -35,6 +35,8 @@ class BatchRunnerGUI(
         self._process: subprocess.Popen | None = None
         self._work_dir = tk.StringVar(value=str(Path(".").resolve()))
         self._selected_sqls: set[str] = set()
+        self._selected_transform_sqls: set[str] = set()
+        self._selected_report_sqls: set[str] = set()
 
         self._jobs: dict = {}
         self._env_hosts: dict = {}

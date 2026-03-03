@@ -733,8 +733,44 @@ class UiBuildMixin:
 
         ttk.Separator(tf, orient="horizontal").pack(fill="x", padx=12, pady=4)
 
-        self._transform_sql_dir_row = self._path_row(
-            body, "sql_dir", self._transform_sql_dir, "Select transform SQL dir")
+        # sql_dir + filter 버튼 (한 줄)
+        tfm_sql_row = tk.Frame(body, bg=C["mantle"])
+        tfm_sql_row.pack(fill="x", padx=12, pady=2)
+        tk.Label(tfm_sql_row, text="sql_dir", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w").pack(side="left")
+        def _browse_tfm_sql():
+            wd = self._work_dir.get()
+            d = filedialog.askdirectory(initialdir=self._transform_sql_dir.get() or wd,
+                                        title="Select transform SQL dir")
+            if d:
+                try:
+                    rel = Path(d).relative_to(Path(wd))
+                    self._transform_sql_dir.set(rel.as_posix())
+                except ValueError:
+                    self._transform_sql_dir.set(d)
+        tk.Button(tfm_sql_row, text="\U0001f4c2", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
+                  activebackground=C["surface1"],
+                  command=lambda: self._open_in_explorer(
+                      self._transform_sql_dir.get())).pack(side="right", padx=(2, 0))
+        tk.Button(tfm_sql_row, text="...", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
+                  activebackground=C["surface1"],
+                  command=_browse_tfm_sql).pack(side="right", padx=(2, 0))
+        self._transform_sql_count_label = tk.Label(tfm_sql_row, text="(all)", font=FONTS["mono_small"],
+                                                    bg=C["mantle"], fg=C["subtext"])
+        self._transform_sql_count_label.pack(side="right", padx=(2, 0))
+        self._transform_sql_btn = tk.Button(
+            tfm_sql_row, text="filter", font=FONTS["mono_small"],
+            bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
+            activebackground=C["surface1"],
+            command=self._open_transform_sql_selector)
+        self._transform_sql_btn.pack(side="right", padx=(2, 0))
+        tk.Entry(tfm_sql_row, textvariable=self._transform_sql_dir,
+                 bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
+                 relief="flat", font=FONTS["mono"], width=16).pack(
+                     side="right", fill="x", expand=True, ipady=2)
+        self._transform_sql_dir_row = tfm_sql_row
 
         def _w_tfm_schema(r):
             tk.Entry(r, textvariable=self._transform_schema,
@@ -769,7 +805,44 @@ class UiBuildMixin:
                        activebackground=C["mantle"],
                        command=self._refresh_preview).pack(side="right")
 
-        self._path_row(body, "sql_dir", self._report_sql_dir, "Select report SQL dir")
+        # sql_dir + filter 버튼 (한 줄)
+        rpt_sql_row = tk.Frame(body, bg=C["mantle"])
+        rpt_sql_row.pack(fill="x", padx=12, pady=2)
+        tk.Label(rpt_sql_row, text="sql_dir", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w").pack(side="left")
+        def _browse_rpt_sql():
+            wd = self._work_dir.get()
+            d = filedialog.askdirectory(initialdir=self._report_sql_dir.get() or wd,
+                                        title="Select report SQL dir")
+            if d:
+                try:
+                    rel = Path(d).relative_to(Path(wd))
+                    self._report_sql_dir.set(rel.as_posix())
+                except ValueError:
+                    self._report_sql_dir.set(d)
+        tk.Button(rpt_sql_row, text="\U0001f4c2", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
+                  activebackground=C["surface1"],
+                  command=lambda: self._open_in_explorer(
+                      self._report_sql_dir.get())).pack(side="right", padx=(2, 0))
+        tk.Button(rpt_sql_row, text="...", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
+                  activebackground=C["surface1"],
+                  command=_browse_rpt_sql).pack(side="right", padx=(2, 0))
+        self._report_sql_count_label = tk.Label(rpt_sql_row, text="(all)", font=FONTS["mono_small"],
+                                                 bg=C["mantle"], fg=C["subtext"])
+        self._report_sql_count_label.pack(side="right", padx=(2, 0))
+        self._report_sql_btn = tk.Button(
+            rpt_sql_row, text="filter", font=FONTS["mono_small"],
+            bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
+            activebackground=C["surface1"],
+            command=self._open_report_sql_selector)
+        self._report_sql_btn.pack(side="right", padx=(2, 0))
+        tk.Entry(rpt_sql_row, textvariable=self._report_sql_dir,
+                 bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
+                 relief="flat", font=FONTS["mono"], width=16).pack(
+                     side="right", fill="x", expand=True, ipady=2)
+
         self._path_row(body, "out_dir", self._report_out_dir, "Select report output dir")
 
         def _w_rpt_schema(r):

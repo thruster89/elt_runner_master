@@ -228,6 +228,16 @@ class RunControlMixin:
             pattern = Path(rel_path).with_suffix("").as_posix()
             cmd += ["--include", str(pattern)]
 
+        # Transform SQL 필터
+        for rel_path in sorted(getattr(self, "_selected_transform_sqls", set())):
+            pattern = Path(rel_path).with_suffix("").as_posix()
+            cmd += ["--include-transform", str(pattern)]
+
+        # Report SQL 필터
+        for rel_path in sorted(getattr(self, "_selected_report_sqls", set())):
+            pattern = Path(rel_path).with_suffix("").as_posix()
+            cmd += ["--include-report", str(pattern)]
+
         # --timeout
         timeout_val = self._ov_timeout.get().strip()
         if timeout_val:

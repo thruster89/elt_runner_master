@@ -9,6 +9,7 @@ job.yml 설정:
     on_error: stop                   # stop(기본) / continue
 """
 
+import re
 import time
 
 from engine.connection import connect_target
@@ -45,6 +46,26 @@ def run(ctx: RunContext):
         logger.info("TRANSFORM no SQL files in %s", sql_dir)
         return
 
+    # ── --include-transform 필터 적용 ──────────────────────
+    include_patterns = getattr(ctx, "include_transform_patterns", []) or []
+    if include_patterns:
+        def _matches(f):
+            rel  = f.relative_to(sql_dir).as_posix().lower()
+            stem = f.stem.lower()
+            return any(
+                pat.lower() in rel or pat.lower() in stem
+                for pat in include_patterns
+            )
+        before = len(sql_files)
+        sql_files = [f for f in sql_files if _matches(f)]
+        logger.info(
+            "TRANSFORM --include filter applied: %d -> %d files (patterns: %s)",
+            before, len(sql_files), include_patterns
+        )
+        if not sql_files:
+            logger.warning("TRANSFORM --include filter resulted in no SQL files (patterns=%s)", include_patterns)
+            return
+
     target_cfg = ctx.job_config.get("target", {})
     tgt_type   = (target_cfg.get("type") or "").strip().lower()
 
@@ -62,12 +83,17 @@ def run(ctx: RunContext):
     # 세션 기본 스키마 지정 (schema 입력 = 해당 스키마에서 SQL 실행)
     if schema:
         if conn_type == "duckdb":
+            conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
             conn.execute(f"SET schema = '{schema}'")
         elif conn_type == "oracle":
             cur = conn.cursor()
             cur.execute(f"ALTER SESSION SET CURRENT_SCHEMA = {schema}")
             cur.close()
         logger.info("TRANSFORM session schema = '%s'", schema)
+
+    # @{param} 스키마 접두사에 사용된 스키마 자동 생성 (DuckDB)
+    if conn_type == "duckdb" and ctx.params:
+        _ensure_param_schemas(conn, sql_files, ctx.params, logger)
 
     schema_display = schema if schema else "(default)"
     logger.info("TRANSFORM target=%s | schema=%s | sql_count=%d | on_error=%s",
@@ -104,6 +130,22 @@ def _run_sql_loop(ctx, conn, conn_type, sql_files, on_error):
                 break
 
     logger.info("TRANSFORM summary | success=%d failed=%d total=%d", success, failed, total)
+
+
+def _ensure_param_schemas(conn, sql_files, params, logger):
+    """SQL 파일에서 @{param} 패턴을 스캔, 대응하는 param 값이 있으면 스키마 자동 생성."""
+    at_pattern = re.compile(r"@\{(\w+)\}")
+    schemas = set()
+    for sf in sql_files:
+        text = sf.read_text(encoding="utf-8")
+        for m in at_pattern.finditer(text):
+            key = m.group(1)
+            val = str(params.get(key, "")).strip()
+            if val:
+                schemas.add(val)
+    for s in sorted(schemas):
+        conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{s}"')
+        logger.info("TRANSFORM ensure schema '%s'", s)
 
 
 def _execute(conn, conn_type, sql_text):
