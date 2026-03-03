@@ -16,6 +16,10 @@ from engine.context import RunContext
 from engine.path_utils import resolve_path
 from engine.sql_utils import sort_sql_files, render_sql, detect_used_params, _strip_sql_comments
 from engine.runtime_state import stop_event
+from stages.task_tracking import (
+    make_task_key, update_task_status,
+    load_failed_tasks as _load_failed_tasks_shared,
+)
 
 
 # ---------------------------
@@ -322,12 +326,6 @@ def build_log_prefix(sql_file: Path, params: dict) -> str:
     return f"[{sql_file.stem}|{' '.join(short)}]"
 
 
-def _make_task_key(sql_file: Path, param_set: dict) -> str:
-    """task를 고유하게 식별하는 키 생성"""
-    param_part = "__".join(f"{k}={v}" for k, v in sorted(param_set.items()))
-    return f"{sql_file.stem}__{param_part}" if param_part else sql_file.stem
-
-
 # ---------------------------
 # Plan mode: Dryrun report
 # ---------------------------
@@ -383,7 +381,7 @@ def run_plan(ctx, sql_files, export_cfg, out_dir, ext, name_style="full",
             tasks.append({
                 "sql_file": sql_file.name,
                 "params": param_set,
-                "task_key": _make_task_key(sql_file, param_set),
+                "task_key": make_task_key(sql_file, param_set),
                 "output_file": str(out_file),
                 "rendered_sql_preview": rendered[:500] + ("..." if len(rendered) > 500 else ""),
                 "warnings": warnings,
@@ -470,97 +468,12 @@ def run_plan(ctx, sql_files, export_cfg, out_dir, ext, name_style="full",
     logger.info("EXPORT [PLAN] done — no actual DB connection")
 
 
-# ---------------------------
-# Retry mode: 실패 task 로드
-# ---------------------------
 def load_failed_tasks(ctx, export_cfg) -> set:
-    """
-    이전 run 중 가장 최근 run_info.json에서 failed/pending task_key 목록 반환.
-    없으면 None 반환 (전체 실행).
-    """
-    import logging
-    logger = logging.getLogger(__name__)
-
+    """이전 run의 failed/pending task_key 반환. task_tracking 모듈 위임."""
     export_base = resolve_path(ctx, export_cfg.get("out_dir", "data/export"))
-    job_dir = export_base / ctx.job_name
-
-    if not job_dir.exists():
-        logger.warning("RETRY: no job directory found (%s) — running all tasks", job_dir)
-        return None
-
-    # run_info.json이 있는 디렉토리 중 tasks가 있는 것만, 최신순 정렬
-    candidates = []
-    for d in sorted(job_dir.iterdir(), reverse=True):
-        if not d.is_dir():
-            continue
-        run_info_path = d / "run_info.json"
-        if not run_info_path.exists():
-            continue
-        try:
-            with open(run_info_path, encoding="utf-8") as f:
-                info = json.load(f)
-            # 현재 run_id는 제외 (자기 자신)
-            if info.get("run_id") == ctx.run_id:
-                continue
-            if "tasks" in info:
-                candidates.append((d, info))
-        except Exception:
-            continue
-
-    if not candidates:
-        logger.warning("RETRY: no previous run history found — running all tasks")
-        return None
-
-    prev_dir, prev_info = candidates[0]
-    prev_run_id = prev_info.get("run_id", prev_dir.name)
-    tasks = prev_info.get("tasks", {})
-
-    failed_keys = {k for k, v in tasks.items() if v.get("status") in ("failed", "pending")}
-
-    logger.info("RETRY: based on previous run_id=%s", prev_run_id)
-    logger.info("RETRY: total tasks=%d / failed+pending=%d", len(tasks), len(failed_keys))
-
-    if not failed_keys:
-        logger.info("RETRY: no failed tasks — running all tasks")
-        return None
-
-    for k in sorted(failed_keys):
-        logger.info("  retry target: %s", k)
-
-    return failed_keys
-
-
-# ---------------------------
-# Task 상태 기록
-# ---------------------------
-_status_lock = threading.Lock()
-
-
-def _update_task_status(run_info_path: Path, task_key: str, status: str,
-                        rows: int = None, elapsed: float = None, error: str = None):
-    """run_info.json의 tasks 필드에 task 상태 업데이트 (thread-safe)"""
-    with _status_lock:
-        try:
-            with open(run_info_path, encoding="utf-8") as f:
-                info = json.load(f)
-
-            if "tasks" not in info:
-                info["tasks"] = {}
-
-            entry = {"status": status, "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-            if rows is not None:
-                entry["rows"] = rows
-            if elapsed is not None:
-                entry["elapsed"] = round(elapsed, 2)
-            if error is not None:
-                entry["error"] = str(error)[:500]
-
-            info["tasks"][task_key] = entry
-
-            with open(run_info_path, "w", encoding="utf-8") as f:
-                json.dump(info, f, indent=2, ensure_ascii=False)
-        except Exception:
-            pass  # 상태 기록 실패는 무시
+    return _load_failed_tasks_shared(
+        export_base, ctx.job_name, ctx.run_id, stage="export"
+    )
 
 
 # ---------------------------
@@ -652,7 +565,7 @@ def run(ctx: RunContext):
             logger.warning("Export interrupted before start")
             return
 
-        task_key = _make_task_key(sql_file, param_set)
+        task_key = make_task_key(sql_file, param_set)
         prefix = build_log_prefix(sql_file, param_set)
 
         # retry 모드: failed_task_keys에 없으면 skip
@@ -661,7 +574,7 @@ def run(ctx: RunContext):
             return
 
         # task 시작 상태 기록
-        _update_task_status(run_info_path, task_key, "running")
+        update_task_status(run_info_path, task_key, "running")
 
         try:
             conn = get_thread_connection(source_type, env_cfg, host_name)
@@ -684,7 +597,7 @@ def run(ctx: RunContext):
 
             if out_file.exists() and not overwrite and ctx.mode != "retry":
                 logger.info("%s skip (already exists)", prefix)
-                _update_task_status(run_info_path, task_key, "skipped")
+                update_task_status(run_info_path, task_key, "skipped")
                 return
 
             if out_file.exists() and (overwrite or ctx.mode == "retry"):
@@ -726,7 +639,7 @@ def run(ctx: RunContext):
             # compression 전환 시 이전 확장자 orphan 제거 (.csv ↔ .csv.gz)
             _cleanup_alt_ext(out_file, out_dir / "_backup", backup_keep, logger)
 
-            _update_task_status(run_info_path, task_key, "success",
+            update_task_status(run_info_path, task_key, "success",
                                 rows=rows or 0, elapsed=elapsed)
 
         except Exception as e:
@@ -744,7 +657,7 @@ def run(ctx: RunContext):
                     except ValueError:
                         pass
             logger.exception("%s EXPORT failed: %s", prefix, e)
-            _update_task_status(run_info_path, task_key, "failed", error=str(e))
+            update_task_status(run_info_path, task_key, "failed", error=str(e))
 
     set_recycle_interval(parallel_workers)
     if source_type == "oracle" and _oc._oracle_client_mode == "thick":
@@ -764,9 +677,9 @@ def run(ctx: RunContext):
 
     # 전체 task를 pending으로 초기화 (retry 시 pending도 재실행 대상)
     for sql_file, param_set, *_ in tasks:
-        task_key = _make_task_key(sql_file, param_set)
+        task_key = make_task_key(sql_file, param_set)
         if failed_task_keys is None or task_key in (failed_task_keys or set()):
-            _update_task_status(run_info_path, task_key, "pending")
+            update_task_status(run_info_path, task_key, "pending")
 
     try:
         if parallel_workers <= 1:
