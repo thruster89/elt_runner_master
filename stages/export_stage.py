@@ -24,8 +24,16 @@ _thread_local = threading.local()
 _thread_connections = []
 _conn_list_lock = threading.Lock()
 
-# Thick 모드 OCI 메모리 누적 방지: N회 사용마다 연결 갱신
-_CONN_RECYCLE_INTERVAL = 100
+# Thick 모드 OCI 메모리 누적 방지: 스레드당 N회 사용마다 연결 갱신
+# set_recycle_interval()로 workers 수 반영하여 동적 설정
+_conn_recycle_interval = 20
+
+
+def set_recycle_interval(parallel_workers: int):
+    """workers 수에 따라 스레드당 recycle 간격 설정.
+    전체 동시 사용량(workers × interval)이 약 200을 넘지 않도록 조정."""
+    global _conn_recycle_interval
+    _conn_recycle_interval = max(10, 200 // max(parallel_workers, 1))
 
 
 def _new_connection(source_type, env_cfg, host_name):
@@ -49,13 +57,13 @@ def _new_connection(source_type, env_cfg, host_name):
 def get_thread_connection(source_type, env_cfg, host_name):
     """
     thread마다 connection 1개 재사용.
-    _CONN_RECYCLE_INTERVAL 횟수마다 연결을 갱신하여 OCI 메모리 누적 방지.
+    _conn_recycle_interval 횟수마다 연결을 갱신하여 OCI 메모리 누적 방지.
     생성된 connection은 _thread_connections에 추적하여 나중에 일괄 정리.
     """
     use_count = getattr(_thread_local, "use_count", 0)
 
     if hasattr(_thread_local, "conn") and _thread_local.conn:
-        if use_count < _CONN_RECYCLE_INTERVAL:
+        if use_count < _conn_recycle_interval:
             _thread_local.use_count = use_count + 1
             return _thread_local.conn
         # 재활용 한도 도달 → 기존 연결 닫고 새로 생성
@@ -644,7 +652,9 @@ def run(ctx: RunContext):
             logger.exception("%s EXPORT failed: %s", prefix, e)
             _update_task_status(run_info_path, task_key, "failed", error=str(e))
 
-    logger.info("Parallel workers=%d", parallel_workers)
+    set_recycle_interval(parallel_workers)
+    logger.info("Parallel workers=%d  conn_recycle_interval=%d",
+                parallel_workers, _conn_recycle_interval)
 
     tasks = []
     for idx, sql_file in enumerate(sql_files, 1):
