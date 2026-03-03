@@ -66,7 +66,8 @@ def export_sql_to_csv(
                             f"Fetch stalled > {stall_seconds}s (took {fetch_elapsed:.0f}s)"
                         )
 
-                    writer.writerows(rows)
+                    for row in rows:
+                        writer.writerow(["" if v is None else v for v in row])
                     total_rows += len(rows)
 
                     if total_rows % (fetch_size * 5) == 0:

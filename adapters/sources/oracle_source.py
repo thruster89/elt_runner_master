@@ -107,7 +107,8 @@ def export_sql_to_csv(
                     if not rows:
                         break
 
-                    writer.writerows(rows)
+                    for row in rows:
+                        writer.writerow(["" if v is None else v for v in row])
                     total_rows += len(rows)
 
                     # 진행 로그
