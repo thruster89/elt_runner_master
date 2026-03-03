@@ -5,6 +5,7 @@ gui/app.py  ─  BatchRunnerGUI 클래스 (Mixin 조립 + __init__)
 import os
 import subprocess
 import tkinter as tk
+from datetime import datetime
 from pathlib import Path
 
 from gui.constants import C, THEMES, APP_VERSION
@@ -112,8 +113,11 @@ class BatchRunnerGUI(
         self._show_time = tk.BooleanVar(value=False)
 
         # 예약 실행
-        self._schedule_time = tk.StringVar(value="+30m / 18:00")
+        from gui.constants import SCHEDULE_PLACEHOLDER
+        self._schedule_time = tk.StringVar(value=SCHEDULE_PLACEHOLDER)
         self._schedule_id: str | None = None
+        self._schedule_target: datetime | None = None
+        self._schedule_mode: str | None = None
 
         # 검색 상태
         self._search_var = tk.StringVar()
