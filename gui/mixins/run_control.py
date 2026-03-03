@@ -88,10 +88,20 @@ class RunControlMixin:
 
     def _stream_output(self: "BatchRunnerGUI"):
         stage_pat = re.compile(r"\[(\d+)/(\d+)\]")
+        buf = []
+        last_flush = time.time()
+        flush_interval = 0.05  # 50ms 배치
+
+        def _flush():
+            if buf:
+                batch = buf.copy()
+                buf.clear()
+                self.after(0, self._log_write_batch, batch)
+
         for line in self._process.stdout:
             line = line.rstrip("\n")
             tag = self._guess_tag(line)
-            self.after(0, self._log_write, line, tag)
+            buf.append((line, tag))
             # [N/M] 패턴 파싱 → progress 업데이트
             m = stage_pat.search(line)
             if m:
@@ -99,6 +109,12 @@ class RunControlMixin:
                 pct = int(cur / total * 100)
                 label = f"Stage {cur}/{total}"
                 self.after(0, self._update_progress, pct, label)
+            # 일정 간격마다 flush (고속 출력 시 GUI 멈춤 방지)
+            now = time.time()
+            if now - last_flush >= flush_interval:
+                _flush()
+                last_flush = now
+        _flush()  # 잔여 버퍼 flush
         ret = self._process.wait()
         self.after(0, self._on_done, ret)
 
@@ -164,6 +180,13 @@ class RunControlMixin:
             self._process.send_signal(signal.CTRL_BREAK_EVENT)
         else:
             self._process.terminate()
+        # terminate 후 3초 대기, 아직 살아 있으면 kill
+        def _ensure_killed():
+            if self._process and self._process.poll() is None:
+                self._process.kill()
+                self._log_write("Process killed (force)", "WARN")
+        threading.Thread(target=lambda: (self._process.wait(timeout=3),), daemon=True).start()
+        self.after(3500, _ensure_killed)
         self._reset_buttons()
         self._set_status("● stopped", C["yellow"])
 
@@ -324,10 +347,13 @@ class RunControlMixin:
         now = datetime.datetime.now()
         day = days_kr[now.weekday()]
         self._clock_label.config(text=now.strftime(f"%Y-%m-%d ({day}) %H:%M"))
-        self.after(30000, self._tick_clock)
+        self._clock_timer_id = self.after(30000, self._tick_clock)
 
     def _notify_os(self: "BatchRunnerGUI", title, message):
         """OS 레벨 알림 전송 (실패 시 조용히 무시)"""
+        # 특수문자 이스케이프 (PowerShell/osascript 인젝션 방지)
+        safe_t = title.replace('"', "'").replace("`", "'")
+        safe_m = message.replace('"', "'").replace("`", "'")
         try:
             if sys.platform == "win32":
                 import subprocess as sp
@@ -336,8 +362,8 @@ class RunControlMixin:
                     f' Windows.UI.Notifications, ContentType = WindowsRuntime] > $null;'
                     f'$xml = [Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent(1);'
                     f'$text = $xml.GetElementsByTagName("text");'
-                    f'$text.Item(0).AppendChild($xml.CreateTextNode("{title}")) > $null;'
-                    f'$text.Item(1).AppendChild($xml.CreateTextNode("{message}")) > $null;'
+                    f'$text.Item(0).AppendChild($xml.CreateTextNode("{safe_t}")) > $null;'
+                    f'$text.Item(1).AppendChild($xml.CreateTextNode("{safe_m}")) > $null;'
                     f'$toast = [Windows.UI.Notifications.ToastNotification]::new($xml);'
                     f'[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("ELT Runner").Show($toast)'
                 )
@@ -347,10 +373,10 @@ class RunControlMixin:
             elif sys.platform == "darwin":
                 import subprocess as sp
                 sp.Popen(["osascript", "-e",
-                          f'display notification "{message}" with title "{title}"'])
+                          f'display notification "{safe_m}" with title "{safe_t}"'])
             else:
                 import subprocess as sp
-                sp.Popen(["notify-send", title, message])
+                sp.Popen(["notify-send", safe_t, safe_m])
         except Exception:
             pass
 
@@ -380,6 +406,9 @@ class RunControlMixin:
             _recurse(self._left_inner)
 
     def _refresh_preview(self: "BatchRunnerGUI"):
+        # UI 빌드 중에는 위젯이 아직 없으므로 무시
+        if not hasattr(self, "_cmd_preview"):
+            return
         try:
             cmd = self._build_command_args()
             text = " ".join(cmd)
