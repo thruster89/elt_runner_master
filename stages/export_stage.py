@@ -155,8 +155,14 @@ def expand_range_value(value: str):
     return result
 
 
-def expand_params(params: dict):
-    from itertools import product
+def expand_params(params: dict, mode: str = "product"):
+    """파라미터 값을 확장하여 조합 리스트 반환.
+
+    mode:
+        "product" — 카르테시안 곱 (기본, 모든 조합)
+        "zip"     — 위치별 1:1 매칭 (같은 인덱스끼리 쌍)
+    """
+    from itertools import product as iproduct
     import logging
 
     logger = logging.getLogger(__name__)
@@ -170,21 +176,36 @@ def expand_params(params: dict):
 
         if ":" in v_str:
             expanded = expand_range_value(v_str)
-            # logger.info("Param expand | %s -> %d values", v_str, len(expanded))
             values.append(expanded)
 
         elif "," in v_str:
             split_vals = [x.strip() for x in v_str.split(",")]
-            # logger.info("Param expand | %s -> %d values", v_str, len(split_vals))
             values.append(split_vals)
 
         else:
-            # logger.info("Param expand | %s -> 1 value", v_str)
             values.append([v_str])
 
     expanded = []
-    for combo in product(*values):
-        expanded.append(dict(zip(multi_keys, combo)))
+    if mode == "zip":
+        # 다중값(2개 이상) 파라미터들의 길이가 같은지 검증
+        multi_lengths = [(k, len(v)) for k, v in zip(multi_keys, values) if len(v) > 1]
+        if multi_lengths:
+            lengths = set(ln for _, ln in multi_lengths)
+            if len(lengths) > 1:
+                detail = ", ".join(f"{k}={ln}" for k, ln in multi_lengths)
+                raise ValueError(
+                    f"zip 모드에서는 다중값 파라미터의 개수가 같아야 합니다: {detail}"
+                )
+            zip_len = multi_lengths[0][1]
+            # 단일값 파라미터는 zip_len만큼 반복
+            aligned = [v if len(v) > 1 else v * zip_len for v in values]
+        else:
+            aligned = values
+        for combo in zip(*aligned):
+            expanded.append(dict(zip(multi_keys, combo)))
+    else:
+        for combo in iproduct(*values):
+            expanded.append(dict(zip(multi_keys, combo)))
 
     return expanded
 
@@ -286,7 +307,8 @@ def run_plan(ctx, sql_files, export_cfg, out_dir, ext, name_style="full",
         # SQL별 사용 파라미터만 확장
         used_keys = detect_used_params(sql_text_raw, ctx.params)
         relevant_params = {k: v for k, v in ctx.params.items() if k in used_keys}
-        sql_param_sets = expand_params(relevant_params) if relevant_params else [{}]
+        param_mode = getattr(ctx, "param_mode", "product")
+        sql_param_sets = expand_params(relevant_params, mode=param_mode) if relevant_params else [{}]
 
         for param_set in sql_param_sets:
             rendered = sanitize_sql(render_sql(sql_text_raw, param_set))
@@ -669,12 +691,13 @@ def run(ctx: RunContext):
     else:
         logger.info("Parallel workers=%d", parallel_workers)
 
+    param_mode = getattr(ctx, "param_mode", "product")
     tasks = []
     for idx, sql_file in enumerate(sql_files, 1):
         sql_text_raw = sql_file.read_text(encoding="utf-8")
         used_keys = detect_used_params(sql_text_raw, ctx.params)
         relevant_params = {k: v for k, v in ctx.params.items() if k in used_keys}
-        sql_param_sets = expand_params(relevant_params) if relevant_params else [{}]
+        sql_param_sets = expand_params(relevant_params, mode=param_mode) if relevant_params else [{}]
         for param_idx, param_set in enumerate(sql_param_sets, 1):
             tasks.append((sql_file, param_set, idx, len(sql_files), param_idx, len(sql_param_sets)))
 
