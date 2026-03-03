@@ -100,6 +100,26 @@ def _run_csv_export(ctx, report_cfg, cfg) -> list:
         logger.info("REPORT no SQL files in %s", sql_dir)
         return []
 
+    # ── --include-report 필터 적용 ──────────────────────────
+    include_patterns = getattr(ctx, "include_report_patterns", []) or []
+    if include_patterns:
+        def _matches(f):
+            rel  = f.relative_to(sql_dir).as_posix().lower()
+            stem = f.stem.lower()
+            return any(
+                pat.lower() in rel or pat.lower() in stem
+                for pat in include_patterns
+            )
+        before = len(sql_files)
+        sql_files = [f for f in sql_files if _matches(f)]
+        logger.info(
+            "REPORT --include filter applied: %d -> %d files (patterns: %s)",
+            before, len(sql_files), include_patterns
+        )
+        if not sql_files:
+            logger.warning("REPORT --include filter resulted in no SQL files (patterns=%s)", include_patterns)
+            return []
+
     # report.source 결정: 기본값은 "target"
     report_source = (report_cfg.get("source") or "target").strip().lower()
     conn, conn_type, conn_label = _open_connection(ctx, report_source)

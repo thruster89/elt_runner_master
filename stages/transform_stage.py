@@ -46,6 +46,26 @@ def run(ctx: RunContext):
         logger.info("TRANSFORM no SQL files in %s", sql_dir)
         return
 
+    # ── --include-transform 필터 적용 ──────────────────────
+    include_patterns = getattr(ctx, "include_transform_patterns", []) or []
+    if include_patterns:
+        def _matches(f):
+            rel  = f.relative_to(sql_dir).as_posix().lower()
+            stem = f.stem.lower()
+            return any(
+                pat.lower() in rel or pat.lower() in stem
+                for pat in include_patterns
+            )
+        before = len(sql_files)
+        sql_files = [f for f in sql_files if _matches(f)]
+        logger.info(
+            "TRANSFORM --include filter applied: %d -> %d files (patterns: %s)",
+            before, len(sql_files), include_patterns
+        )
+        if not sql_files:
+            logger.warning("TRANSFORM --include filter resulted in no SQL files (patterns=%s)", include_patterns)
+            return
+
     target_cfg = ctx.job_config.get("target", {})
     tgt_type   = (target_cfg.get("type") or "").strip().lower()
 
