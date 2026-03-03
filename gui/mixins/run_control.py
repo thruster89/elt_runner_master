@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 
 import yaml
 
-from gui.constants import C, FONTS, APP_VERSION
+from gui.constants import C, FONTS, APP_VERSION, SCHEDULE_PLACEHOLDER
 
 if TYPE_CHECKING:
     from gui.app import BatchRunnerGUI
@@ -438,14 +438,14 @@ class RunControlMixin:
     # ── 예약 실행 ─────────────────────────────────────────────
 
     def _on_schedule_focus_in(self: "BatchRunnerGUI", _event=None):
-        if self._schedule_time.get() == "+30m / 18:00":
+        if self._schedule_time.get() == SCHEDULE_PLACEHOLDER:
             self._schedule_time.set("")
             self._schedule_entry.config(fg=C["text"])
 
     def _on_schedule_focus_out(self: "BatchRunnerGUI", _event=None):
         if not self._schedule_time.get().strip():
             self._schedule_entry.config(fg=C["overlay0"])
-            self._schedule_time.set("+30m / 18:00")
+            self._schedule_time.set(SCHEDULE_PLACEHOLDER)
 
     def _parse_schedule_input(self, raw: str):
         """예약 시각 파싱. 지원 형식: 18:00, +30m, +2h, 0302 18:00"""
@@ -457,10 +457,15 @@ class RunControlMixin:
         if raw.startswith("+"):
             val = raw[1:].strip()
             if val.endswith("h"):
-                return now + timedelta(hours=float(val[:-1]))
-            if val.endswith("m"):
-                val = val[:-1]
-            return now + timedelta(minutes=float(val))
+                delta = timedelta(hours=float(val[:-1]))
+            elif val.endswith("m"):
+                delta = timedelta(minutes=float(val[:-1]))
+            else:
+                delta = timedelta(minutes=float(val))
+            # S-1: 음수/0 delta 차단
+            if delta.total_seconds() < 60:
+                raise ValueError("최소 1분 이상이어야 합니다")
+            return now + delta
 
         # MMDD HH:MM
         if " " in raw and len(raw.split()[0]) == 4:
@@ -483,7 +488,7 @@ class RunControlMixin:
             self._cancel_schedule()
             return
         raw = self._schedule_time.get().strip()
-        if not raw or raw == "+30m / 18:00":
+        if not raw or raw == SCHEDULE_PLACEHOLDER:
             self._log_write("[Schedule] Format: +30m, +2h, 18:00, 0302 18:00", "WARN")
             return
         try:
@@ -491,7 +496,9 @@ class RunControlMixin:
         except (ValueError, IndexError):
             self._log_write("[Schedule] Format: +30m, +2h, 18:00, 0302 18:00", "WARN")
             return
+        # S-3: 현재 mode 캡처 (트리거 시 복원)
         self._schedule_target = target
+        self._schedule_mode = self.mode_var.get()
         self._schedule_id = self.after(1000, self._tick_schedule)
         self._schedule_btn.config(text="✕ Cancel", bg=C["red"], fg=C["crust"],
                                   activebackground=C["peach"])
@@ -500,18 +507,24 @@ class RunControlMixin:
         m, s = divmod(remaining, 60)
         h, m = divmod(m, 60)
         label = target.strftime("%m/%d %H:%M")
+        mode_label = {"run": "Run", "retry": "Retry"}.get(self._schedule_mode, self._schedule_mode)
         self._schedule_label.config(
-            text=f" {label} reserved ({h:02d}:{m:02d}:{s:02d})", fg=C["green"])
-        self._log_sys(f"[Schedule] Reserved for {label}")
+            text=f" {label} {mode_label} ({h:02d}:{m:02d}:{s:02d})", fg=C["green"])
+        self._log_sys(f"[Schedule] {mode_label} reserved for {label}")
+
+    def _reset_schedule_ui(self: "BatchRunnerGUI"):
+        """예약 UI를 초기 상태로 복원 (S-5: 중복 제거용 헬퍼)"""
+        self._schedule_btn.config(text="⏱ Schedule", bg=C["surface0"], fg=C["subtext"],
+                                  activebackground=C["surface1"])
+        self._schedule_entry.config(state="normal")
+        self._schedule_label.config(text="")
 
     def _cancel_schedule(self: "BatchRunnerGUI"):
         if self._schedule_id is not None:
             self.after_cancel(self._schedule_id)
             self._schedule_id = None
-        self._schedule_btn.config(text="⏱ Reserve", bg=C["surface0"], fg=C["subtext"],
-                                  activebackground=C["surface1"])
-        self._schedule_entry.config(state="normal")
-        self._schedule_label.config(text="")
+        self._schedule_mode = None
+        self._reset_schedule_ui()
         self._log_sys("[Schedule] Cancelled")
 
     def _tick_schedule(self: "BatchRunnerGUI"):
@@ -519,18 +532,40 @@ class RunControlMixin:
         remaining = int((self._schedule_target - now).total_seconds())
         if remaining <= 0:
             self._schedule_id = None
-            self._schedule_btn.config(text="⏱ Reserve", bg=C["surface0"],
-                                      fg=C["subtext"],
-                                      activebackground=C["surface1"])
-            self._schedule_entry.config(state="normal")
-            self._schedule_label.config(text="")
+            self._reset_schedule_ui()
+            # S-2: 이미 실행 중이면 예약 스킵
+            if self._process is not None and self._process.poll() is None:
+                self._log_write("[Schedule] Skipped — already running", "WARN")
+                return
             self._log_sys(f"[Schedule] {self._schedule_target.strftime('%H:%M')} Starting")
-            self.mode_var.set("run")
+            # U-2: 알림 벨
+            self.bell()
+            # S-3: 캡처된 mode 복원
+            if self._schedule_mode:
+                self.mode_var.set(self._schedule_mode)
+            self._schedule_mode = None
             self._on_run(scheduled=True)
             return
         m, s = divmod(remaining, 60)
         h, m = divmod(m, 60)
         label = self._schedule_target.strftime("%m/%d %H:%M")
+        mode_label = {"run": "Run", "retry": "Retry"}.get(
+            self._schedule_mode or "run", "Run")
         self._schedule_label.config(
-            text=f" {label} reserved ({h:02d}:{m:02d}:{s:02d})")
+            text=f" {label} {mode_label} ({h:02d}:{m:02d}:{s:02d})")
         self._schedule_id = self.after(1000, self._tick_schedule)
+
+    def _restore_schedule_ui(self: "BatchRunnerGUI"):
+        """S-4: 테마 전환 후 예약 상태를 UI에 복원"""
+        if self._schedule_id is not None and self._schedule_target:
+            self._schedule_btn.config(text="✕ Cancel", bg=C["red"], fg=C["crust"],
+                                      activebackground=C["peach"])
+            self._schedule_entry.config(state="disabled")
+            remaining = int((self._schedule_target - datetime.now()).total_seconds())
+            m, s = divmod(max(remaining, 0), 60)
+            h, m = divmod(m, 60)
+            label = self._schedule_target.strftime("%m/%d %H:%M")
+            mode_label = {"run": "Run", "retry": "Retry"}.get(
+                self._schedule_mode or "run", "Run")
+            self._schedule_label.config(
+                text=f" {label} {mode_label} ({h:02d}:{m:02d}:{s:02d})", fg=C["green"])

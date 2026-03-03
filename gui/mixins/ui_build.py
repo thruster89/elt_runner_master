@@ -10,7 +10,7 @@ from tkinter import ttk, scrolledtext, filedialog
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from gui.constants import C, FONTS, FONT_FAMILY, FONT_MONO, THEMES, TOOLTIPS, STAGE_CONFIG
+from gui.constants import C, FONTS, FONT_FAMILY, FONT_MONO, THEMES, TOOLTIPS, STAGE_CONFIG, SCHEDULE_PLACEHOLDER
 from gui.widgets import CollapsibleSection, Tooltip
 
 if TYPE_CHECKING:
