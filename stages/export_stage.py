@@ -21,6 +21,10 @@ from stages.task_tracking import (
     load_failed_tasks as _load_failed_tasks_shared,
 )
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 # ---------------------------
 # Thread local storage
