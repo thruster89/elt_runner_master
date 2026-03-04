@@ -166,7 +166,11 @@ class UiBuildMixin:
                   bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
                   activebackground=C["surface1"],
                   command=lambda: self._open_in_explorer(self._work_dir.get())
-                  ).pack(side="left")
+                  ).pack(side="left", padx=(0, 2))
+        tk.Button(bar1, text="? Help", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
+                  activebackground=C["surface1"],
+                  command=self._open_user_guide).pack(side="left")
 
         tk.Label(grid, text="Theme ", font=FONTS["body_bold"], anchor="e",
                  bg=C["crust"], fg=C["subtext"]).grid(row=0, column=4, sticky="e")

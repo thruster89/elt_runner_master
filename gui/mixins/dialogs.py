@@ -419,6 +419,19 @@ class DialogsMixin:
         self.mode_var.set("run")
         self.after(500, lambda: self._on_run(scheduled=True))
 
+    def _open_user_guide(self: "BatchRunnerGUI"):
+        """docs/USER_GUIDE.md를 OS 기본 프로그램으로 열기"""
+        # 프로젝트 루트 기준 (gui/mixins/ → 2단계 상위)
+        guide = Path(__file__).resolve().parent.parent.parent / "docs" / "USER_GUIDE.md"
+        if not guide.exists():
+            # Work Dir 기준 fallback
+            guide = Path(self._work_dir.get()) / "docs" / "USER_GUIDE.md"
+        if guide.exists():
+            self._open_in_explorer(str(guide))
+        else:
+            from tkinter import messagebox
+            messagebox.showinfo("Help", "docs/USER_GUIDE.md 파일을 찾을 수 없습니다.")
+
     def _open_log_folder(self: "BatchRunnerGUI"):
         """logs/ 폴더를 OS 탐색기로 연다"""
         wd = Path(self._work_dir.get())
