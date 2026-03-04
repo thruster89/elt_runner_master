@@ -419,6 +419,14 @@ class DialogsMixin:
         self.mode_var.set("run")
         self.after(500, lambda: self._on_run(scheduled=True))
 
+    def _open_log_folder(self: "BatchRunnerGUI"):
+        """logs/ 폴더를 OS 탐색기로 연다"""
+        wd = Path(self._work_dir.get())
+        log_dir = wd / "logs"
+        if not log_dir.exists():
+            log_dir.mkdir(parents=True, exist_ok=True)
+        self._open_in_explorer(str(log_dir))
+
     def _apply_theme(self: "BatchRunnerGUI"):
         """테마 전환: C 딕셔너리 업데이트 후 앱 전체 재빌드"""
         theme_name = self._theme_var.get()

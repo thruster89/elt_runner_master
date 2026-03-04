@@ -42,6 +42,11 @@ class RunControlMixin:
             if not self._show_run_confirm():
                 return
 
+        # 실행 시작 전 GUI 로그 클리어 (성능 보호)
+        self._clear_log()
+        # 오래된 로그 파일 정리
+        self._cleanup_old_logs()
+
         cmd = self._build_command()
         self._log_sys(f"Run: {chr(32).join(cmd)}")
         self._set_status("● running", C["green"])
@@ -793,3 +798,26 @@ class RunControlMixin:
                 self._schedule_mode or "run", "Run")
             self._schedule_label.config(
                 text=f" {label} {mode_label} ({h:02d}:{m:02d}:{s:02d})", fg=C["green"])
+
+    # ── 로그 파일 보관 기한 관리 ──────────────────────────────
+
+    LOG_RETENTION_DAYS = 30  # 기본 보관 기한 (일)
+
+    def _cleanup_old_logs(self: "BatchRunnerGUI"):
+        """logs/ 폴더의 오래된 .log 파일 자동 삭제 (보관 기한 초과분)"""
+        wd = Path(self._work_dir.get())
+        log_dir = wd / "logs"
+        if not log_dir.is_dir():
+            return
+        import time as _time
+        cutoff = _time.time() - self.LOG_RETENTION_DAYS * 86400
+        removed = 0
+        for f in log_dir.glob("*.log"):
+            try:
+                if f.stat().st_mtime < cutoff:
+                    f.unlink()
+                    removed += 1
+            except Exception:
+                pass
+        if removed:
+            self._log_sys(f"[Cleanup] {removed}개 오래된 로그 파일 삭제 (>{self.LOG_RETENTION_DAYS}일)")

@@ -1010,6 +1010,11 @@ class UiBuildMixin:
                   bd=0, highlightthickness=0,
                   activebackground=C["surface1"],
                   command=self._clear_log).pack(side="right", padx=4)
+        tk.Button(header, text="Log", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["subtext"], relief="flat", padx=8,
+                  bd=0, highlightthickness=0,
+                  activebackground=C["surface1"],
+                  command=self._open_log_folder).pack(side="right", padx=4)
         tk.Button(header, text="History", font=FONTS["mono_small"],
                   bg=C["surface0"], fg=C["subtext"], relief="flat", padx=8,
                   bd=0, highlightthickness=0,
