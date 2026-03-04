@@ -43,7 +43,9 @@ class RunControlMixin:
                 return
 
         # 실행 시작 전 GUI 로그 클리어 (성능 보호)
-        self._clear_log()
+        # Queue/Schedule 실행 시에는 이전 Job 로그를 보존
+        if not scheduled:
+            self._clear_log()
         # 오래된 로그 파일 정리
         self._cleanup_old_logs()
 
