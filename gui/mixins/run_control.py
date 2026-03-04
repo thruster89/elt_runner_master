@@ -30,8 +30,10 @@ class RunControlMixin:
     def _on_run(self: "BatchRunnerGUI", *, scheduled=False):
         mode = self.mode_var.get()
 
-        # overwrite=true 확인 (Dryrun은 실제 덮어쓰기 없으므로 스킵)
-        if not scheduled and self._ov_overwrite.get() and mode != "plan":
+        # overwrite=true 확인 (Dryrun은 실제 덮어쓰기 없으므로 스킵,
+        # export 스테이지가 포함되지 않으면 overwrite와 무관하므로 스킵)
+        if (not scheduled and self._ov_overwrite.get() and mode != "plan"
+                and self._stage_export.get()):
             if not self._show_overwrite_confirm():
                 return
 
