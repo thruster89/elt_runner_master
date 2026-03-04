@@ -102,6 +102,10 @@ class DialogsMixin:
         pad_k = {"padx": (16, 4), "pady": 3}
         pad_v = {"padx": (0, 16), "pady": 3}
 
+        has_export = self._stage_export.get()
+        has_load   = self._stage_load_local.get()
+        work_dir   = self._work_dir.get()
+
         def build(body):
             row = 0
             tk.Label(body, text="Mode", **kw_key).grid(row=row, column=0, sticky="e", **pad_k)
@@ -110,29 +114,36 @@ class DialogsMixin:
                      font=FONTS["body_bold"]).grid(row=row, column=1, sticky="w", **pad_v)
             row += 1
 
-            tk.Label(body, text="Source", **kw_key).grid(row=row, column=0, sticky="e", **pad_k)
-            src_frame = tk.Frame(body, bg=C["base"])
-            src_frame.grid(row=row, column=1, sticky="w", **pad_v)
-            tk.Label(src_frame, text=self._source_type_var.get(), **kw_val).pack(side="left")
-            src_host = self._source_host_var.get()
-            if src_host:
-                tk.Label(src_frame, text=f"  [{src_host}]", bg=C["base"],
-                         fg=C["peach"], font=FONTS["body_bold"]).pack(side="left")
-            tk.Label(body, text="Overwrite", **kw_key).grid(row=row, column=2, sticky="e", **pad_k)
-            tk.Label(body, text="ON" if ov_on else "OFF", bg=C["base"],
-                     fg=C["red"] if ov_on else C["subtext"],
-                     font=FONTS["body_bold"]).grid(row=row, column=3, sticky="w", **pad_v)
-            row += 1
+            if has_export:
+                tk.Label(body, text="Source", **kw_key).grid(row=row, column=0, sticky="e", **pad_k)
+                src_frame = tk.Frame(body, bg=C["base"])
+                src_frame.grid(row=row, column=1, sticky="w", **pad_v)
+                tk.Label(src_frame, text=self._source_type_var.get(), **kw_val).pack(side="left")
+                src_host = self._source_host_var.get()
+                if src_host:
+                    tk.Label(src_frame, text=f"  [{src_host}]", bg=C["base"],
+                             fg=C["peach"], font=FONTS["body_bold"]).pack(side="left")
+                tk.Label(body, text="Overwrite", **kw_key).grid(row=row, column=2, sticky="e", **pad_k)
+                tk.Label(body, text="ON" if ov_on else "OFF", bg=C["base"],
+                         fg=C["red"] if ov_on else C["subtext"],
+                         font=FONTS["body_bold"]).grid(row=row, column=3, sticky="w", **pad_v)
+                row += 1
 
-            tk.Label(body, text="Target", **kw_key).grid(row=row, column=0, sticky="e", **pad_k)
-            tk.Label(body, text=self._target_type_var.get(), **kw_val).grid(
-                row=row, column=1, sticky="w", **pad_v)
-            tk.Label(body, text="Timeout", **kw_key).grid(row=row, column=2, sticky="e", **pad_k)
-            tk.Label(body, text=timeout_val, **kw_val).grid(row=row, column=3, sticky="w", **pad_v)
-            row += 1
+            if has_load:
+                tk.Label(body, text="Target", **kw_key).grid(row=row, column=0, sticky="e", **pad_k)
+                tk.Label(body, text=self._target_type_var.get(), **kw_val).grid(
+                    row=row, column=1, sticky="w", **pad_v)
+                tk.Label(body, text="Timeout", **kw_key).grid(row=row, column=2, sticky="e", **pad_k)
+                tk.Label(body, text=timeout_val, **kw_val).grid(row=row, column=3, sticky="w", **pad_v)
+                row += 1
 
             tk.Label(body, text="Stages", **kw_key).grid(row=row, column=0, sticky="e", **pad_k)
             tk.Label(body, text=stages_str, **kw_val).grid(
+                row=row, column=1, columnspan=3, sticky="w", **pad_v)
+            row += 1
+
+            tk.Label(body, text="Work Dir", **kw_key).grid(row=row, column=0, sticky="e", **pad_k)
+            tk.Label(body, text=work_dir, **kw_val).grid(
                 row=row, column=1, columnspan=3, sticky="w", **pad_v)
             row += 1
 
