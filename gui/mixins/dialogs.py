@@ -111,8 +111,13 @@ class DialogsMixin:
             row += 1
 
             tk.Label(body, text="Source", **kw_key).grid(row=row, column=0, sticky="e", **pad_k)
-            tk.Label(body, text=self._source_type_var.get(), **kw_val).grid(
-                row=row, column=1, sticky="w", **pad_v)
+            src_frame = tk.Frame(body, bg=C["base"])
+            src_frame.grid(row=row, column=1, sticky="w", **pad_v)
+            tk.Label(src_frame, text=self._source_type_var.get(), **kw_val).pack(side="left")
+            src_host = self._source_host_var.get()
+            if src_host:
+                tk.Label(src_frame, text=f"  [{src_host}]", bg=C["base"],
+                         fg=C["peach"], font=FONTS["body_bold"]).pack(side="left")
             tk.Label(body, text="Overwrite", **kw_key).grid(row=row, column=2, sticky="e", **pad_k)
             tk.Label(body, text="ON" if ov_on else "OFF", bg=C["base"],
                      fg=C["red"] if ov_on else C["subtext"],
@@ -169,6 +174,18 @@ class DialogsMixin:
         self._refilter_log()
         # S-4: 예약 실행 상태 복원 (위젯 재생성으로 초기화됨)
         self._restore_schedule_ui()
+
+    def _open_job_file(self: "BatchRunnerGUI"):
+        """현재 선택된 job yml 파일을 OS 기본 편집기로 연다"""
+        job = self.job_var.get() if hasattr(self, "job_var") else ""
+        if not job:
+            messagebox.showinfo("Info", "No job selected.")
+            return
+        p = self._jobs_dir() / job
+        if not p.exists():
+            messagebox.showwarning("Not Found", f"File not found:\n{p}")
+            return
+        self._open_in_explorer(str(p))
 
     def _open_in_explorer(self: "BatchRunnerGUI", path_str):
         """OS 파일 탐색기에서 경로를 연다"""

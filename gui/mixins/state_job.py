@@ -186,7 +186,7 @@ class StateJobMixin:
         stages = [s for s in ("export", "load_local", "transform", "report")
                   if getattr(self, f"_stage_{s}").get()]
         cfg = {
-            "job_name": self._jobs.get(self.job_var.get(), {}).get("job_name", "gui_run"),
+            "job_name": Path(self.job_var.get()).stem if self.job_var.get() else "gui_run",
             "pipeline": {"stages": stages},
             "source": {
                 "type": self._source_type_var.get(),

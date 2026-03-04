@@ -431,7 +431,7 @@ def main():
         job_config.setdefault("export", {})["timeout_seconds"] = args.timeout
 
     logger = setup_logging(work_dir / "logs", debug=args.debug)
-    job_name = job_config.get("job_name", "unnamed_job")
+    job_name = job_path.stem  # yml 파일명 기반 (확장자 제외)
 
     signal.signal(signal.SIGINT, lambda sig, frame: (logger.warning("STOP requested (Ctrl+C)"), stop_event.set()))
 
