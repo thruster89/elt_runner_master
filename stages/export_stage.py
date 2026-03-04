@@ -341,22 +341,28 @@ def _cleanup_alt_ext(out_file: Path, backup_dir: Path, keep: int, logger):
                 logger.debug("Removed orphan meta: %s", alt_meta.name)
 
 
-def build_log_prefix(sql_file: Path, params: dict) -> str:
+def build_log_prefix(sql_file: Path, params: dict, sql_dir: Path | None = None) -> str:
+    if sql_dir and sql_file.is_relative_to(sql_dir):
+        label = sql_file.relative_to(sql_dir).as_posix()
+    else:
+        label = sql_file.stem
+
     if not params:
-        return f"[{sql_file.stem}]"
+        return f"[{label}]"
 
     short = []
     for k in sorted(params.keys()):
         short.append(f"{k}={params[k]}")
 
-    return f"[{sql_file.stem}|{' '.join(short)}]"
+    return f"[{label}|{' '.join(short)}]"
 
 
 # ---------------------------
 # Plan mode: Dryrun report
 # ---------------------------
 def run_plan(ctx, sql_files, export_cfg, out_dir, ext, name_style="full",
-             strip_prefix=False, stage_params=None, stage_param_mode=None):
+             strip_prefix=False, stage_params=None, stage_param_mode=None,
+             sql_dir=None):
     logger = ctx.logger
     source_sel = ctx.job_config.get("source", {})
     host_name = source_sel.get("host", "")
@@ -378,10 +384,20 @@ def run_plan(ctx, sql_files, export_cfg, out_dir, ext, name_style="full",
         param_mode = stage_param_mode
         sql_param_sets = expand_params(relevant_params, mode=param_mode) if relevant_params else [{}]
 
+        # 하위폴더 SQL은 폴더명을 접두사로 포함
+        if sql_dir:
+            rel = sql_file.relative_to(sql_dir)
+            if rel.parent != Path("."):
+                sqlname = str(rel.parent).replace("/", "_").replace("\\", "_") + "_" + sql_file.stem
+            else:
+                sqlname = sql_file.stem
+        else:
+            sqlname = sql_file.stem
+
         for param_set in sql_param_sets:
             rendered = sanitize_sql(render_sql(sql_text_raw, param_set))
             csv_name = build_csv_name(
-                sqlname=sql_file.stem,
+                sqlname=sqlname,
                 host=host_name,
                 params=param_set,
                 ext=ext,
@@ -407,7 +423,7 @@ def run_plan(ctx, sql_files, export_cfg, out_dir, ext, name_style="full",
             tasks.append({
                 "sql_file": sql_file.name,
                 "params": param_set,
-                "task_key": make_task_key(sql_file, param_set),
+                "task_key": make_task_key(sql_file, param_set, sql_dir),
                 "output_file": str(out_file),
                 "rendered_sql_preview": rendered[:500] + ("..." if len(rendered) > 500 else ""),
                 "warnings": warnings,
@@ -569,7 +585,8 @@ def run(ctx: RunContext):
     if ctx.mode == "plan":
         run_plan(ctx, sql_files, export_cfg, out_dir, ext, name_style=name_style,
                  strip_prefix=strip_prefix,
-                 stage_params=stage_params, stage_param_mode=stage_param_mode)
+                 stage_params=stage_params, stage_param_mode=stage_param_mode,
+                 sql_dir=sql_dir)
         return
 
     # ----------------------------------------
@@ -591,8 +608,8 @@ def run(ctx: RunContext):
             logger.warning("Export interrupted before start")
             return
 
-        task_key = make_task_key(sql_file, param_set)
-        prefix = build_log_prefix(sql_file, param_set)
+        task_key = make_task_key(sql_file, param_set, sql_dir)
+        prefix = build_log_prefix(sql_file, param_set, sql_dir)
 
         # retry 모드: failed_task_keys에 없으면 skip
         if failed_task_keys is not None and task_key not in failed_task_keys:
@@ -610,8 +627,15 @@ def run(ctx: RunContext):
             else:
                 from adapters.sources.oracle_source import export_sql_to_csv as export_func
 
+            # 하위폴더 SQL은 폴더명을 접두사로 포함 (충돌 방지)
+            rel = sql_file.relative_to(sql_dir)
+            if rel.parent != Path("."):
+                sqlname = str(rel.parent).replace("/", "_").replace("\\", "_") + "_" + sql_file.stem
+            else:
+                sqlname = sql_file.stem
+
             csv_name = build_csv_name(
-                sqlname=sql_file.stem,
+                sqlname=sqlname,
                 host=host_name,
                 params=param_set,
                 ext=ext,
@@ -703,7 +727,7 @@ def run(ctx: RunContext):
 
     # 전체 task를 pending으로 초기화 (retry 시 pending도 재실행 대상)
     for sql_file, param_set, *_ in tasks:
-        task_key = make_task_key(sql_file, param_set)
+        task_key = make_task_key(sql_file, param_set, sql_dir)
         if failed_task_keys is None or task_key in (failed_task_keys or set()):
             update_task_status(run_info_path, task_key, "pending")
 

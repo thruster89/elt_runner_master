@@ -30,7 +30,7 @@ from pathlib import Path
 from engine.connection import connect_target, set_session_schema
 from engine.context import RunContext
 from engine.path_utils import resolve_path
-from engine.sql_utils import sort_sql_files, render_sql
+from engine.sql_utils import sort_sql_files, render_sql, strip_sql_prefix
 from stages.task_tracking import (
     make_task_key, init_run_info, update_task_status, load_failed_tasks,
 )
@@ -75,7 +75,12 @@ def run(ctx: RunContext):
 
     if skip_sql:
         # DB 연결 없이 csv_union_dir 의 CSV 파일들을 바로 사용
-        csv_union_dir = report_cfg.get("csv_union_dir", "data/export")
+        # 디폴트: export.out_dir / job_name (export 직후 바로 union하는 패턴)
+        csv_union_dir = report_cfg.get("csv_union_dir")
+        if not csv_union_dir:
+            export_cfg = ctx.job_config.get("export", {})
+            export_out = export_cfg.get("out_dir", "data/export")
+            csv_union_dir = str(Path(export_out) / ctx.job_name)
         union_dir = resolve_path(ctx, csv_union_dir)
         if union_dir.exists():
             generated_csvs = sorted(
@@ -388,24 +393,39 @@ def _run_excel_export(ctx, report_cfg, cfg, csv_files: list):
         from openpyxl.styles import Font, PatternFill
         from openpyxl.utils import get_column_letter
 
+        # ── 같은 시트명끼리 DataFrame을 모아서 concat ──
+        from collections import OrderedDict
+        sheet_frames: OrderedDict[str, list[pd.DataFrame]] = OrderedDict()
+
+        for csv_file in csv_files:
+            # 시트명: __앞부분만 사용 + 숫자접두사 제거
+            # 예: 01_contract__local__clsYymm_202003.csv → CONTRACT
+            raw_stem = csv_file.stem.replace(".csv", "")
+            base_name = raw_stem.split("__", 1)[0]
+            sheet_name = strip_sql_prefix(base_name).upper()[:31]
+
+            open_fn = gzip.open if str(csv_file).endswith(".gz") else open
+
+            try:
+                with open_fn(csv_file, "rt", encoding="utf-8") as f:
+                    df = pd.read_csv(f)
+            except Exception:
+                logger.warning("REPORT excel: failed to read %s, skip", csv_file.name)
+                continue
+
+            sheet_frames.setdefault(sheet_name, []).append(df)
+
         summary_rows = []
 
         with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
 
-            for csv_file in csv_files:
-                sheet_name = csv_file.stem.replace(".csv", "").upper()[:31]
+            for sheet_name, frames in sheet_frames.items():
+                df = pd.concat(frames, ignore_index=True)
+                row_count = len(df)
 
-                open_fn = gzip.open if str(csv_file).endswith(".gz") else open
-
-                # 행 수 사전 체크 (OOM 방지)
-                with open_fn(csv_file, "rt", encoding="utf-8") as f:
-                    row_count = sum(1 for _ in f) - 1  # 헤더 제외
                 if row_count > 1_048_576:
                     logger.warning("REPORT excel: row limit exceeded, skip | %s rows=%d", sheet_name, row_count)
                     continue
-
-                with open_fn(csv_file, "rt", encoding="utf-8") as f:
-                    df = pd.read_csv(f)
 
                 df.to_excel(writer, sheet_name=sheet_name, index=False)
                 summary_rows.append({"sheet_name": sheet_name, "rows": row_count})
@@ -429,7 +449,10 @@ def _run_excel_export(ctx, report_cfg, cfg, csv_files: list):
                     max_len = max(str_max if pd.notna(str_max) else 0, len(str(col_name)))
                     ws.column_dimensions[get_column_letter(col_idx)].width = min(int(max_len * 1.2) + 2, 50)
 
-                logger.info("REPORT excel sheet: %s (%d rows)", sheet_name, row_count)
+                if len(frames) > 1:
+                    logger.info("REPORT excel sheet: %s (%d rows, merged from %d files)", sheet_name, row_count, len(frames))
+                else:
+                    logger.info("REPORT excel sheet: %s (%d rows)", sheet_name, row_count)
 
             # SUMMARY 시트
             if summary_rows:

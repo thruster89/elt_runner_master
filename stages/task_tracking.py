@@ -17,12 +17,23 @@ logger = logging.getLogger(__name__)
 
 
 # ── task key ────────────────────────────────────────────────
-def make_task_key(sql_file: Path, param_set: dict | None = None) -> str:
+def make_task_key(sql_file: Path, param_set: dict | None = None,
+                  sql_dir: Path | None = None) -> str:
     """task를 고유하게 식별하는 키 생성."""
+    if sql_dir and sql_file.is_relative_to(sql_dir):
+        rel = sql_file.relative_to(sql_dir)
+        # 하위폴더가 있으면 폴더_stem 형태로 고유화
+        if rel.parent != Path("."):
+            base = str(rel.parent).replace("/", "_").replace("\\", "_") + "_" + sql_file.stem
+        else:
+            base = sql_file.stem
+    else:
+        base = sql_file.stem
+
     if param_set:
         param_part = "__".join(f"{k}={v}" for k, v in sorted(param_set.items()))
-        return f"{sql_file.stem}__{param_part}"
-    return sql_file.stem
+        return f"{base}__{param_part}"
+    return base
 
 
 # ── 상태 기록 ───────────────────────────────────────────────

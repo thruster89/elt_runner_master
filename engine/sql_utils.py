@@ -14,7 +14,7 @@ def strip_sql_prefix(name: str) -> str:
 
 
 def sort_sql_files(sql_dir: Path):
-    files = list(sql_dir.glob("*.sql"))
+    files = list(sql_dir.rglob("*.sql"))
 
     if not files:
         return []
@@ -27,15 +27,17 @@ def sort_sql_files(sql_dir: Path):
         if m:
             prefix_found = True
             order = int(m.group(1))
-            parsed.append((order, f))
         else:
-            parsed.append((None, f))
+            order = None
+        # 하위폴더 상대경로를 정렬 키에 포함
+        rel_parent = f.relative_to(sql_dir).parent.as_posix()
+        parsed.append((rel_parent, order, f))
 
     if prefix_found:
-        parsed.sort(key=lambda x: (x[0] is None, x[0], x[1].name))
-        return [f for _, f in parsed]
+        parsed.sort(key=lambda x: (x[0], x[1] is None, x[1], x[2].name))
+        return [f for _, _, f in parsed]
 
-    return sorted(files, key=lambda f: f.name.lower())
+    return sorted(files, key=lambda f: f.relative_to(sql_dir).as_posix().lower())
 
 
 def resolve_table_name(sql_file: Path) -> str:
