@@ -162,14 +162,16 @@ Export → Load → Transform → Report
 
 | 항목 | 설명 | 기본값 |
 |------|------|--------|
-| **Load Mode** | `replace` / `truncate` / `delete` / `append` | replace |
+| **Load Mode** | `replace` / `truncate` / `append` (+ Oracle: `delete`) | replace |
 | **CSV Dir** | Load 대상 CSV 경로 (비워두면 Export Output 사용) | (빈 값) |
 
 **Load Mode 상세:**
 - `replace`: DROP 후 새로 CREATE
 - `truncate`: TRUNCATE 후 INSERT
-- `delete`: WHERE 조건으로 DELETE 후 INSERT
+- `delete`: WHERE 조건으로 DELETE 후 INSERT (Oracle Target 전용)
 - `append`: 기존 데이터 유지, INSERT만
+
+> Target Type이 Oracle이면 `delete` 모드가 추가 표시되며 기본값도 `delete`로 변경됩니다.
 
 ### 4.8 Transform / Report 설정
 
