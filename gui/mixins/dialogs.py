@@ -111,8 +111,13 @@ class DialogsMixin:
             row += 1
 
             tk.Label(body, text="Source", **kw_key).grid(row=row, column=0, sticky="e", **pad_k)
-            tk.Label(body, text=self._source_type_var.get(), **kw_val).grid(
-                row=row, column=1, sticky="w", **pad_v)
+            src_frame = tk.Frame(body, bg=C["base"])
+            src_frame.grid(row=row, column=1, sticky="w", **pad_v)
+            tk.Label(src_frame, text=self._source_type_var.get(), **kw_val).pack(side="left")
+            src_host = self._source_host_var.get()
+            if src_host:
+                tk.Label(src_frame, text=f"  [{src_host}]", bg=C["base"],
+                         fg=C["peach"], font=FONTS["body_bold"]).pack(side="left")
             tk.Label(body, text="Overwrite", **kw_key).grid(row=row, column=2, sticky="e", **pad_k)
             tk.Label(body, text="ON" if ov_on else "OFF", bg=C["base"],
                      fg=C["red"] if ov_on else C["subtext"],
