@@ -42,12 +42,18 @@ class RunControlMixin:
             if not self._show_run_confirm():
                 return
 
+        # 실행 시작 전 GUI 로그 클리어 (성능 보호)
+        self._clear_log()
+        # 오래된 로그 파일 정리
+        self._cleanup_old_logs()
+
         cmd = self._build_command()
         self._log_sys(f"Run: {chr(32).join(cmd)}")
         self._set_status("● running", C["green"])
         self._elapsed_start = time.time()
         self._progress_bar["value"] = 0
         self._progress_label.config(text="Starting...")
+        self._reset_stage_segments()
         self._elapsed_job_id = self.after(1000, self._tick_elapsed)
 
         self._dryrun_btn.config(state="disabled", bg=C["surface0"], fg=C["overlay0"])
@@ -89,7 +95,19 @@ class RunControlMixin:
         threading.Thread(target=self._stream_output, daemon=True).start()
 
     def _stream_output(self: "BatchRunnerGUI"):
-        stage_pat = re.compile(r"\[(\d+)/(\d+)\]")
+        # Pipeline 레벨: [1/4] EXPORT
+        pipe_pat = re.compile(r"^\[(\d+)/(\d+)\]\s+(\w+)")
+        # Stage 내부: EXPORT [3/10], LOAD [3/10], TRANSFORM [2/5][1/3], REPORT [2/3]
+        detail_pat = re.compile(
+            r"(?:EXPORT\s+(?:start\s+)?\[(\d+)/(\d+)\])"
+            r"|(?:LOAD\s+\[(\d+)/(\d+)\])"
+            r"|(?:TRANSFORM\s+\[(\d+)/(\d+)\])"
+            r"|(?:REPORT\s+\[(\d+)/(\d+)\])"
+        )
+        # Summary 파싱: "  EXPORT        OK  success=10"  /  "  EXPORT        FAIL  success=8  failed=2"
+        summary_pat = re.compile(
+            r"^\s+(EXPORT|LOAD_LOCAL|LOAD|TRANSFORM|REPORT)\s+(OK|FAIL)\s+(.*)",
+            re.IGNORECASE)
         buf = []
         last_flush = time.time()
         flush_interval = 0.05  # 50ms 배치
@@ -104,13 +122,37 @@ class RunControlMixin:
             line = line.rstrip("\n")
             tag = self._guess_tag(line)
             buf.append((line, tag))
-            # [N/M] 패턴 파싱 → progress 업데이트
-            m = stage_pat.search(line)
-            if m:
-                cur, total = int(m.group(1)), int(m.group(2))
+
+            # Pipeline 레벨 [N/M] STAGE_NAME → 프로그레스바 %
+            pm = pipe_pat.search(line)
+            if pm:
+                cur, total = int(pm.group(1)), int(pm.group(2))
+                stage_name = pm.group(3)
                 pct = int(cur / total * 100)
-                label = f"Stage {cur}/{total}"
+                label = f"{stage_name} ({cur}/{total})"
                 self.after(0, self._update_progress, pct, label)
+                self.after(0, self._update_stage_detail, stage_name, 0, 0)
+
+            # Stage 내부 세부 카운트 → 세그먼트 업데이트
+            dm = detail_pat.search(line)
+            if dm:
+                groups = dm.groups()
+                # 4쌍 중 매치된 것 찾기
+                names = ["EXPORT", "LOAD", "TRANSFORM", "REPORT"]
+                for i, name in enumerate(names):
+                    c, t = groups[i*2], groups[i*2+1]
+                    if c is not None:
+                        self.after(0, self._update_stage_detail,
+                                   name, int(c), int(t))
+            # Summary 줄 파싱 → 세그먼트 결과 업데이트
+            sm = summary_pat.search(line)
+            if sm:
+                stage_name = sm.group(1).upper()
+                status = sm.group(2).upper()
+                detail = sm.group(3)
+                self.after(0, self._update_stage_result,
+                           stage_name, status, detail)
+
             # 일정 간격마다 flush (고속 출력 시 GUI 멈춤 방지)
             now = time.time()
             if now - last_flush >= flush_interval:
@@ -167,6 +209,10 @@ class RunControlMixin:
         if not getattr(self, "_manually_stopped", False):
             self._reset_buttons()
         self._start_idle_timer()
+        # J: Job 큐 — 다음 Job 자동 실행 (성공 시만)
+        q = getattr(self, "_job_queue", [])
+        if q and ret == 0 and not getattr(self, "_manually_stopped", False):
+            self.after(2000, self._run_next_queued_job)
 
     def _on_stop(self: "BatchRunnerGUI"):
         if not self._process or self._process.poll() is not None:
@@ -335,6 +381,74 @@ class RunControlMixin:
         if hasattr(self, '_stage_status'):
             self._stage_status.config(text=label)
 
+    def _update_stage_detail(self: "BatchRunnerGUI", stage_name: str,
+                              cur: int, total: int):
+        """스테이지별 세그먼트 레이블 업데이트."""
+        segs = getattr(self, "_stage_segments", None)
+        if not segs:
+            return
+        # stage_name 매핑 (runner 출력 → STAGE_CONFIG key)
+        name_map = {"EXPORT": "export", "LOAD": "load_local",
+                    "TRANSFORM": "transform", "REPORT": "report"}
+        key = name_map.get(stage_name.upper(), stage_name.lower())
+        seg = segs.get(key)
+        if not seg:
+            return
+        if total > 0:
+            seg["cur"] = cur
+            seg["total"] = total
+        # 현재 활성 스테이지 강조
+        for k, s in segs.items():
+            if s["total"] == 0:
+                s["label"].config(text="", fg=C["overlay0"])
+            elif k == key:
+                s["label"].config(
+                    text=f"{s['display']} {s['cur']}/{s['total']}",
+                    fg=C[s["color"]])
+            else:
+                s["label"].config(
+                    text=f"{s['display']} {s['cur']}/{s['total']}",
+                    fg=C["overlay0"])
+
+    def _update_stage_result(self: "BatchRunnerGUI", stage_name: str,
+                              status: str, detail: str):
+        """Pipeline summary에서 파싱된 stage별 최종 결과를 세그먼트에 표시."""
+        segs = getattr(self, "_stage_segments", None)
+        if not segs:
+            return
+        name_map = {"EXPORT": "export", "LOAD": "load_local", "LOAD_LOCAL": "load_local",
+                    "TRANSFORM": "transform", "REPORT": "report"}
+        key = name_map.get(stage_name.upper(), stage_name.lower())
+        seg = segs.get(key)
+        if not seg:
+            return
+        # failed=N 추출
+        fm = re.search(r"failed=(\d+)", detail)
+        failed = int(fm.group(1)) if fm else 0
+        sm = re.search(r"success=(\d+)", detail)
+        success = int(sm.group(1)) if sm else 0
+        if status == "OK":
+            icon = "\u2713"
+            color = "green"
+            text = f"{seg['display']} {icon} {success}"
+        else:
+            icon = "\u2717"
+            color = "red"
+            text = f"{seg['display']} {icon} {failed}err"
+            if success:
+                text += f" {success}ok"
+        seg["label"].config(text=text, fg=C[color])
+
+    def _reset_stage_segments(self: "BatchRunnerGUI"):
+        """실행 시작/종료 시 세그먼트 초기화."""
+        segs = getattr(self, "_stage_segments", None)
+        if not segs:
+            return
+        for s in segs.values():
+            s["cur"] = 0
+            s["total"] = 0
+            s["label"].config(text="", fg=C["overlay0"])
+
     def _tick_elapsed(self: "BatchRunnerGUI"):
         if self._elapsed_start is None:
             return
@@ -434,8 +548,121 @@ class RunControlMixin:
             self._cmd_preview.insert("end", sep + part, tag)
         self._cmd_preview.config(state="disabled")
 
+        self._update_param_counts()
+        self._validate_paths()
+        self._update_union_file_count()
+
         if not self._restoring_job:
             self._update_title_dirty()
+
+    # ── 파라미터 조합 수 표시 ──────────────────────────────────
+
+    def _expand_param_value(self, v_str: str) -> list[str]:
+        """파라미터 값을 확장하여 리스트 반환 (|, : 범위 지원)"""
+        v_str = v_str.strip()
+        if ":" in v_str:
+            try:
+                from stages.export_stage import expand_range_value
+                return expand_range_value(v_str)
+            except Exception:
+                return [v_str]
+        elif "|" in v_str:
+            return [x.strip() for x in v_str.split("|") if x.strip()]
+        return [v_str]
+
+    def _update_param_counts(self: "BatchRunnerGUI"):
+        labels = getattr(self, "_param_count_labels", {})
+        if not labels:
+            return
+        from gui.widgets import Tooltip
+        mode_vars = {
+            "export": self._param_mode_var,
+            "transform": self._transform_param_mode_var,
+            "report": self._report_param_mode_var,
+        }
+        for stage, lbl in labels.items():
+            entries = self._stage_param_entries.get(stage, [])
+            counts = []
+            expanded_info = []  # (key, expanded_values) 미리보기용
+            for k_var, v_var in entries:
+                k = k_var.get().strip()
+                v = v_var.get().strip()
+                if not k or not v:
+                    continue
+                vals = self._expand_param_value(v)
+                counts.append(len(vals))
+                if len(vals) > 1:
+                    expanded_info.append((k, vals))
+            if not counts or all(c == 1 for c in counts):
+                lbl.config(text="")
+                # 기존 툴팁 제거
+                lbl.unbind("<Enter>")
+                lbl.unbind("<Leave>")
+                continue
+            mode = mode_vars.get(stage)
+            mode_str = mode.get() if mode else "product"
+            if mode_str == "zip":
+                total = max(counts)
+            else:
+                total = 1
+                for c in counts:
+                    total *= c
+            lbl.config(text=f"→ {total} combinations", fg=C["green"])
+            # 확장 미리보기 툴팁
+            if expanded_info:
+                preview_lines = []
+                for k, vals in expanded_info:
+                    if len(vals) <= 8:
+                        preview_lines.append(f"{k}: {', '.join(vals)}")
+                    else:
+                        shown = ', '.join(vals[:4])
+                        tail = ', '.join(vals[-2:])
+                        preview_lines.append(f"{k}: {shown}, ... {tail}  ({len(vals)}개)")
+                tip_text = "\n".join(preview_lines)
+                Tooltip(lbl, tip_text)
+
+    # ── 경로 유효성 표시 ───────────────────────────────────────
+
+    def _validate_paths(self: "BatchRunnerGUI"):
+        entries = getattr(self, "_path_entry_widgets", {})
+        if not entries:
+            return
+        wd = Path(self._work_dir.get())
+        for var, ent in entries.items():
+            raw = var.get().strip()
+            if not raw:
+                ent.config(highlightthickness=0)
+                continue
+            p = Path(raw)
+            if not p.is_absolute():
+                p = wd / p
+            if p.exists():
+                ent.config(highlightthickness=0)
+            else:
+                ent.config(highlightbackground=C["red"], highlightthickness=1)
+
+    # ── Union Dir CSV 파일 수 표시 ──────────────────────────────
+
+    def _update_union_file_count(self: "BatchRunnerGUI"):
+        lbl = getattr(self, "_union_file_count", None)
+        if not lbl:
+            return
+        raw = self._ov_union_dir.get().strip()
+        if not raw:
+            lbl.config(text="")
+            return
+        p = Path(raw)
+        if not p.is_absolute():
+            p = Path(self._work_dir.get()) / p
+        if not p.is_dir():
+            lbl.config(text="")
+            return
+        csvs = list(p.glob("*.csv")) + list(p.glob("*.csv.gz"))
+        n = len(csvs)
+        if n:
+            lbl.config(text=f"({n} csv)", fg=C["green"])
+        else:
+            lbl.config(text="(empty)", fg=C["overlay0"])
 
     # ── 예약 실행 ─────────────────────────────────────────────
 
@@ -571,3 +798,26 @@ class RunControlMixin:
                 self._schedule_mode or "run", "Run")
             self._schedule_label.config(
                 text=f" {label} {mode_label} ({h:02d}:{m:02d}:{s:02d})", fg=C["green"])
+
+    # ── 로그 파일 보관 기한 관리 ──────────────────────────────
+
+    LOG_RETENTION_DAYS = 30  # 기본 보관 기한 (일)
+
+    def _cleanup_old_logs(self: "BatchRunnerGUI"):
+        """logs/ 폴더의 오래된 .log 파일 자동 삭제 (보관 기한 초과분)"""
+        wd = Path(self._work_dir.get())
+        log_dir = wd / "logs"
+        if not log_dir.is_dir():
+            return
+        import time as _time
+        cutoff = _time.time() - self.LOG_RETENTION_DAYS * 86400
+        removed = 0
+        for f in log_dir.glob("*.log"):
+            try:
+                if f.stat().st_mtime < cutoff:
+                    f.unlink()
+                    removed += 1
+            except Exception:
+                pass
+        if removed:
+            self._log_sys(f"[Cleanup] {removed}개 오래된 로그 파일 삭제 (>{self.LOG_RETENTION_DAYS}일)")

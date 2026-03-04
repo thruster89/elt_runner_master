@@ -13,6 +13,10 @@ from gui.constants import C, FONTS
 if TYPE_CHECKING:
     from gui.app import BatchRunnerGUI
 
+# 로그 라인 최대 보관 수 (메모리 보호)
+LOG_MAX_LINES = 20_000
+LOG_TRIM_CHUNK = 2_000  # 초과 시 한 번에 제거할 줄 수
+
 
 class LogPanelMixin:
 
@@ -22,6 +26,7 @@ class LogPanelMixin:
         if self._should_show_line(tag):
             self._insert_log_line(text, tag, ts)
             self._log.see("end")
+        self._trim_log_if_needed()
 
     def _log_write_batch(self: "BatchRunnerGUI", lines: list[tuple[str, str]]):
         """여러 줄을 한 번에 기록 (고속 출력 시 GUI 멈춤 방지)"""
@@ -31,6 +36,16 @@ class LogPanelMixin:
             if self._should_show_line(tag):
                 self._insert_log_line(text, tag, ts)
         self._log.see("end")
+        self._trim_log_if_needed()
+
+    def _trim_log_if_needed(self: "BatchRunnerGUI"):
+        """로그 라인 수가 상한 초과 시 오래된 줄 제거"""
+        if len(self._log_raw_lines) <= LOG_MAX_LINES:
+            return
+        # 오래된 줄 제거
+        del self._log_raw_lines[:LOG_TRIM_CHUNK]
+        # Text 위젯 갱신
+        self._refilter_log()
 
     def _log_sys(self: "BatchRunnerGUI", msg):
         self._log_write(msg, "SYS")

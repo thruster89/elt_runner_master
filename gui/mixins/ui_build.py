@@ -166,7 +166,11 @@ class UiBuildMixin:
                   bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
                   activebackground=C["surface1"],
                   command=lambda: self._open_in_explorer(self._work_dir.get())
-                  ).pack(side="left")
+                  ).pack(side="left", padx=(0, 2))
+        tk.Button(bar1, text="? Help", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
+                  activebackground=C["surface1"],
+                  command=self._open_user_guide).pack(side="left")
 
         tk.Label(grid, text="Theme ", font=FONTS["body_bold"], anchor="e",
                  bg=C["crust"], fg=C["subtext"]).grid(row=0, column=4, sticky="e")
@@ -443,6 +447,13 @@ class UiBuildMixin:
                 mode_var.trace_add("write", lambda *_: self._refresh_preview())
         tk.Label(hdr, text="( | 로 다중값 확장)", font=FONTS["mono_small"],
                  bg=C["mantle"], fg=C["overlay0"]).pack(side="left", padx=(6, 0))
+        # 조합 수 레이블
+        if not hasattr(self, "_param_count_labels"):
+            self._param_count_labels: dict[str, tk.Label] = {}
+        lbl = tk.Label(hdr, text="", font=FONTS["mono_small"],
+                       bg=C["mantle"], fg=C["subtext"])
+        lbl.pack(side="left", padx=(6, 0))
+        self._param_count_labels[stage] = lbl
         tk.Button(hdr, text="+ add", font=FONTS["mono_small"],
                   bg=C["surface0"], fg=C["subtext"], relief="flat", padx=6, pady=1,
                   activebackground=C["surface1"],
@@ -500,9 +511,13 @@ class UiBuildMixin:
                   bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
                   activebackground=C["surface1"],
                   command=_browse).pack(side="right", padx=(2, 0))
-        tk.Entry(row, textvariable=var, bg=C["surface0"], fg=C["text"],
+        ent = tk.Entry(row, textvariable=var, bg=C["surface0"], fg=C["text"],
                  insertbackground=C["text"], relief="flat",
-                 font=FONTS["mono"], width=16).pack(side="right", fill="x", expand=True, ipady=2)
+                 font=FONTS["mono"], width=16)
+        ent.pack(side="right", fill="x", expand=True, ipady=2)
+        if not hasattr(self, "_path_entry_widgets"):
+            self._path_entry_widgets: dict[tk.StringVar, tk.Entry] = {}
+        self._path_entry_widgets[var] = ent
         return row
 
     # ── 1) Load (구 Target) ───────────────────────────────────
@@ -562,6 +577,11 @@ class UiBuildMixin:
                   bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
                   activebackground=C["surface1"],
                   command=_browse_db).pack(side="left", padx=(2, 0))
+        tk.Button(self._db_path_row, text="\U0001f4c2", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
+                  activebackground=C["surface1"],
+                  command=lambda: self._open_in_explorer(
+                      self._target_db_path.get())).pack(side="left", padx=(2, 0))
 
         # CSV Dir (load 단독 모드용 — export 스테이지 OFF 시만 표시)
         self._csv_dir_row = self._path_row(body, "csv_dir", self._load_csv_dir,
@@ -601,8 +621,14 @@ class UiBuildMixin:
 
         col_r = tk.Frame(src_row, bg=C["mantle"])
         col_r.pack(side="left", fill="x", expand=True, padx=(8, 0))
-        tk.Label(col_r, text="Host", font=FONTS["label"],
-                 bg=C["mantle"], fg=C["subtext"]).pack(anchor="w")
+        host_hdr = tk.Frame(col_r, bg=C["mantle"])
+        host_hdr.pack(fill="x")
+        tk.Label(host_hdr, text="Host", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["subtext"]).pack(side="left")
+        tk.Button(host_hdr, text="Test", font=FONTS["shortcut"],
+                  bg=C["surface0"], fg=C["teal"], relief="flat", padx=6, pady=0,
+                  activebackground=C["surface1"],
+                  command=self._test_connection).pack(side="right")
         self._host_combo = ttk.Combobox(
             col_r, textvariable=self._source_host_var,
             state="readonly", font=FONTS["mono"])
@@ -639,16 +665,20 @@ class UiBuildMixin:
         self._sql_count_label = tk.Label(sql_row, text="(all)", font=FONTS["mono_small"],
                                          bg=C["mantle"], fg=C["subtext"])
         self._sql_count_label.pack(side="right", padx=(2, 0))
+        self._sql_count_tip = Tooltip(self._sql_count_label, "")
         self._sql_btn = tk.Button(
             sql_row, text="filter", font=FONTS["mono_small"],
             bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
             activebackground=C["surface1"],
             command=self._open_sql_selector)
         self._sql_btn.pack(side="right", padx=(2, 0))
-        tk.Entry(sql_row, textvariable=self._export_sql_dir,
+        _e_sql = tk.Entry(sql_row, textvariable=self._export_sql_dir,
                  bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
-                 relief="flat", font=FONTS["mono"], width=16).pack(
-                     side="right", fill="x", expand=True, ipady=2)
+                 relief="flat", font=FONTS["mono"], width=16)
+        _e_sql.pack(side="right", fill="x", expand=True, ipady=2)
+        if not hasattr(self, "_path_entry_widgets"):
+            self._path_entry_widgets = {}
+        self._path_entry_widgets[self._export_sql_dir] = _e_sql
 
         self._path_row(body, "out_dir", self._export_out_dir, "Select output dir")
 
@@ -790,16 +820,18 @@ class UiBuildMixin:
         self._transform_sql_count_label = tk.Label(tfm_sql_row, text="(all)", font=FONTS["mono_small"],
                                                     bg=C["mantle"], fg=C["subtext"])
         self._transform_sql_count_label.pack(side="right", padx=(2, 0))
+        self._transform_sql_count_tip = Tooltip(self._transform_sql_count_label, "")
         self._transform_sql_btn = tk.Button(
             tfm_sql_row, text="filter", font=FONTS["mono_small"],
             bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
             activebackground=C["surface1"],
             command=self._open_transform_sql_selector)
         self._transform_sql_btn.pack(side="right", padx=(2, 0))
-        tk.Entry(tfm_sql_row, textvariable=self._transform_sql_dir,
+        _t_sql = tk.Entry(tfm_sql_row, textvariable=self._transform_sql_dir,
                  bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
-                 relief="flat", font=FONTS["mono"], width=16).pack(
-                     side="right", fill="x", expand=True, ipady=2)
+                 relief="flat", font=FONTS["mono"], width=16)
+        _t_sql.pack(side="right", fill="x", expand=True, ipady=2)
+        self._path_entry_widgets[self._transform_sql_dir] = _t_sql
         self._transform_sql_dir_row = tfm_sql_row
 
         def _w_tfm_schema(r):
@@ -862,16 +894,18 @@ class UiBuildMixin:
         self._report_sql_count_label = tk.Label(rpt_sql_row, text="(all)", font=FONTS["mono_small"],
                                                  bg=C["mantle"], fg=C["subtext"])
         self._report_sql_count_label.pack(side="right", padx=(2, 0))
+        self._report_sql_count_tip = Tooltip(self._report_sql_count_label, "")
         self._report_sql_btn = tk.Button(
             rpt_sql_row, text="filter", font=FONTS["mono_small"],
             bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
             activebackground=C["surface1"],
             command=self._open_report_sql_selector)
         self._report_sql_btn.pack(side="right", padx=(2, 0))
-        tk.Entry(rpt_sql_row, textvariable=self._report_sql_dir,
+        _r_sql = tk.Entry(rpt_sql_row, textvariable=self._report_sql_dir,
                  bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
-                 relief="flat", font=FONTS["mono"], width=16).pack(
-                     side="right", fill="x", expand=True, ipady=2)
+                 relief="flat", font=FONTS["mono"], width=16)
+        _r_sql.pack(side="right", fill="x", expand=True, ipady=2)
+        self._path_entry_widgets[self._report_sql_dir] = _r_sql
 
         self._path_row(body, "out_dir", self._report_out_dir, "Select report output dir")
 
@@ -902,9 +936,11 @@ class UiBuildMixin:
                  width=12, anchor="w", bg=C["mantle"], fg=C["text"])
         _union_lbl.pack(side="left")
         Tooltip(_union_lbl, TOOLTIPS["union_dir"])
-        tk.Entry(union_row, textvariable=self._ov_union_dir,
+        _u_ent = tk.Entry(union_row, textvariable=self._ov_union_dir,
                  bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
-                 relief="flat", font=FONTS["mono"], width=12).pack(side="left", fill="x", expand=True, ipady=2)
+                 relief="flat", font=FONTS["mono"], width=12)
+        _u_ent.pack(side="left", fill="x", expand=True, ipady=2)
+        self._path_entry_widgets[self._ov_union_dir] = _u_ent
         def _browse_union():
             d = filedialog.askdirectory(
                 initialdir=self._ov_union_dir.get() or self._work_dir.get(),
@@ -919,6 +955,14 @@ class UiBuildMixin:
                   bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
                   activebackground=C["surface1"],
                   command=_browse_union).pack(side="left", padx=(2, 0))
+        tk.Button(union_row, text="\U0001f4c2", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
+                  activebackground=C["surface1"],
+                  command=lambda: self._open_in_explorer(
+                      self._ov_union_dir.get())).pack(side="left", padx=(2, 0))
+        self._union_file_count = tk.Label(union_row, text="", font=FONTS["mono_small"],
+                                          bg=C["mantle"], fg=C["subtext"])
+        self._union_file_count.pack(side="left", padx=(4, 0))
 
         def _w_max_files(r):
             tk.Spinbox(r, from_=1, to=100, width=4, textvariable=self._ov_max_files,
@@ -970,6 +1014,16 @@ class UiBuildMixin:
                   bd=0, highlightthickness=0,
                   activebackground=C["surface1"],
                   command=self._clear_log).pack(side="right", padx=4)
+        tk.Button(header, text="Log", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["subtext"], relief="flat", padx=8,
+                  bd=0, highlightthickness=0,
+                  activebackground=C["surface1"],
+                  command=self._open_log_folder).pack(side="right", padx=4)
+        tk.Button(header, text="History", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["subtext"], relief="flat", padx=8,
+                  bd=0, highlightthickness=0,
+                  activebackground=C["surface1"],
+                  command=self._show_run_history).pack(side="right", padx=4)
 
         ttk.Separator(parent, orient="horizontal").pack(fill="x", padx=8)
 
@@ -1102,9 +1156,24 @@ class UiBuildMixin:
         )
         self._stop_btn.pack(side="left")
 
+        tk.Button(bar, text="Queue", font=FONTS["button_sm"],
+                  bg=C["surface0"], fg=C["subtext"], relief="flat", padx=10, pady=6,
+                  activebackground=C["surface1"],
+                  command=self._show_job_queue).pack(side="left", padx=(6, 0))
+
+        # 스테이지별 세그먼트 레이블: EXPORT 3/10 | LOAD 0/10 | ...
         self._stage_status = tk.Label(bar, text="", font=FONTS["small"],
                                       bg=C["crust"], fg=C["subtext"])
         self._stage_status.pack(side="left", padx=10)
+        self._stage_seg_frame = tk.Frame(bar, bg=C["crust"])
+        self._stage_seg_frame.pack(side="left", padx=(0, 6))
+        self._stage_segments = {}
+        for key, display, color in STAGE_CONFIG:
+            lbl = tk.Label(self._stage_seg_frame, text="", font=FONTS["mono_small"],
+                           bg=C["crust"], fg=C["overlay0"])
+            lbl.pack(side="left", padx=(0, 6))
+            self._stage_segments[key] = {"label": lbl, "color": color,
+                                         "display": display, "cur": 0, "total": 0}
 
         # 예약 실행
         sep = tk.Frame(bar, bg=C["subtext"], width=1)
