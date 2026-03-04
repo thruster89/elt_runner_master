@@ -434,8 +434,64 @@ class RunControlMixin:
             self._cmd_preview.insert("end", sep + part, tag)
         self._cmd_preview.config(state="disabled")
 
+        self._update_param_counts()
+        self._validate_paths()
+
         if not self._restoring_job:
             self._update_title_dirty()
+
+    # ── 파라미터 조합 수 표시 ──────────────────────────────────
+
+    def _update_param_counts(self: "BatchRunnerGUI"):
+        labels = getattr(self, "_param_count_labels", {})
+        if not labels:
+            return
+        mode_vars = {
+            "export": self._param_mode_var,
+            "transform": self._transform_param_mode_var,
+            "report": self._report_param_mode_var,
+        }
+        for stage, lbl in labels.items():
+            entries = self._stage_param_entries.get(stage, [])
+            counts = []
+            for k_var, v_var in entries:
+                if not k_var.get().strip() or not v_var.get().strip():
+                    continue
+                vals = [v.strip() for v in v_var.get().split("|") if v.strip()]
+                if vals:
+                    counts.append(len(vals))
+            if not counts or all(c == 1 for c in counts):
+                lbl.config(text="")
+                continue
+            mode = mode_vars.get(stage)
+            mode_str = mode.get() if mode else "product"
+            if mode_str == "zip":
+                total = max(counts)
+            else:
+                total = 1
+                for c in counts:
+                    total *= c
+            lbl.config(text=f"→ {total} combinations", fg=C["green"])
+
+    # ── 경로 유효성 표시 ───────────────────────────────────────
+
+    def _validate_paths(self: "BatchRunnerGUI"):
+        entries = getattr(self, "_path_entry_widgets", {})
+        if not entries:
+            return
+        wd = Path(self._work_dir.get())
+        for var, ent in entries.items():
+            raw = var.get().strip()
+            if not raw:
+                ent.config(highlightthickness=0)
+                continue
+            p = Path(raw)
+            if not p.is_absolute():
+                p = wd / p
+            if p.exists():
+                ent.config(highlightthickness=0)
+            else:
+                ent.config(highlightbackground=C["red"], highlightthickness=1)
 
     # ── 예약 실행 ─────────────────────────────────────────────
 
