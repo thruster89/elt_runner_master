@@ -393,37 +393,39 @@ def _run_excel_export(ctx, report_cfg, cfg, csv_files: list):
         from openpyxl.styles import Font, PatternFill
         from openpyxl.utils import get_column_letter
 
+        # ── 같은 시트명끼리 DataFrame을 모아서 concat ──
+        from collections import OrderedDict
+        sheet_frames: OrderedDict[str, list[pd.DataFrame]] = OrderedDict()
+
+        for csv_file in csv_files:
+            # 시트명: __앞부분만 사용 + 숫자접두사 제거
+            # 예: 01_contract__local__clsYymm_202003.csv → CONTRACT
+            raw_stem = csv_file.stem.replace(".csv", "")
+            base_name = raw_stem.split("__", 1)[0]
+            sheet_name = strip_sql_prefix(base_name).upper()[:31]
+
+            open_fn = gzip.open if str(csv_file).endswith(".gz") else open
+
+            try:
+                with open_fn(csv_file, "rt", encoding="utf-8") as f:
+                    df = pd.read_csv(f)
+            except Exception:
+                logger.warning("REPORT excel: failed to read %s, skip", csv_file.name)
+                continue
+
+            sheet_frames.setdefault(sheet_name, []).append(df)
+
         summary_rows = []
-        used_sheet_names = set()
 
         with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
 
-            for csv_file in csv_files:
-                # 시트명: __앞부분만 사용 + 숫자접두사 제거
-                # 예: 01_contract__local__clsYymm_202003.csv → CONTRACT
-                raw_stem = csv_file.stem.replace(".csv", "")
-                base_name = raw_stem.split("__", 1)[0]
-                sheet_name = strip_sql_prefix(base_name).upper()[:31]
+            for sheet_name, frames in sheet_frames.items():
+                df = pd.concat(frames, ignore_index=True)
+                row_count = len(df)
 
-                # 시트명 중복 시 _2, _3 ... 접미사 추가
-                if sheet_name in used_sheet_names:
-                    seq = 2
-                    while f"{sheet_name[:28]}_{seq}" in used_sheet_names:
-                        seq += 1
-                    sheet_name = f"{sheet_name[:28]}_{seq}"
-                used_sheet_names.add(sheet_name)
-
-                open_fn = gzip.open if str(csv_file).endswith(".gz") else open
-
-                # 행 수 사전 체크 (OOM 방지)
-                with open_fn(csv_file, "rt", encoding="utf-8") as f:
-                    row_count = sum(1 for _ in f) - 1  # 헤더 제외
                 if row_count > 1_048_576:
                     logger.warning("REPORT excel: row limit exceeded, skip | %s rows=%d", sheet_name, row_count)
                     continue
-
-                with open_fn(csv_file, "rt", encoding="utf-8") as f:
-                    df = pd.read_csv(f)
 
                 df.to_excel(writer, sheet_name=sheet_name, index=False)
                 summary_rows.append({"sheet_name": sheet_name, "rows": row_count})
@@ -447,7 +449,10 @@ def _run_excel_export(ctx, report_cfg, cfg, csv_files: list):
                     max_len = max(str_max if pd.notna(str_max) else 0, len(str(col_name)))
                     ws.column_dimensions[get_column_letter(col_idx)].width = min(int(max_len * 1.2) + 2, 50)
 
-                logger.info("REPORT excel sheet: %s (%d rows)", sheet_name, row_count)
+                if len(frames) > 1:
+                    logger.info("REPORT excel sheet: %s (%d rows, merged from %d files)", sheet_name, row_count, len(frames))
+                else:
+                    logger.info("REPORT excel sheet: %s (%d rows)", sheet_name, row_count)
 
             # SUMMARY 시트
             if summary_rows:
