@@ -99,6 +99,10 @@ class RunControlMixin:
             r"|(?:TRANSFORM\s+\[(\d+)/(\d+)\])"
             r"|(?:REPORT\s+\[(\d+)/(\d+)\])"
         )
+        # Summary 파싱: "  EXPORT        OK  success=10"  /  "  EXPORT        FAIL  success=8  failed=2"
+        summary_pat = re.compile(
+            r"^\s+(EXPORT|LOAD_LOCAL|LOAD|TRANSFORM|REPORT)\s+(OK|FAIL)\s+(.*)",
+            re.IGNORECASE)
         buf = []
         last_flush = time.time()
         flush_interval = 0.05  # 50ms 배치
@@ -135,6 +139,15 @@ class RunControlMixin:
                     if c is not None:
                         self.after(0, self._update_stage_detail,
                                    name, int(c), int(t))
+            # Summary 줄 파싱 → 세그먼트 결과 업데이트
+            sm = summary_pat.search(line)
+            if sm:
+                stage_name = sm.group(1).upper()
+                status = sm.group(2).upper()
+                detail = sm.group(3)
+                self.after(0, self._update_stage_result,
+                           stage_name, status, detail)
+
             # 일정 간격마다 flush (고속 출력 시 GUI 멈춤 방지)
             now = time.time()
             if now - last_flush >= flush_interval:
@@ -388,6 +401,35 @@ class RunControlMixin:
                     text=f"{s['display']} {s['cur']}/{s['total']}",
                     fg=C["overlay0"])
 
+    def _update_stage_result(self: "BatchRunnerGUI", stage_name: str,
+                              status: str, detail: str):
+        """Pipeline summary에서 파싱된 stage별 최종 결과를 세그먼트에 표시."""
+        segs = getattr(self, "_stage_segments", None)
+        if not segs:
+            return
+        name_map = {"EXPORT": "export", "LOAD": "load_local", "LOAD_LOCAL": "load_local",
+                    "TRANSFORM": "transform", "REPORT": "report"}
+        key = name_map.get(stage_name.upper(), stage_name.lower())
+        seg = segs.get(key)
+        if not seg:
+            return
+        # failed=N 추출
+        fm = re.search(r"failed=(\d+)", detail)
+        failed = int(fm.group(1)) if fm else 0
+        sm = re.search(r"success=(\d+)", detail)
+        success = int(sm.group(1)) if sm else 0
+        if status == "OK":
+            icon = "\u2713"
+            color = "green"
+            text = f"{seg['display']} {icon} {success}"
+        else:
+            icon = "\u2717"
+            color = "red"
+            text = f"{seg['display']} {icon} {failed}err"
+            if success:
+                text += f" {success}ok"
+        seg["label"].config(text=text, fg=C[color])
+
     def _reset_stage_segments(self: "BatchRunnerGUI"):
         """실행 시작/종료 시 세그먼트 초기화."""
         segs = getattr(self, "_stage_segments", None)
@@ -506,10 +548,24 @@ class RunControlMixin:
 
     # ── 파라미터 조합 수 표시 ──────────────────────────────────
 
+    def _expand_param_value(self, v_str: str) -> list[str]:
+        """파라미터 값을 확장하여 리스트 반환 (|, : 범위 지원)"""
+        v_str = v_str.strip()
+        if ":" in v_str:
+            try:
+                from stages.export_stage import expand_range_value
+                return expand_range_value(v_str)
+            except Exception:
+                return [v_str]
+        elif "|" in v_str:
+            return [x.strip() for x in v_str.split("|") if x.strip()]
+        return [v_str]
+
     def _update_param_counts(self: "BatchRunnerGUI"):
         labels = getattr(self, "_param_count_labels", {})
         if not labels:
             return
+        from gui.widgets import Tooltip
         mode_vars = {
             "export": self._param_mode_var,
             "transform": self._transform_param_mode_var,
@@ -518,14 +574,21 @@ class RunControlMixin:
         for stage, lbl in labels.items():
             entries = self._stage_param_entries.get(stage, [])
             counts = []
+            expanded_info = []  # (key, expanded_values) 미리보기용
             for k_var, v_var in entries:
-                if not k_var.get().strip() or not v_var.get().strip():
+                k = k_var.get().strip()
+                v = v_var.get().strip()
+                if not k or not v:
                     continue
-                vals = [v.strip() for v in v_var.get().split("|") if v.strip()]
-                if vals:
-                    counts.append(len(vals))
+                vals = self._expand_param_value(v)
+                counts.append(len(vals))
+                if len(vals) > 1:
+                    expanded_info.append((k, vals))
             if not counts or all(c == 1 for c in counts):
                 lbl.config(text="")
+                # 기존 툴팁 제거
+                lbl.unbind("<Enter>")
+                lbl.unbind("<Leave>")
                 continue
             mode = mode_vars.get(stage)
             mode_str = mode.get() if mode else "product"
@@ -536,6 +599,18 @@ class RunControlMixin:
                 for c in counts:
                     total *= c
             lbl.config(text=f"→ {total} combinations", fg=C["green"])
+            # 확장 미리보기 툴팁
+            if expanded_info:
+                preview_lines = []
+                for k, vals in expanded_info:
+                    if len(vals) <= 8:
+                        preview_lines.append(f"{k}: {', '.join(vals)}")
+                    else:
+                        shown = ', '.join(vals[:4])
+                        tail = ', '.join(vals[-2:])
+                        preview_lines.append(f"{k}: {shown}, ... {tail}  ({len(vals)}개)")
+                tip_text = "\n".join(preview_lines)
+                Tooltip(lbl, tip_text)
 
     # ── 경로 유효성 표시 ───────────────────────────────────────
 

@@ -25,6 +25,7 @@ class SqlSelectorDialog(tk.Toplevel):
         self.sql_dir = sql_dir
         self.selected: set[str] = set(pre_selected or [])  # relative paths from sql_dir
         self._check_vars: dict[str, tk.BooleanVar] = {}
+        self._all_rows: list[tuple[tk.Frame, str]] = []  # (row_widget, rel_path) for filtering
 
         self._build()
         self._center(parent)
@@ -56,6 +57,23 @@ class SqlSelectorDialog(tk.Toplevel):
                   bg=C["surface0"], fg=C["text"], relief="flat", padx=8,
                   activebackground=C["surface1"],
                   command=self._deselect_all).pack(side="left")
+
+        # 검색 필터
+        search_frame = tk.Frame(self, bg=C["base"])
+        search_frame.pack(fill="x", padx=10, pady=(2, 0))
+        tk.Label(search_frame, text="🔍", font=FONTS["mono_small"],
+                 bg=C["base"], fg=C["subtext"]).pack(side="left")
+        self._search_var = tk.StringVar()
+        self._search_entry = tk.Entry(
+            search_frame, textvariable=self._search_var,
+            bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
+            relief="flat", font=FONTS["mono"], width=30)
+        self._search_entry.pack(side="left", fill="x", expand=True, padx=4, ipady=2)
+        self._search_var.trace_add("write", lambda *_: self._apply_search_filter())
+        self._search_match_label = tk.Label(
+            search_frame, text="", font=FONTS["mono_small"],
+            bg=C["base"], fg=C["subtext"])
+        self._search_match_label.pack(side="left", padx=4)
 
         # 스크롤 영역
         outer = tk.Frame(self, bg=C["base"])
@@ -117,6 +135,7 @@ class SqlSelectorDialog(tk.Toplevel):
                 font=FONTS["mono_small"], anchor="w"
             )
             cb.pack(fill="x", side="left", padx=(pad, 0))
+            self._all_rows.append((row, rel))
 
         # 하위 폴더
         for key, sub in node.items():
@@ -208,6 +227,21 @@ class SqlSelectorDialog(tk.Toplevel):
                 _recurse(sub, (pfx + "/" + key).lstrip("/"))
         _recurse(node, folder_prefix)
         self._update_count()
+
+    def _apply_search_filter(self):
+        """검색어에 따라 파일 행 표시/숨김"""
+        query = self._search_var.get().strip().lower()
+        visible = 0
+        for row, rel in self._all_rows:
+            if not query or query in rel.lower():
+                row.pack(fill="x")
+                visible += 1
+            else:
+                row.pack_forget()
+        if query:
+            self._search_match_label.config(text=f"{visible} match")
+        else:
+            self._search_match_label.config(text="")
 
     def _confirm(self):
         self.selected = {rel for rel, v in self._check_vars.items() if v.get()}

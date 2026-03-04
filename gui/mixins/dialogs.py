@@ -11,7 +11,7 @@ from tkinter import messagebox, filedialog
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from gui.constants import C, FONTS, THEMES, APP_VERSION
+from gui.constants import C, FONTS, THEMES, APP_VERSION, STAGE_CONFIG
 
 if TYPE_CHECKING:
     from gui.app import BatchRunnerGUI
@@ -151,8 +151,116 @@ class DialogsMixin:
                 tk.Label(body, text="Params", **kw_key).grid(row=row, column=0, sticky="e", **pad_k)
                 tk.Label(body, text=params_str, **kw_val).grid(
                     row=row, column=1, columnspan=3, sticky="w", **pad_v)
+                row += 1
+
+            # Retry 모드: 이전 실행 실패 task 수 표시
+            if mode == "retry":
+                retry_info = self._count_retry_targets()
+                if retry_info:
+                    tk.Label(body, text="Retry", **kw_key).grid(
+                        row=row, column=0, sticky="e", **pad_k)
+                    tk.Label(body, text=retry_info, bg=C["base"],
+                             fg=C["peach"], font=FONTS["body_bold"]).grid(
+                        row=row, column=1, columnspan=3, sticky="w", **pad_v)
+                    row += 1
+
+            # Pre-flight: SQL 파라미터 누락 경고
+            missing = self._check_missing_params()
+            if missing:
+                tk.Label(body, text="Warning", **kw_key).grid(
+                    row=row, column=0, sticky="e", **pad_k)
+                tk.Label(body, text=f"Param 누락: {', '.join(sorted(missing))}",
+                         bg=C["base"], fg=C["red"],
+                         font=FONTS["body_bold"]).grid(
+                    row=row, column=1, columnspan=3, sticky="w", **pad_v)
 
         return self._themed_confirm("━ Run Confirm", build)
+
+    def _check_missing_params(self: "BatchRunnerGUI") -> set[str]:
+        """SQL에서 필요한 파라미터 vs GUI 입력 파라미터 비교 → 누락 목록 반환."""
+        from gui.utils import scan_sql_params
+        wd = Path(self._work_dir.get())
+
+        # SQL 디렉토리에서 필요한 파라미터 수집
+        required: set[str] = set()
+        dir_vars = {
+            "export": self._export_sql_dir,
+            "transform": self._transform_sql_dir,
+            "report": self._report_sql_dir,
+        }
+        for stage_key, dir_var in dir_vars.items():
+            if not getattr(self, f"_stage_{stage_key}").get():
+                continue
+            sql_dir = dir_var.get().strip()
+            if not sql_dir:
+                continue
+            p = Path(sql_dir)
+            if not p.is_absolute():
+                p = wd / p
+            if p.is_dir():
+                # scan_sql_params는 하위 폴더 포함하므로, 해당 디렉토리만 직접 스캔
+                from gui.utils import _extract_params
+                for sql_file in p.rglob("*.sql"):
+                    try:
+                        text = sql_file.read_text(encoding="utf-8", errors="ignore")
+                        required |= _extract_params(text)
+                    except Exception:
+                        pass
+
+        if not required:
+            return set()
+
+        # GUI에서 입력된 파라미터 키 수집
+        provided: set[str] = set()
+        for stage in ("export", "transform", "report"):
+            for k_var, v_var in self._stage_param_entries.get(stage, []):
+                k = k_var.get().strip()
+                if k:
+                    provided.add(k)
+
+        return required - provided
+
+    def _count_retry_targets(self: "BatchRunnerGUI") -> str:
+        """이전 실행의 failed/pending task 수를 stage별로 집계하여 문자열 반환."""
+        import json
+        wd = Path(self._work_dir.get())
+        job_name = (self.job_var.get() or "").replace(".yml", "").replace(".yaml", "")
+        if not job_name:
+            return ""
+        parts = []
+        for stage_key, stage_label, _ in [
+            ("export", "Export", "blue"),
+            ("load_local", "Load", "teal"),
+            ("transform", "Transform", "mauve"),
+            ("report", "Report", "peach"),
+        ]:
+            if not getattr(self, f"_stage_{stage_key}").get():
+                continue
+            # data/{stage}/runs/{job_name} 하위에서 가장 최근 run_info.json 탐색
+            stage_dir_name = {"export": "export", "load_local": "load",
+                              "transform": "transform", "report": "report"}.get(stage_key, stage_key)
+            base = wd / "data" / stage_dir_name / "runs"
+            job_dir = base / job_name
+            if not job_dir.exists():
+                continue
+            # 가장 최근 run_info.json
+            for d in sorted(job_dir.iterdir(), reverse=True):
+                run_info = d / "run_info.json"
+                if not run_info.exists():
+                    continue
+                try:
+                    with open(run_info, encoding="utf-8") as f:
+                        info = json.load(f)
+                    tasks = info.get("tasks", {})
+                    failed = sum(1 for v in tasks.values()
+                                 if v.get("status") in ("failed", "pending"))
+                    total = len(tasks)
+                    if failed > 0:
+                        parts.append(f"{stage_label}: {failed}/{total} retry")
+                    break
+                except Exception:
+                    continue
+        return " | ".join(parts) if parts else "이전 실패 기록 없음"
 
     def _apply_theme(self: "BatchRunnerGUI"):
         """테마 전환: C 딕셔너리 업데이트 후 앱 전체 재빌드"""
