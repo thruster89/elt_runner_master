@@ -573,6 +573,11 @@ class UiBuildMixin:
                   bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
                   activebackground=C["surface1"],
                   command=_browse_db).pack(side="left", padx=(2, 0))
+        tk.Button(self._db_path_row, text="\U0001f4c2", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
+                  activebackground=C["surface1"],
+                  command=lambda: self._open_in_explorer(
+                      self._target_db_path.get())).pack(side="left", padx=(2, 0))
 
         # CSV Dir (load 단독 모드용 — export 스테이지 OFF 시만 표시)
         self._csv_dir_row = self._path_row(body, "csv_dir", self._load_csv_dir,
@@ -937,6 +942,11 @@ class UiBuildMixin:
                   bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
                   activebackground=C["surface1"],
                   command=_browse_union).pack(side="left", padx=(2, 0))
+        tk.Button(union_row, text="\U0001f4c2", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
+                  activebackground=C["surface1"],
+                  command=lambda: self._open_in_explorer(
+                      self._ov_union_dir.get())).pack(side="left", padx=(2, 0))
 
         def _w_max_files(r):
             tk.Spinbox(r, from_=1, to=100, width=4, textvariable=self._ov_max_files,
