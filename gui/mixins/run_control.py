@@ -436,6 +436,7 @@ class RunControlMixin:
 
         self._update_param_counts()
         self._validate_paths()
+        self._update_union_file_count()
 
         if not self._restoring_job:
             self._update_title_dirty()
@@ -492,6 +493,29 @@ class RunControlMixin:
                 ent.config(highlightthickness=0)
             else:
                 ent.config(highlightbackground=C["red"], highlightthickness=1)
+
+    # ── Union Dir CSV 파일 수 표시 ──────────────────────────────
+
+    def _update_union_file_count(self: "BatchRunnerGUI"):
+        lbl = getattr(self, "_union_file_count", None)
+        if not lbl:
+            return
+        raw = self._ov_union_dir.get().strip()
+        if not raw:
+            lbl.config(text="")
+            return
+        p = Path(raw)
+        if not p.is_absolute():
+            p = Path(self._work_dir.get()) / p
+        if not p.is_dir():
+            lbl.config(text="")
+            return
+        csvs = list(p.glob("*.csv")) + list(p.glob("*.csv.gz"))
+        n = len(csvs)
+        if n:
+            lbl.config(text=f"({n} csv)", fg=C["green"])
+        else:
+            lbl.config(text="(empty)", fg=C["overlay0"])
 
     # ── 예약 실행 ─────────────────────────────────────────────
 

@@ -861,8 +861,12 @@ class StateJobMixin:
         count = len(self._selected_sqls)
         if count == 0:
             self._sql_count_label.config(text="(all)", fg=C["subtext"])
+            tip_text = ""
         else:
             self._sql_count_label.config(text=f"({count})", fg=C["green"])
+            tip_text = "\n".join(sorted(self._selected_sqls))
+        if hasattr(self, "_sql_count_tip"):
+            self._sql_count_tip._text = tip_text
 
     # ── Transform SQL 선택 ───────────────────────────────────
     def _open_transform_sql_selector(self: "BatchRunnerGUI"):
@@ -888,8 +892,12 @@ class StateJobMixin:
         count = len(self._selected_transform_sqls)
         if count == 0:
             self._transform_sql_count_label.config(text="(all)", fg=C["subtext"])
+            tip_text = ""
         else:
             self._transform_sql_count_label.config(text=f"({count})", fg=C["green"])
+            tip_text = "\n".join(sorted(self._selected_transform_sqls))
+        if hasattr(self, "_transform_sql_count_tip"):
+            self._transform_sql_count_tip._text = tip_text
 
     # ── Report SQL 선택 ──────────────────────────────────────
     def _open_report_sql_selector(self: "BatchRunnerGUI"):
@@ -915,8 +923,12 @@ class StateJobMixin:
         count = len(self._selected_report_sqls)
         if count == 0:
             self._report_sql_count_label.config(text="(all)", fg=C["subtext"])
+            tip_text = ""
         else:
             self._report_sql_count_label.config(text=f"({count})", fg=C["green"])
+            tip_text = "\n".join(sorted(self._selected_report_sqls))
+        if hasattr(self, "_report_sql_count_tip"):
+            self._report_sql_count_tip._text = tip_text
 
     # ── Param 행 관리 ────────────────────────────────────────
 

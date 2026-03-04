@@ -655,6 +655,7 @@ class UiBuildMixin:
         self._sql_count_label = tk.Label(sql_row, text="(all)", font=FONTS["mono_small"],
                                          bg=C["mantle"], fg=C["subtext"])
         self._sql_count_label.pack(side="right", padx=(2, 0))
+        self._sql_count_tip = Tooltip(self._sql_count_label, "")
         self._sql_btn = tk.Button(
             sql_row, text="filter", font=FONTS["mono_small"],
             bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
@@ -809,6 +810,7 @@ class UiBuildMixin:
         self._transform_sql_count_label = tk.Label(tfm_sql_row, text="(all)", font=FONTS["mono_small"],
                                                     bg=C["mantle"], fg=C["subtext"])
         self._transform_sql_count_label.pack(side="right", padx=(2, 0))
+        self._transform_sql_count_tip = Tooltip(self._transform_sql_count_label, "")
         self._transform_sql_btn = tk.Button(
             tfm_sql_row, text="filter", font=FONTS["mono_small"],
             bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
@@ -882,6 +884,7 @@ class UiBuildMixin:
         self._report_sql_count_label = tk.Label(rpt_sql_row, text="(all)", font=FONTS["mono_small"],
                                                  bg=C["mantle"], fg=C["subtext"])
         self._report_sql_count_label.pack(side="right", padx=(2, 0))
+        self._report_sql_count_tip = Tooltip(self._report_sql_count_label, "")
         self._report_sql_btn = tk.Button(
             rpt_sql_row, text="filter", font=FONTS["mono_small"],
             bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
@@ -947,6 +950,9 @@ class UiBuildMixin:
                   activebackground=C["surface1"],
                   command=lambda: self._open_in_explorer(
                       self._ov_union_dir.get())).pack(side="left", padx=(2, 0))
+        self._union_file_count = tk.Label(union_row, text="", font=FONTS["mono_small"],
+                                          bg=C["mantle"], fg=C["subtext"])
+        self._union_file_count.pack(side="left", padx=(4, 0))
 
         def _w_max_files(r):
             tk.Spinbox(r, from_=1, to=100, width=4, textvariable=self._ov_max_files,
