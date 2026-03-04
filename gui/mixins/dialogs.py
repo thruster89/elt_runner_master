@@ -262,6 +262,163 @@ class DialogsMixin:
                     continue
         return " | ".join(parts) if parts else "이전 실패 기록 없음"
 
+    # ── I: 실행 이력 ─────────────────────────────────────────
+
+    def _show_run_history(self: "BatchRunnerGUI"):
+        """과거 실행 이력 다이얼로그 열기"""
+        from gui.widgets import RunHistoryDialog
+        job_name = (self.job_var.get() or "").replace(".yml", "").replace(".yaml", "")
+        if not job_name:
+            messagebox.showinfo("Info", "Job을 먼저 선택하세요.")
+            return
+        wd = Path(self._work_dir.get())
+        RunHistoryDialog(self, wd, job_name)
+
+    # ── K: Connection Test ────────────────────────────────────
+
+    def _test_connection(self: "BatchRunnerGUI"):
+        """현재 선택된 Source의 DB 접속을 테스트"""
+        import threading
+        src_type = self._source_type_var.get()
+        src_host = self._source_host_var.get()
+        if not src_type or not src_host:
+            self._log_write("[ConnTest] Source type 또는 host를 선택하세요.", "WARN")
+            return
+
+        self._log_write(f"[ConnTest] {src_type}/{src_host} 접속 테스트 중...", "SYS")
+
+        def _test():
+            import yaml as _yaml
+            wd = Path(self._work_dir.get())
+            env_path = self._env_path_var.get().strip()
+            p = Path(env_path) if Path(env_path).is_absolute() else wd / env_path
+            if not p.exists():
+                self.after(0, self._log_write,
+                           f"[ConnTest] env 파일 없음: {p}", "ERROR")
+                return
+            try:
+                env = _yaml.safe_load(p.read_text(encoding="utf-8"))
+            except Exception as e:
+                self.after(0, self._log_write,
+                           f"[ConnTest] env 파싱 실패: {e}", "ERROR")
+                return
+
+            host_cfg = (env.get("sources", {})
+                        .get(src_type, {})
+                        .get("hosts", {})
+                        .get(src_host, {}))
+            if not host_cfg:
+                self.after(0, self._log_write,
+                           f"[ConnTest] {src_type}/hosts/{src_host} 설정 없음", "ERROR")
+                return
+
+            try:
+                if src_type == "oracle":
+                    self._test_oracle(env, src_type, src_host, host_cfg)
+                elif src_type == "vertica":
+                    self._test_vertica(host_cfg)
+                else:
+                    self.after(0, self._log_write,
+                               f"[ConnTest] {src_type}: 미지원 타입", "WARN")
+            except Exception as e:
+                self.after(0, self._log_write,
+                           f"[ConnTest] FAIL — {e}", "ERROR")
+
+        threading.Thread(target=_test, daemon=True).start()
+
+    def _test_oracle(self: "BatchRunnerGUI", env, src_type, src_host, host_cfg):
+        """Oracle 접속 테스트"""
+        import time
+        start = time.time()
+        try:
+            import oracledb
+        except ImportError:
+            self.after(0, self._log_write,
+                       "[ConnTest] oracledb 패키지가 설치되지 않았습니다.", "ERROR")
+            return
+        # thick mode
+        thick_cfg = env.get("sources", {}).get(src_type, {}).get("thick", {})
+        ic = thick_cfg.get("instant_client", "")
+        try:
+            if ic:
+                oracledb.init_oracle_client(lib_dir=ic)
+        except Exception:
+            pass  # 이미 초기화된 경우
+
+        dsn = host_cfg.get("dsn", "")
+        user = host_cfg.get("user", "")
+        pw = host_cfg.get("password", "")
+        try:
+            conn = oracledb.connect(user=user, password=pw, dsn=dsn)
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM DUAL")
+            cursor.close()
+            conn.close()
+            elapsed = time.time() - start
+            self.after(0, self._log_write,
+                       f"[ConnTest] OK — oracle/{src_host} ({elapsed:.1f}s)", "SUCCESS")
+        except Exception as e:
+            self.after(0, self._log_write,
+                       f"[ConnTest] FAIL — oracle/{src_host}: {e}", "ERROR")
+
+    def _test_vertica(self: "BatchRunnerGUI", host_cfg):
+        """Vertica 접속 테스트"""
+        import time
+        start = time.time()
+        try:
+            import vertica_python
+        except ImportError:
+            self.after(0, self._log_write,
+                       "[ConnTest] vertica_python 패키지가 설치되지 않았습니다.", "ERROR")
+            return
+        conn_info = {
+            "host": host_cfg.get("host", ""),
+            "port": int(host_cfg.get("port", 5433)),
+            "database": host_cfg.get("database", ""),
+            "user": host_cfg.get("user", ""),
+            "password": host_cfg.get("password", ""),
+            "tlsmode": host_cfg.get("tlsmode", "disable"),
+        }
+        try:
+            conn = vertica_python.connect(**conn_info)
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1")
+            cursor.close()
+            conn.close()
+            elapsed = time.time() - start
+            self.after(0, self._log_write,
+                       f"[ConnTest] OK — vertica ({elapsed:.1f}s)", "SUCCESS")
+        except Exception as e:
+            self.after(0, self._log_write,
+                       f"[ConnTest] FAIL — vertica: {e}", "ERROR")
+
+    # ── J: 다중 Job 큐 (순차 실행) ────────────────────────────
+
+    def _show_job_queue(self: "BatchRunnerGUI"):
+        """다중 Job 큐 다이얼로그 — Job 여러 개를 순차 실행"""
+        from gui.widgets import JobQueueDialog
+        dlg = JobQueueDialog(self, list(self._jobs.keys()))
+        self.wait_window(dlg)
+        if dlg.queue:
+            self._job_queue = list(dlg.queue)
+            self._log_sys(f"[Queue] {len(self._job_queue)}개 Job 큐 등록: "
+                          f"{', '.join(j.replace('.yml','') for j in self._job_queue)}")
+            self._run_next_queued_job()
+
+    def _run_next_queued_job(self: "BatchRunnerGUI"):
+        """큐에서 다음 Job을 꺼내 실행"""
+        q = getattr(self, "_job_queue", [])
+        if not q:
+            self._log_sys("[Queue] 모든 Job 실행 완료")
+            return
+        next_job = q.pop(0)
+        remaining = len(q)
+        self._log_sys(f"[Queue] {next_job} 시작 (남은 {remaining}개)")
+        self.job_var.set(next_job)
+        self._on_job_change()
+        self.mode_var.set("run")
+        self.after(500, lambda: self._on_run(scheduled=True))
+
     def _apply_theme(self: "BatchRunnerGUI"):
         """테마 전환: C 딕셔너리 업데이트 후 앱 전체 재빌드"""
         theme_name = self._theme_var.get()

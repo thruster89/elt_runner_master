@@ -1,7 +1,8 @@
 """
-gui/widgets.py  ─  독립 위젯 클래스 (SqlSelectorDialog, CollapsibleSection, Tooltip)
+gui/widgets.py  ─  독립 위젯 클래스 (SqlSelectorDialog, CollapsibleSection, Tooltip, RunHistoryDialog)
 """
 
+import json
 import tkinter as tk
 from tkinter import ttk
 
@@ -338,3 +339,307 @@ class Tooltip:
         if self._tip_win:
             self._tip_win.destroy()
             self._tip_win = None
+
+
+class RunHistoryDialog(tk.Toplevel):
+    """과거 실행 이력(run_info.json) 조회 다이얼로그"""
+
+    def __init__(self, parent, work_dir: Path, job_name: str):
+        super().__init__(parent)
+        self.title(f"Run History — {job_name}")
+        self.configure(bg=C["base"])
+        self.resizable(True, True)
+        self.geometry("720x480")
+        self.transient(parent)
+        self.grab_set()
+
+        self._work_dir = work_dir
+        self._job_name = job_name
+        self._runs: list[dict] = []
+
+        self._build()
+        self._load_history()
+        self._center(parent)
+
+    def _center(self, parent):
+        self.update_idletasks()
+        px, py = parent.winfo_rootx(), parent.winfo_rooty()
+        pw, ph = parent.winfo_width(), parent.winfo_height()
+        w, h = self.winfo_width(), self.winfo_height()
+        self.geometry(f"+{px + pw//2 - w//2}+{py + ph//2 - h//2}")
+
+    def _build(self):
+        hdr = tk.Frame(self, bg=C["mantle"], pady=8)
+        hdr.pack(fill="x")
+        tk.Label(hdr, text="Run History", font=FONTS["h2"],
+                 bg=C["mantle"], fg=C["text"]).pack(side="left", padx=14)
+
+        # Treeview
+        cols = ("run_id", "stage", "start", "mode", "success", "failed", "skipped", "elapsed")
+        style = ttk.Style(self)
+        style.configure("History.Treeview",
+                         background=C["crust"], foreground=C["text"],
+                         fieldbackground=C["crust"], font=FONTS["mono_small"],
+                         rowheight=24)
+        style.configure("History.Treeview.Heading",
+                         background=C["surface0"], foreground=C["text"],
+                         font=FONTS["body_bold"])
+        style.map("History.Treeview",
+                   background=[("selected", C["surface1"])],
+                   foreground=[("selected", C["text"])])
+
+        tree_frame = tk.Frame(self, bg=C["crust"])
+        tree_frame.pack(fill="both", expand=True, padx=10, pady=6)
+
+        self._tree = ttk.Treeview(tree_frame, columns=cols, show="headings",
+                                   style="History.Treeview")
+        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self._tree.yview)
+        self._tree.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        self._tree.pack(fill="both", expand=True)
+
+        widths = {"run_id": 130, "stage": 80, "start": 130, "mode": 50,
+                  "success": 60, "failed": 60, "skipped": 60, "elapsed": 70}
+        labels = {"run_id": "Run ID", "stage": "Stage", "start": "Start Time",
+                  "mode": "Mode", "success": "OK", "failed": "Fail",
+                  "skipped": "Skip", "elapsed": "Elapsed"}
+        for col in cols:
+            self._tree.heading(col, text=labels[col])
+            self._tree.column(col, width=widths.get(col, 80), anchor="center")
+        self._tree.column("run_id", anchor="w")
+        self._tree.column("start", anchor="w")
+
+        # 하단 상세
+        self._detail_frame = tk.Frame(self, bg=C["mantle"])
+        self._detail_frame.pack(fill="x", padx=10, pady=(0, 6))
+        self._detail_label = tk.Label(self._detail_frame, text="", font=FONTS["mono_small"],
+                                      bg=C["mantle"], fg=C["subtext"], anchor="w",
+                                      wraplength=680, justify="left")
+        self._detail_label.pack(fill="x", padx=8, pady=4)
+
+        self._tree.bind("<<TreeviewSelect>>", self._on_select)
+
+        # 닫기 버튼
+        btn_bar = tk.Frame(self, bg=C["mantle"], pady=6)
+        btn_bar.pack(fill="x")
+        tk.Button(btn_bar, text="Close", font=FONTS["body"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=14, pady=3,
+                  command=self.destroy).pack(side="right", padx=10)
+
+    def _load_history(self):
+        """data/ 하위에서 모든 run_info.json을 수집"""
+        stage_dirs = {
+            "export": self._work_dir / "data" / "export",
+            "transform": self._work_dir / "data" / "transform",
+            "report": self._work_dir / "data" / "report_tracking",
+        }
+        for stage, base in stage_dirs.items():
+            job_dir = base / self._job_name
+            if not job_dir.is_dir():
+                continue
+            for d in sorted(job_dir.iterdir(), reverse=True):
+                ri = d / "run_info.json"
+                if not ri.exists():
+                    continue
+                try:
+                    info = json.loads(ri.read_text(encoding="utf-8"))
+                    tasks = info.get("tasks", {})
+                    s = sum(1 for v in tasks.values() if v.get("status") == "success")
+                    f = sum(1 for v in tasks.values() if v.get("status") == "failed")
+                    sk = sum(1 for v in tasks.values() if v.get("status") == "skipped")
+                    # 최대 elapsed 계산
+                    elapsed_vals = [v.get("elapsed", 0) for v in tasks.values()
+                                    if isinstance(v.get("elapsed"), (int, float))]
+                    total_elapsed = sum(elapsed_vals)
+                    if total_elapsed < 60:
+                        el_str = f"{total_elapsed:.0f}s"
+                    else:
+                        m, sec = divmod(int(total_elapsed), 60)
+                        el_str = f"{m}m{sec:02d}s"
+
+                    run = {
+                        "run_id": info.get("run_id", d.name),
+                        "stage": info.get("stage", stage),
+                        "start": info.get("start_time", ""),
+                        "mode": info.get("mode", ""),
+                        "success": s, "failed": f, "skipped": sk,
+                        "elapsed": el_str,
+                        "tasks": tasks,
+                        "path": str(ri),
+                    }
+                    self._runs.append(run)
+                except Exception:
+                    continue
+
+        # 시작 시간 역순 정렬
+        self._runs.sort(key=lambda r: r.get("start", ""), reverse=True)
+
+        for run in self._runs:
+            tags = ()
+            if run["failed"] > 0:
+                tags = ("fail",)
+            self._tree.insert("", "end", values=(
+                run["run_id"], run["stage"], run["start"], run["mode"],
+                run["success"], run["failed"], run["skipped"], run["elapsed"]
+            ), tags=tags)
+
+        self._tree.tag_configure("fail", foreground=C["red"])
+
+        if not self._runs:
+            self._detail_label.config(text="실행 이력이 없습니다.")
+
+    def _on_select(self, _event=None):
+        sel = self._tree.selection()
+        if not sel:
+            return
+        idx = self._tree.index(sel[0])
+        if idx >= len(self._runs):
+            return
+        run = self._runs[idx]
+        tasks = run.get("tasks", {})
+        # 실패 task 상세
+        failed_tasks = [(k, v.get("error", "")) for k, v in tasks.items()
+                        if v.get("status") == "failed"]
+        if failed_tasks:
+            lines = [f"Failed tasks ({len(failed_tasks)}):"]
+            for k, err in failed_tasks[:10]:
+                lines.append(f"  {k}: {err[:120]}" if err else f"  {k}")
+            if len(failed_tasks) > 10:
+                lines.append(f"  ... +{len(failed_tasks) - 10} more")
+            self._detail_label.config(text="\n".join(lines), fg=C["red"])
+        else:
+            self._detail_label.config(
+                text=f"All {run['success']} tasks succeeded.  ({run['elapsed']})",
+                fg=C["green"])
+
+
+class JobQueueDialog(tk.Toplevel):
+    """다중 Job 큐 선택 다이얼로그 — 순차 실행할 Job 목록 구성"""
+
+    def __init__(self, parent, job_list: list[str]):
+        super().__init__(parent)
+        self.title("Job Queue")
+        self.configure(bg=C["base"])
+        self.resizable(True, True)
+        self.geometry("440x420")
+        self.transient(parent)
+        self.grab_set()
+
+        self._all_jobs = sorted(job_list)
+        self.queue: list[str] = []  # 확정된 큐
+
+        self._build()
+        self._center(parent)
+
+    def _center(self, parent):
+        self.update_idletasks()
+        px, py = parent.winfo_rootx(), parent.winfo_rooty()
+        pw, ph = parent.winfo_width(), parent.winfo_height()
+        w, h = self.winfo_width(), self.winfo_height()
+        self.geometry(f"+{px + pw//2 - w//2}+{py + ph//2 - h//2}")
+
+    def _build(self):
+        hdr = tk.Frame(self, bg=C["mantle"], pady=8)
+        hdr.pack(fill="x")
+        tk.Label(hdr, text="Job Queue — 순차 실행", font=FONTS["h2"],
+                 bg=C["mantle"], fg=C["text"]).pack(side="left", padx=14)
+
+        # 좌: 전체 Job 목록 / 우: 큐 목록
+        mid = tk.Frame(self, bg=C["base"])
+        mid.pack(fill="both", expand=True, padx=10, pady=6)
+
+        # 좌측 — Available Jobs
+        left = tk.Frame(mid, bg=C["base"])
+        left.pack(side="left", fill="both", expand=True)
+        tk.Label(left, text="Available", font=FONTS["body_bold"],
+                 bg=C["base"], fg=C["subtext"]).pack(anchor="w")
+        self._avail_lb = tk.Listbox(left, bg=C["crust"], fg=C["text"],
+                                     selectbackground=C["surface1"],
+                                     selectforeground=C["text"],
+                                     font=FONTS["mono_small"], relief="flat")
+        self._avail_lb.pack(fill="both", expand=True, pady=(4, 0))
+        for j in self._all_jobs:
+            self._avail_lb.insert("end", j)
+
+        # 중간 버튼
+        btns = tk.Frame(mid, bg=C["base"])
+        btns.pack(side="left", padx=8)
+        tk.Button(btns, text=">>", font=FONTS["body_bold"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
+                  command=self._add_job).pack(pady=4)
+        tk.Button(btns, text="<<", font=FONTS["body_bold"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
+                  command=self._remove_job).pack(pady=4)
+        tk.Button(btns, text="Up", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
+                  command=self._move_up).pack(pady=4)
+        tk.Button(btns, text="Dn", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
+                  command=self._move_down).pack(pady=4)
+
+        # 우측 — Queue
+        right = tk.Frame(mid, bg=C["base"])
+        right.pack(side="left", fill="both", expand=True)
+        tk.Label(right, text="Queue (순서대로 실행)", font=FONTS["body_bold"],
+                 bg=C["base"], fg=C["subtext"]).pack(anchor="w")
+        self._queue_lb = tk.Listbox(right, bg=C["crust"], fg=C["text"],
+                                     selectbackground=C["surface1"],
+                                     selectforeground=C["text"],
+                                     font=FONTS["mono_small"], relief="flat")
+        self._queue_lb.pack(fill="both", expand=True, pady=(4, 0))
+
+        # 하단
+        btn_bar = tk.Frame(self, bg=C["mantle"], pady=8)
+        btn_bar.pack(fill="x")
+        self._count_label = tk.Label(btn_bar, text="0 jobs", font=FONTS["mono_small"],
+                                     bg=C["mantle"], fg=C["subtext"])
+        self._count_label.pack(side="left", padx=14)
+        tk.Button(btn_bar, text="Cancel", font=FONTS["body"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=14, pady=3,
+                  command=self.destroy).pack(side="right", padx=8)
+        tk.Button(btn_bar, text="Run Queue", font=FONTS["body_bold"],
+                  bg=C["green"], fg=C["crust"], relief="flat", padx=14, pady=3,
+                  command=self._confirm).pack(side="right", padx=4)
+
+    def _add_job(self):
+        sel = self._avail_lb.curselection()
+        if not sel:
+            return
+        job = self._avail_lb.get(sel[0])
+        self._queue_lb.insert("end", job)
+        self._update_count()
+
+    def _remove_job(self):
+        sel = self._queue_lb.curselection()
+        if not sel:
+            return
+        self._queue_lb.delete(sel[0])
+        self._update_count()
+
+    def _move_up(self):
+        sel = self._queue_lb.curselection()
+        if not sel or sel[0] == 0:
+            return
+        idx = sel[0]
+        item = self._queue_lb.get(idx)
+        self._queue_lb.delete(idx)
+        self._queue_lb.insert(idx - 1, item)
+        self._queue_lb.selection_set(idx - 1)
+
+    def _move_down(self):
+        sel = self._queue_lb.curselection()
+        if not sel or sel[0] >= self._queue_lb.size() - 1:
+            return
+        idx = sel[0]
+        item = self._queue_lb.get(idx)
+        self._queue_lb.delete(idx)
+        self._queue_lb.insert(idx + 1, item)
+        self._queue_lb.selection_set(idx + 1)
+
+    def _update_count(self):
+        n = self._queue_lb.size()
+        self._count_label.config(text=f"{n} jobs")
+
+    def _confirm(self):
+        self.queue = [self._queue_lb.get(i) for i in range(self._queue_lb.size())]
+        self.destroy()

@@ -617,8 +617,14 @@ class UiBuildMixin:
 
         col_r = tk.Frame(src_row, bg=C["mantle"])
         col_r.pack(side="left", fill="x", expand=True, padx=(8, 0))
-        tk.Label(col_r, text="Host", font=FONTS["label"],
-                 bg=C["mantle"], fg=C["subtext"]).pack(anchor="w")
+        host_hdr = tk.Frame(col_r, bg=C["mantle"])
+        host_hdr.pack(fill="x")
+        tk.Label(host_hdr, text="Host", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["subtext"]).pack(side="left")
+        tk.Button(host_hdr, text="Test", font=FONTS["shortcut"],
+                  bg=C["surface0"], fg=C["teal"], relief="flat", padx=6, pady=0,
+                  activebackground=C["surface1"],
+                  command=self._test_connection).pack(side="right")
         self._host_combo = ttk.Combobox(
             col_r, textvariable=self._source_host_var,
             state="readonly", font=FONTS["mono"])
@@ -1004,6 +1010,11 @@ class UiBuildMixin:
                   bd=0, highlightthickness=0,
                   activebackground=C["surface1"],
                   command=self._clear_log).pack(side="right", padx=4)
+        tk.Button(header, text="History", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["subtext"], relief="flat", padx=8,
+                  bd=0, highlightthickness=0,
+                  activebackground=C["surface1"],
+                  command=self._show_run_history).pack(side="right", padx=4)
 
         ttk.Separator(parent, orient="horizontal").pack(fill="x", padx=8)
 
@@ -1135,6 +1146,11 @@ class UiBuildMixin:
             state="disabled", command=self._on_stop
         )
         self._stop_btn.pack(side="left")
+
+        tk.Button(bar, text="Queue", font=FONTS["button_sm"],
+                  bg=C["surface0"], fg=C["subtext"], relief="flat", padx=10, pady=6,
+                  activebackground=C["surface1"],
+                  command=self._show_job_queue).pack(side="left", padx=(6, 0))
 
         # 스테이지별 세그먼트 레이블: EXPORT 3/10 | LOAD 0/10 | ...
         self._stage_status = tk.Label(bar, text="", font=FONTS["small"],
