@@ -48,6 +48,7 @@ class RunControlMixin:
         self._elapsed_start = time.time()
         self._progress_bar["value"] = 0
         self._progress_label.config(text="Starting...")
+        self._reset_stage_segments()
         self._elapsed_job_id = self.after(1000, self._tick_elapsed)
 
         self._dryrun_btn.config(state="disabled", bg=C["surface0"], fg=C["overlay0"])
@@ -89,7 +90,15 @@ class RunControlMixin:
         threading.Thread(target=self._stream_output, daemon=True).start()
 
     def _stream_output(self: "BatchRunnerGUI"):
-        stage_pat = re.compile(r"\[(\d+)/(\d+)\]")
+        # Pipeline 레벨: [1/4] EXPORT
+        pipe_pat = re.compile(r"^\[(\d+)/(\d+)\]\s+(\w+)")
+        # Stage 내부: EXPORT [3/10], LOAD [3/10], TRANSFORM [2/5][1/3], REPORT [2/3]
+        detail_pat = re.compile(
+            r"(?:EXPORT\s+(?:start\s+)?\[(\d+)/(\d+)\])"
+            r"|(?:LOAD\s+\[(\d+)/(\d+)\])"
+            r"|(?:TRANSFORM\s+\[(\d+)/(\d+)\])"
+            r"|(?:REPORT\s+\[(\d+)/(\d+)\])"
+        )
         buf = []
         last_flush = time.time()
         flush_interval = 0.05  # 50ms 배치
@@ -104,13 +113,28 @@ class RunControlMixin:
             line = line.rstrip("\n")
             tag = self._guess_tag(line)
             buf.append((line, tag))
-            # [N/M] 패턴 파싱 → progress 업데이트
-            m = stage_pat.search(line)
-            if m:
-                cur, total = int(m.group(1)), int(m.group(2))
+
+            # Pipeline 레벨 [N/M] STAGE_NAME → 프로그레스바 %
+            pm = pipe_pat.search(line)
+            if pm:
+                cur, total = int(pm.group(1)), int(pm.group(2))
+                stage_name = pm.group(3)
                 pct = int(cur / total * 100)
-                label = f"Stage {cur}/{total}"
+                label = f"{stage_name} ({cur}/{total})"
                 self.after(0, self._update_progress, pct, label)
+                self.after(0, self._update_stage_detail, stage_name, 0, 0)
+
+            # Stage 내부 세부 카운트 → 세그먼트 업데이트
+            dm = detail_pat.search(line)
+            if dm:
+                groups = dm.groups()
+                # 4쌍 중 매치된 것 찾기
+                names = ["EXPORT", "LOAD", "TRANSFORM", "REPORT"]
+                for i, name in enumerate(names):
+                    c, t = groups[i*2], groups[i*2+1]
+                    if c is not None:
+                        self.after(0, self._update_stage_detail,
+                                   name, int(c), int(t))
             # 일정 간격마다 flush (고속 출력 시 GUI 멈춤 방지)
             now = time.time()
             if now - last_flush >= flush_interval:
@@ -334,6 +358,45 @@ class RunControlMixin:
         self._progress_label.config(text=f"{label}{elapsed}")
         if hasattr(self, '_stage_status'):
             self._stage_status.config(text=label)
+
+    def _update_stage_detail(self: "BatchRunnerGUI", stage_name: str,
+                              cur: int, total: int):
+        """스테이지별 세그먼트 레이블 업데이트."""
+        segs = getattr(self, "_stage_segments", None)
+        if not segs:
+            return
+        # stage_name 매핑 (runner 출력 → STAGE_CONFIG key)
+        name_map = {"EXPORT": "export", "LOAD": "load_local",
+                    "TRANSFORM": "transform", "REPORT": "report"}
+        key = name_map.get(stage_name.upper(), stage_name.lower())
+        seg = segs.get(key)
+        if not seg:
+            return
+        if total > 0:
+            seg["cur"] = cur
+            seg["total"] = total
+        # 현재 활성 스테이지 강조
+        for k, s in segs.items():
+            if s["total"] == 0:
+                s["label"].config(text="", fg=C["overlay0"])
+            elif k == key:
+                s["label"].config(
+                    text=f"{s['display']} {s['cur']}/{s['total']}",
+                    fg=C[s["color"]])
+            else:
+                s["label"].config(
+                    text=f"{s['display']} {s['cur']}/{s['total']}",
+                    fg=C["overlay0"])
+
+    def _reset_stage_segments(self: "BatchRunnerGUI"):
+        """실행 시작/종료 시 세그먼트 초기화."""
+        segs = getattr(self, "_stage_segments", None)
+        if not segs:
+            return
+        for s in segs.values():
+            s["cur"] = 0
+            s["total"] = 0
+            s["label"].config(text="", fg=C["overlay0"])
 
     def _tick_elapsed(self: "BatchRunnerGUI"):
         if self._elapsed_start is None:

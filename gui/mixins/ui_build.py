@@ -1136,9 +1136,19 @@ class UiBuildMixin:
         )
         self._stop_btn.pack(side="left")
 
+        # 스테이지별 세그먼트 레이블: EXPORT 3/10 | LOAD 0/10 | ...
         self._stage_status = tk.Label(bar, text="", font=FONTS["small"],
                                       bg=C["crust"], fg=C["subtext"])
         self._stage_status.pack(side="left", padx=10)
+        self._stage_seg_frame = tk.Frame(bar, bg=C["crust"])
+        self._stage_seg_frame.pack(side="left", padx=(0, 6))
+        self._stage_segments = {}
+        for key, display, color in STAGE_CONFIG:
+            lbl = tk.Label(self._stage_seg_frame, text="", font=FONTS["mono_small"],
+                           bg=C["crust"], fg=C["overlay0"])
+            lbl.pack(side="left", padx=(0, 6))
+            self._stage_segments[key] = {"label": lbl, "color": color,
+                                         "display": display, "cur": 0, "total": 0}
 
         # 예약 실행
         sep = tk.Frame(bar, bg=C["subtext"], width=1)
