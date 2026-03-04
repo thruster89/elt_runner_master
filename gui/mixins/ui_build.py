@@ -224,6 +224,10 @@ class UiBuildMixin:
                   bg=C["surface0"], fg=C["subtext"], relief="flat", padx=6,
                   activebackground=C["surface1"],
                   command=self._on_job_delete).pack(side="left", padx=(0, 2))
+        tk.Button(bar2, text="edit", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["subtext"], relief="flat", padx=6,
+                  activebackground=C["surface1"],
+                  command=self._open_job_file).pack(side="left", padx=(0, 2))
         tk.Button(bar2, text="…", font=FONTS["mono"],
                   bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
                   activebackground=C["surface1"],

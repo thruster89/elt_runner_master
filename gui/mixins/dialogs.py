@@ -175,6 +175,18 @@ class DialogsMixin:
         # S-4: 예약 실행 상태 복원 (위젯 재생성으로 초기화됨)
         self._restore_schedule_ui()
 
+    def _open_job_file(self: "BatchRunnerGUI"):
+        """현재 선택된 job yml 파일을 OS 기본 편집기로 연다"""
+        job = self.job_var.get() if hasattr(self, "job_var") else ""
+        if not job:
+            messagebox.showinfo("Info", "No job selected.")
+            return
+        p = self._jobs_dir() / job
+        if not p.exists():
+            messagebox.showwarning("Not Found", f"File not found:\n{p}")
+            return
+        self._open_in_explorer(str(p))
+
     def _open_in_explorer(self: "BatchRunnerGUI", path_str):
         """OS 파일 탐색기에서 경로를 연다"""
         import subprocess as sp
