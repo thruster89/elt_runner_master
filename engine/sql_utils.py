@@ -7,6 +7,21 @@ SQL_PREFIX_PATTERN = re.compile(r"^(\d+)_.*\.sql$", re.IGNORECASE)
 SQL_PREFIX_STRIP = re.compile(r"^(\d+)_")
 TABLE_HINT_PATTERN = re.compile(r"^--\[(.+)\]$")
 
+# SQL 파일 읽기에 시도할 인코딩 목록 (우선순위순)
+_SQL_ENCODINGS = ("utf-8", "cp949", "euc-kr", "latin-1")
+
+
+def read_sql_file(path: Path) -> str:
+    """SQL 파일을 읽어 문자열로 반환. UTF-8 실패 시 cp949/euc-kr/latin-1 순으로 시도."""
+    raw = path.read_bytes()
+    for enc in _SQL_ENCODINGS:
+        try:
+            return raw.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    # latin-1은 모든 바이트를 받아들이므로 여기 도달하지 않지만 방어 코드
+    return raw.decode("utf-8", errors="replace")
+
 
 def strip_sql_prefix(name: str) -> str:
     """숫자 접두사 제거: '01_contract' → 'contract', 'contract' → 'contract'"""
@@ -45,17 +60,17 @@ def resolve_table_name(sql_file: Path) -> str:
     SQL 첫 줄(정확히는 첫 non-empty line)에 --[table_name] 이 있으면 그 값을 테이블명으로 사용.
     없으면 sql_file.stem 사용.
     """
-    with open(sql_file, "r", encoding="utf-8") as f:
-        for line in f:
-            s = line.strip()
-            if not s:
-                continue
+    text = read_sql_file(sql_file)
+    for line in text.splitlines():
+        s = line.strip()
+        if not s:
+            continue
 
-            m = TABLE_HINT_PATTERN.match(s)
-            if m:
-                return m.group(1).strip()
+        m = TABLE_HINT_PATTERN.match(s)
+        if m:
+            return m.group(1).strip()
 
-            break
+        break
 
     return sql_file.stem
 
@@ -184,6 +199,56 @@ def _split_sql_tokens(sql_text: str):
     return tokens
 
 
+def _remove_empty_param_lines(sql_text: str, params: dict) -> tuple:
+    """값이 빈 문자열인 파라미터가 포함된 SQL 라인을 제거한다.
+
+    WHERE 1=1 패턴과 조합하면 조건절을 선택적으로 활성화/비활성화 가능.
+    - 빈 파라미터만 있는 라인 → 제거
+    - 빈 파라미터 + 값 있는 파라미터가 같은 라인 → 유지 (안전)
+    - @{param}은 대상 아님 (기존 동작: 빈값→"" 치환)
+
+    Returns:
+        (처리된 sql_text, 빈 키가 제외된 params dict)
+    """
+    empty_keys = {k for k, v in params.items() if str(v).strip() == ""}
+    if not empty_keys:
+        return sql_text, params
+
+    non_empty = {k: v for k, v in params.items() if k not in empty_keys}
+
+    # :param, ${param}, {#param} 참조 검사 (@{param}은 제외)
+    _colon_cache = {}
+
+    def _has_ref(line, key):
+        if f"${{{key}}}" in line or f"{{#{key}}}" in line:
+            return True
+        if key not in _colon_cache:
+            _colon_cache[key] = re.compile(rf'(?<![:\w]):{re.escape(key)}\b')
+        return bool(_colon_cache[key].search(line))
+
+    lines = sql_text.split('\n')
+    result = []
+    removed_keys = set()
+    for line in lines:
+        has_empty = any(_has_ref(line, k) for k in empty_keys)
+        if not has_empty:
+            result.append(line)
+            continue
+        has_non_empty = any(_has_ref(line, k) for k in non_empty)
+        if has_non_empty:
+            result.append(line)  # 혼합 라인 — 안전하게 유지
+        else:
+            # 빈 파라미터만 있는 라인 → 제거, 해당 키 기록
+            for k in empty_keys:
+                if _has_ref(line, k):
+                    removed_keys.add(k)
+
+    # 라인 제거로 처리된 빈 키만 params에서 제외
+    # @{param} 전용 빈 키는 params에 남겨서 기존 동작 유지
+    cleaned_params = {k: v for k, v in params.items() if k not in removed_keys}
+    return '\n'.join(result), cleaned_params
+
+
 def render_sql(sql_text: str, params: dict) -> str:
     """
     SQL 텍스트에 파라미터 치환. 네 가지 문법 지원:
@@ -195,7 +260,18 @@ def render_sql(sql_text: str, params: dict) -> str:
       :param    — 자동 싱글쿼트 감싸서 치환. 리터럴 외부에서만 동작.
                   :clsYymm → '202003'
                   ::int, 'HH24:MI:SS' 등은 치환하지 않음.
+
+    빈 문자열 파라미터가 있으면 해당 라인을 자동 제거.
+    WHERE 1=1 패턴과 조합하면 조건절 선택적 비활성화 가능:
+      SELECT * FROM t WHERE 1=1
+        AND ym = :ym          -- ym이 비어있으면 이 라인 제거
+        AND region = :region  -- region이 비어있으면 이 라인 제거
     """
+    if not params:
+        return sql_text
+
+    # 빈 파라미터 라인 제거 (치환 전 처리)
+    sql_text, params = _remove_empty_param_lines(sql_text, params)
     if not params:
         return sql_text
 

@@ -526,7 +526,7 @@ def main():
     if export_params:
         try:
             from stages.export_stage import expand_params
-            from engine.sql_utils import detect_used_params, sort_sql_files
+            from engine.sql_utils import detect_used_params, sort_sql_files, read_sql_file
 
             sql_dir_str = export_cfg.get("sql_dir", "")
             if sql_dir_str:
@@ -541,7 +541,7 @@ def main():
                     ]
                 total_tasks = 0
                 for sf in sql_files:
-                    sql_text = sf.read_text(encoding="utf-8")
+                    sql_text = read_sql_file(sf)
                     used = detect_used_params(sql_text, export_params)
                     rel = {k: v for k, v in export_params.items() if k in used}
                     total_tasks += len(expand_params(rel, mode=export_param_mode)) if rel else 1

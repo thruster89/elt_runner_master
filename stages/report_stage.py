@@ -30,7 +30,7 @@ from pathlib import Path
 from engine.connection import connect_target, set_session_schema
 from engine.context import RunContext
 from engine.path_utils import resolve_path
-from engine.sql_utils import sort_sql_files, render_sql, strip_sql_prefix
+from engine.sql_utils import sort_sql_files, render_sql, strip_sql_prefix, read_sql_file
 from stages.task_tracking import (
     make_task_key, init_run_info, update_task_status, load_failed_tasks,
 )
@@ -195,7 +195,7 @@ def _run_csv_export(ctx, report_cfg, cfg, *,
 
     try:
         for i, sql_file in enumerate(sql_files, 1):
-            sql_text = sql_file.read_text(encoding="utf-8")
+            sql_text = read_sql_file(sql_file)
 
             # SQL별 사용 파라미터만 확장
             used_keys = detect_used_params(sql_text, stage_params)

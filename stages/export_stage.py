@@ -14,7 +14,7 @@ from adapters.sources import oracle_client as _oc
 from adapters.sources.vertica_client import get_vertica_conn
 from engine.context import RunContext
 from engine.path_utils import resolve_path
-from engine.sql_utils import sort_sql_files, render_sql, detect_used_params, _strip_sql_comments
+from engine.sql_utils import sort_sql_files, render_sql, detect_used_params, _strip_sql_comments, read_sql_file
 from engine.runtime_state import stop_event
 from stages.task_tracking import (
     make_task_key, update_task_status,
@@ -380,7 +380,7 @@ def run_plan(ctx, sql_files, export_cfg, out_dir, ext, name_style="full",
 
     tasks = []
     for sql_file in sql_files:
-        sql_text_raw = sql_file.read_text(encoding="utf-8")
+        sql_text_raw = read_sql_file(sql_file)
 
         # SQL별 사용 파라미터만 확장
         used_keys = detect_used_params(sql_text_raw, stage_params)
@@ -662,7 +662,7 @@ def run(ctx: RunContext):
                 prefix, idx, total_sql, param_idx, total_param
             )
 
-            sql_text = sql_file.read_text(encoding="utf-8")
+            sql_text = read_sql_file(sql_file)
             rendered_sql = sanitize_sql(render_sql(sql_text, param_set))
 
             start_time = time.time()
@@ -725,7 +725,7 @@ def run(ctx: RunContext):
 
     tasks = []
     for idx, sql_file in enumerate(sql_files, 1):
-        sql_text_raw = sql_file.read_text(encoding="utf-8")
+        sql_text_raw = read_sql_file(sql_file)
         used_keys = detect_used_params(sql_text_raw, stage_params)
         relevant_params = {k: v for k, v in stage_params.items() if k in used_keys}
         sql_param_sets = expand_params(relevant_params, mode=stage_param_mode) if relevant_params else [{}]

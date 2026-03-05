@@ -15,7 +15,7 @@ import time
 from engine.connection import connect_target, set_session_schema
 from engine.context import RunContext
 from engine.path_utils import resolve_path
-from engine.sql_utils import sort_sql_files, render_sql
+from engine.sql_utils import sort_sql_files, render_sql, read_sql_file
 from stages.task_tracking import (
     make_task_key, init_run_info, update_task_status, load_failed_tasks,
 )
@@ -139,7 +139,7 @@ def _run_sql_loop(ctx, conn, conn_type, sql_files, on_error, *,
         if aborted:
             break
 
-        sql_text = sql_file.read_text(encoding="utf-8")
+        sql_text = read_sql_file(sql_file)
 
         # SQL별 사용 파라미터만 확장
         used_keys = detect_used_params(sql_text, stage_params)
@@ -191,7 +191,7 @@ def _run_sql_loop(ctx, conn, conn_type, sql_files, on_error, *,
                                 update_task_status(run_info_path, rk, "pending")
                         # BUG-1 fix: remaining 파일의 SQL을 읽어야 함 (sql_file → remaining)
                         for remaining in sql_files[i:]:
-                            rt = remaining.read_text(encoding="utf-8")
+                            rt = read_sql_file(remaining)
                             ru = detect_used_params(rt, stage_params)
                             rr = {k: v for k, v in stage_params.items() if k in ru}
                             rps = expand_params(rr, mode=stage_param_mode) if rr else [{}]
@@ -213,7 +213,7 @@ def _ensure_param_schemas(conn, sql_files, params, logger):
     at_pattern = re.compile(r"@\{(\w+)\}")
     schemas = set()
     for sf in sql_files:
-        text = sf.read_text(encoding="utf-8")
+        text = read_sql_file(sf)
         for m in at_pattern.finditer(text):
             key = m.group(1)
             val = str(params.get(key, "")).strip()

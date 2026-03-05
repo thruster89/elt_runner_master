@@ -11,6 +11,8 @@ from engine.sql_utils import (
     extract_sqlname_from_csv,
     extract_params_from_csv,
     _strip_sql_comments,
+    _remove_empty_param_lines,
+    read_sql_file,
 )
 
 
@@ -88,6 +90,78 @@ class TestRenderSql:
         result = render_sql(sql, {"crit": "X", "critYm": "202301"})
         assert "'X'" in result
         assert "'202301'" in result
+
+
+# =====================================================================
+# _remove_empty_param_lines (빈 파라미터 라인 제거)
+# =====================================================================
+class TestRemoveEmptyParamLines:
+
+    def test_empty_param_line_removed(self):
+        """빈 파라미터가 있는 라인 제거."""
+        sql = "SELECT * FROM t\nWHERE 1=1\n  AND ym = :ym\n  AND region = :region"
+        result, params = _remove_empty_param_lines(sql, {"ym": "202301", "region": ""})
+        assert "AND region" not in result
+        assert "AND ym = :ym" in result
+        assert "region" not in params
+
+    def test_all_params_filled(self):
+        """모든 파라미터에 값이 있으면 변화 없음."""
+        sql = "WHERE 1=1\n  AND ym = :ym\n  AND region = :region"
+        result, params = _remove_empty_param_lines(sql, {"ym": "202301", "region": "KR"})
+        assert "AND ym" in result
+        assert "AND region" in result
+        assert len(params) == 2
+
+    def test_mixed_line_kept(self):
+        """빈 파라미터 + 비어있지 않은 파라미터가 같은 라인 → 유지."""
+        sql = "WHERE ym = :ym AND region = :region"
+        result, params = _remove_empty_param_lines(sql, {"ym": "202301", "region": ""})
+        assert "WHERE ym = :ym AND region = :region" in result
+
+    def test_dollar_param_empty(self):
+        """${param}도 빈값이면 라인 제거."""
+        sql = "WHERE 1=1\n  AND code IN (${codeList})"
+        result, params = _remove_empty_param_lines(sql, {"codeList": ""})
+        assert "code IN" not in result
+
+    def test_hash_param_empty(self):
+        """{#param}도 빈값이면 라인 제거."""
+        sql = "INSERT INTO {#tbl} VALUES (1)\nSELECT 1"
+        result, params = _remove_empty_param_lines(sql, {"tbl": ""})
+        assert "INSERT" not in result
+        assert "SELECT 1" in result
+
+    def test_at_param_not_affected(self):
+        """@{param}은 라인 제거 대상 아님 (기존 동작 유지)."""
+        sql = "SELECT * FROM @{schema}my_table"
+        result, params = _remove_empty_param_lines(sql, {"schema": ""})
+        assert "@{schema}my_table" in result  # 라인 유지됨
+
+    def test_no_empty_params(self):
+        """빈 파라미터 없으면 원본 그대로."""
+        sql = "SELECT :a"
+        result, params = _remove_empty_param_lines(sql, {"a": "1"})
+        assert result == sql
+
+    def test_whitespace_only_is_empty(self):
+        """공백만 있는 값도 빈값 취급."""
+        sql = "WHERE 1=1\n  AND ym = :ym"
+        result, params = _remove_empty_param_lines(sql, {"ym": "  "})
+        assert "AND ym" not in result
+
+    def test_render_sql_integration(self):
+        """render_sql과 통합: 빈 파라미터 라인 제거 후 나머지 치환."""
+        sql = "SELECT * FROM t\nWHERE 1=1\n  AND ym = :ym\n  AND region = :region"
+        result = render_sql(sql, {"ym": "202301", "region": ""})
+        assert result == "SELECT * FROM t\nWHERE 1=1\n  AND ym = '202301'"
+
+    def test_double_colon_not_confused(self):
+        """::cast가 빈 파라미터로 오인되지 않음."""
+        sql = "SELECT col::int FROM t\nWHERE ym = :ym"
+        result, params = _remove_empty_param_lines(sql, {"ym": ""})
+        assert "col::int" in result  # ::int 라인 유지
+        assert "WHERE ym" not in result
 
 
 # =====================================================================
@@ -245,3 +319,36 @@ class TestStripSqlComments:
         sql = "SELECT '--not-a-comment' FROM t"
         result = _strip_sql_comments(sql)
         assert "SELECT" in result
+
+
+# =====================================================================
+# read_sql_file (인코딩 자동 감지)
+# =====================================================================
+class TestReadSqlFile:
+
+    def test_utf8(self, tmp_path):
+        """UTF-8 파일 정상 읽기."""
+        f = tmp_path / "test.sql"
+        f.write_bytes("SELECT '한글' FROM t".encode("utf-8"))
+        assert "한글" in read_sql_file(f)
+
+    def test_cp949(self, tmp_path):
+        """CP949(EUC-KR) 인코딩 파일도 읽기."""
+        f = tmp_path / "test.sql"
+        f.write_bytes("-- 계약 테이블\nSELECT 1".encode("cp949"))
+        result = read_sql_file(f)
+        assert "계약 테이블" in result
+        assert "SELECT 1" in result
+
+    def test_euc_kr(self, tmp_path):
+        """EUC-KR 인코딩 파일도 읽기."""
+        f = tmp_path / "test.sql"
+        f.write_bytes("-- 보험료\nSELECT 1".encode("euc-kr"))
+        result = read_sql_file(f)
+        assert "보험료" in result
+
+    def test_ascii(self, tmp_path):
+        """ASCII 파일은 UTF-8으로 문제 없이 읽힘."""
+        f = tmp_path / "test.sql"
+        f.write_text("SELECT 1 FROM dual", encoding="ascii")
+        assert "SELECT 1" in read_sql_file(f)
