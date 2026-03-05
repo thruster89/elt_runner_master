@@ -525,6 +525,9 @@ class DialogsMixin:
         self._theme_var.set(theme_name)
         self._restore_snapshot(snap)
         self._restoring_job = False
+        # 복원 완료 후 1회만 갱신 (restore 중 스킵된 콜백 대체)
+        self._update_section_visibility()
+        self._refresh_preview()
         self._capture_loaded_snapshot()
         # 테마 전환 후 로그 내용 복원 (위젯 재생성으로 Text가 비어 있음)
         self._refilter_log()

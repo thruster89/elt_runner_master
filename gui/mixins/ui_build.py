@@ -391,6 +391,8 @@ class UiBuildMixin:
         """Stage ON/OFF에 따라 관련 섹션 pack_forget / pack."""
         if not hasattr(self, "_export_section"):
             return  # 빌드 중 guard
+        if getattr(self, "_restoring_job", False):
+            return  # 복원 중 불필요한 재배치 스킵
 
         # 모든 동적 섹션 forget (pack 순서 보장)
         for sec in (self._export_section, self._load_section,
