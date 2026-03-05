@@ -182,35 +182,36 @@ class DialogsMixin:
         return self._themed_confirm("━ Run Confirm", build)
 
     def _check_missing_params(self: "BatchRunnerGUI") -> set[str]:
-        """SQL에서 필요한 파라미터 vs GUI 입력 파라미터 비교 → 누락 목록 반환."""
-        from gui.utils import scan_sql_params
-        wd = Path(self._work_dir.get())
-
-        # SQL 디렉토리에서 필요한 파라미터 수집
-        required: set[str] = set()
-        dir_vars = {
-            "export": self._export_sql_dir,
-            "transform": self._transform_sql_dir,
-            "report": self._report_sql_dir,
-        }
-        for stage_key, dir_var in dir_vars.items():
-            if not getattr(self, f"_stage_{stage_key}").get():
-                continue
-            sql_dir = dir_var.get().strip()
-            if not sql_dir:
-                continue
-            p = Path(sql_dir)
-            if not p.is_absolute():
-                p = wd / p
-            if p.is_dir():
-                # scan_sql_params는 하위 폴더 포함하므로, 해당 디렉토리만 직접 스캔
-                from gui.utils import _extract_params
-                for sql_file in p.rglob("*.sql"):
-                    try:
-                        text = sql_file.read_text(encoding="utf-8", errors="ignore")
-                        required |= _extract_params(text)
-                    except Exception:
-                        pass
+        """SQL에서 필요한 파라미터 vs GUI 입력 파라미터 비교 → 누락 목록 반환.
+        _scan_and_suggest_params()가 캐시한 결과를 우선 사용 (rglob 회피)."""
+        # 캐시된 감지 결과 우선 사용
+        required = getattr(self, "_cached_detected_params", None)
+        if required is None:
+            # 캐시 없으면 직접 스캔 (fallback)
+            from gui.utils import _extract_params
+            wd = Path(self._work_dir.get())
+            required = set()
+            dir_vars = {
+                "export": self._export_sql_dir,
+                "transform": self._transform_sql_dir,
+                "report": self._report_sql_dir,
+            }
+            for stage_key, dir_var in dir_vars.items():
+                if not getattr(self, f"_stage_{stage_key}").get():
+                    continue
+                sql_dir = dir_var.get().strip()
+                if not sql_dir:
+                    continue
+                p = Path(sql_dir)
+                if not p.is_absolute():
+                    p = wd / p
+                if p.is_dir():
+                    for sql_file in p.rglob("*.sql"):
+                        try:
+                            text = sql_file.read_text(encoding="utf-8", errors="ignore")
+                            required |= _extract_params(text)
+                        except Exception:
+                            pass
 
         if not required:
             return set()

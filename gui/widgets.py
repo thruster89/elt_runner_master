@@ -426,8 +426,10 @@ class RunHistoryDialog(tk.Toplevel):
                   bg=C["surface0"], fg=C["text"], relief="flat", padx=14, pady=3,
                   command=self.destroy).pack(side="right", padx=10)
 
+    _MAX_RUNS_PER_STAGE = 50  # 스테이지당 최대 로딩 수
+
     def _load_history(self):
-        """data/ 하위에서 모든 run_info.json을 수집"""
+        """data/ 하위에서 run_info.json을 수집 (스테이지당 최대 50건)"""
         stage_dirs = {
             "export": self._work_dir / "data" / "export",
             "transform": self._work_dir / "data" / "transform",
@@ -437,7 +439,10 @@ class RunHistoryDialog(tk.Toplevel):
             job_dir = base / self._job_name
             if not job_dir.is_dir():
                 continue
+            loaded = 0
             for d in sorted(job_dir.iterdir(), reverse=True):
+                if loaded >= self._MAX_RUNS_PER_STAGE:
+                    break
                 ri = d / "run_info.json"
                 if not ri.exists():
                     continue
@@ -468,6 +473,7 @@ class RunHistoryDialog(tk.Toplevel):
                         "path": str(ri),
                     }
                     self._runs.append(run)
+                    loaded += 1
                 except Exception:
                     continue
 
