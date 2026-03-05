@@ -682,13 +682,16 @@ def run(ctx: RunContext):
             elapsed = time.time() - start_time
             size_mb = out_file.stat().st_size / (1024 * 1024) if out_file.exists() else 0
 
-            logger.info(
-                "%s EXPORT done rows=%d size=%.2fMB elapsed=%.2fs",
-                prefix,
-                rows or 0,
-                size_mb,
-                elapsed
-            )
+            if not rows:
+                logger.info(
+                    "%s EXPORT done rows=0 (empty) size=%.2fMB elapsed=%.2fs",
+                    prefix, size_mb, elapsed
+                )
+            else:
+                logger.info(
+                    "%s EXPORT done rows=%d size=%.2fMB elapsed=%.2fs",
+                    prefix, rows, size_mb, elapsed
+                )
 
             # compression 전환 시 이전 확장자 orphan 제거 (.csv ↔ .csv.gz)
             _cleanup_alt_ext(out_file, out_dir / "_backup", backup_keep, logger)

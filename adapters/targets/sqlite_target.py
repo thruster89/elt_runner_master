@@ -203,6 +203,10 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
     if load_mode == "replace" and _table_exists(conn, table_name):
         logger.info("LOAD mode=replace → DROP TABLE %s", table_name)
         conn.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+        conn.execute(
+            "DELETE FROM _LOAD_HISTORY WHERE job_name = ? AND table_name = ?",
+            [job_name, table_name],
+        )
         conn.commit()
 
     if load_mode == "truncate" and _table_exists(conn, table_name):
@@ -252,8 +256,12 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
     _insert_history(conn, job_name, table_name, str(csv_path), file_hash, file_size, mtime)
 
     elapsed = time.time() - start
-    logger.info("LOAD done | table=%s rows=%d elapsed=%.2fs | mode=%s",
-                table_name, total_rows, elapsed, load_mode)
+    if total_rows == 0:
+        logger.info("LOAD done | table=%s rows=0 (empty) elapsed=%.2fs | mode=%s",
+                     table_name, elapsed, load_mode)
+    else:
+        logger.info("LOAD done | table=%s rows=%d elapsed=%.2fs | mode=%s",
+                     table_name, total_rows, elapsed, load_mode)
 
     return total_rows
 

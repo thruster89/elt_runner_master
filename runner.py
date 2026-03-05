@@ -290,7 +290,7 @@ def _log_pipeline_summary(ctx: RunContext, stages: list):
     for stage_name in stages:
         r = results.get(stage_name)
         if not r:
-            logger.info("  %-12s  --  (결과 없음)", stage_name.upper())
+            logger.info("  %-12s  --    (결과 없음)", stage_name.upper())
             continue
         s, f, sk = r["success"], r["failed"], r["skipped"]
         total_failed += f
@@ -300,7 +300,7 @@ def _log_pipeline_summary(ctx: RunContext, stages: list):
             parts.append(f"failed={f}")
         if sk:
             parts.append(f"skipped={sk}")
-        logger.info("  %-12s  %s  %s", stage_name.upper(), status, "  ".join(parts))
+        logger.info("  %-12s  %-4s  %s", stage_name.upper(), status, "  ".join(parts))
 
     logger.info("-" * 60)
     if total_failed > 0:
