@@ -318,6 +318,11 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
             tbl = _qualified(schema, table_name)
             logger.info("LOAD mode=replace → DROP TABLE %s", tbl)
             cur.execute(f"DROP TABLE {tbl} PURGE")
+            hist_tbl = _qualified(schema, "_LOAD_HISTORY")
+            cur.execute(
+                f"DELETE FROM {hist_tbl} WHERE job_name = :1 AND table_name = :2",
+                [job_name, full_table],
+            )
             conn.commit()
 
         if not _table_exists(cur, schema, table_name):

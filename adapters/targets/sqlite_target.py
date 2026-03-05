@@ -203,6 +203,10 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
     if load_mode == "replace" and _table_exists(conn, table_name):
         logger.info("LOAD mode=replace → DROP TABLE %s", table_name)
         conn.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+        conn.execute(
+            "DELETE FROM _LOAD_HISTORY WHERE job_name = ? AND table_name = ?",
+            [job_name, table_name],
+        )
         conn.commit()
 
     if load_mode == "truncate" and _table_exists(conn, table_name):
@@ -264,6 +268,4 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
 
 def connect(db_path: Path):
     import sqlite3
-    conn = sqlite3.connect(str(db_path))
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
+    return sqlite3.connect(str(db_path))

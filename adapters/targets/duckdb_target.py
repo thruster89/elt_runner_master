@@ -178,6 +178,11 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
     if load_mode == "replace" and _table_exists(conn, schema, table_name):
         logger.info("LOAD mode=replace → DROP TABLE %s", tbl)
         conn.execute(f"DROP TABLE IF EXISTS {tbl}")
+        prefix = f'"{schema}".' if schema else ""
+        conn.execute(
+            f"DELETE FROM {prefix}_LOAD_HISTORY WHERE job_name = ? AND table_name = ?",
+            [job_name, full_table],
+        )
 
     if load_mode == "truncate" and _table_exists(conn, schema, table_name):
         logger.info("LOAD mode=truncate → DELETE FROM %s", tbl)
