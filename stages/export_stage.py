@@ -275,8 +275,15 @@ def build_csv_name(sqlname: str, host: str, params: dict, ext: str,
     strip_prefix:
       True  — 숫자 접두사 제거  예: 01_contract → contract
       False — 유지 (기본)       예: 01_contract → 01_contract
+
+    파라미터 값이 50자를 초과하면 값의 앞 20자 + SHA-1 해시 8자리로 축약하여
+    OS 파일명 길이 제한(Windows 260자 등)에 걸리지 않도록 한다.
     """
+    import hashlib
     from engine.sql_utils import strip_sql_prefix
+
+    _MAX_VALUE_LEN = 50
+
     base = strip_sql_prefix(sqlname) if strip_prefix else sqlname
     parts = [base]
 
@@ -285,6 +292,9 @@ def build_csv_name(sqlname: str, host: str, params: dict, ext: str,
 
     for k in sorted(params.keys()):
         v = str(params[k]).replace(" ", "_")
+        if len(v) > _MAX_VALUE_LEN:
+            short_hash = hashlib.sha1(v.encode()).hexdigest()[:8]
+            v = v[:20] + "_h" + short_hash
         if name_style == "compact":
             parts.append(v)
         else:
