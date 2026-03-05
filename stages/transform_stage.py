@@ -73,7 +73,12 @@ def run(ctx: RunContext):
             logger.warning("TRANSFORM --include filter resulted in no SQL files (patterns=%s)", include_patterns)
             return
 
-    target_cfg = ctx.job_config.get("target", {})
+    # target 결정: transform.target 우선, 없으면 글로벌 target fallback
+    transform_target_cfg = transform_cfg.get("target")
+    if transform_target_cfg and transform_target_cfg.get("type", "").strip():
+        target_cfg = transform_target_cfg
+    else:
+        target_cfg = ctx.job_config.get("target", {})
     tgt_type   = (target_cfg.get("type") or "").strip().lower()
 
     if not tgt_type:

@@ -133,6 +133,76 @@ class TestTransformStage:
 
         mock_set.assert_called_once_with(mock_conn, "duckdb", "MY_SCHEMA", ctx.logger)
 
+    def test_transform_uses_own_target(self, tmp_path):
+        """transform.target이 있으면 글로벌 target 대신 사용."""
+        sql_dir = tmp_path / "sql"
+        sql_dir.mkdir()
+        (sql_dir / "01_t.sql").write_text("SELECT 1")
+
+        ctx = _ctx(tmp_path, job_config={
+            "transform": {
+                "sql_dir": str(sql_dir),
+                "target": {"type": "sqlite3", "db_path": "transform.db"},
+            },
+            "target": {"type": "duckdb", "db_path": "load.duckdb"},
+        })
+
+        mock_conn = MagicMock()
+        with patch("stages.transform_stage.connect_target",
+                   return_value=(mock_conn, "sqlite3", "sqlite3 (test)")) as mock_connect:
+            from stages import transform_stage
+            transform_stage.run(ctx)
+
+        # connect_target에 transform 전용 target_cfg가 전달되었는지 확인
+        called_cfg = mock_connect.call_args[0][1]
+        assert called_cfg["type"] == "sqlite3"
+        assert called_cfg["db_path"] == "transform.db"
+        mock_conn.close.assert_called_once()
+
+    def test_transform_fallback_to_global_target(self, tmp_path):
+        """transform.target이 없으면 글로벌 target 사용."""
+        sql_dir = tmp_path / "sql"
+        sql_dir.mkdir()
+        (sql_dir / "01_t.sql").write_text("SELECT 1")
+
+        ctx = _ctx(tmp_path, job_config={
+            "transform": {"sql_dir": str(sql_dir)},
+            "target": {"type": "duckdb", "db_path": "global.duckdb"},
+        })
+
+        mock_conn = MagicMock()
+        with patch("stages.transform_stage.connect_target",
+                   return_value=(mock_conn, "duckdb", "duckdb (test)")) as mock_connect:
+            from stages import transform_stage
+            transform_stage.run(ctx)
+
+        called_cfg = mock_connect.call_args[0][1]
+        assert called_cfg["type"] == "duckdb"
+        assert called_cfg["db_path"] == "global.duckdb"
+
+    def test_transform_empty_target_type_falls_back(self, tmp_path):
+        """transform.target.type이 빈 문자열이면 글로벌 target 사용."""
+        sql_dir = tmp_path / "sql"
+        sql_dir.mkdir()
+        (sql_dir / "01_t.sql").write_text("SELECT 1")
+
+        ctx = _ctx(tmp_path, job_config={
+            "transform": {
+                "sql_dir": str(sql_dir),
+                "target": {"type": ""},
+            },
+            "target": {"type": "duckdb"},
+        })
+
+        mock_conn = MagicMock()
+        with patch("stages.transform_stage.connect_target",
+                   return_value=(mock_conn, "duckdb", "duckdb (test)")) as mock_connect:
+            from stages import transform_stage
+            transform_stage.run(ctx)
+
+        called_cfg = mock_connect.call_args[0][1]
+        assert called_cfg["type"] == "duckdb"
+
 
 # =====================================================================
 # report_stage
