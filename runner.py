@@ -500,7 +500,12 @@ def main():
         spm = ctx.get_stage_param_mode(stage_name)
         if not sp:
             return
-        logger.info(" [%s] Params: %s", display_name, ", ".join(f"{k}={v}" for k, v in sp.items()))
+        def _short_val(v, max_items=3):
+            parts = [p.strip() for p in str(v).split(",")]
+            if len(parts) <= max_items:
+                return str(v)
+            return ", ".join(parts[:max_items]) + f" ... +{len(parts)-max_items} lists"
+        logger.info(" [%s] Params: %s", display_name, ", ".join(f"{k}={_short_val(v)}" for k, v in sp.items()))
         if spm != "product":
             logger.info(" [%s] ParamMode: %s", display_name, spm)
         try:
