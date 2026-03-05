@@ -237,6 +237,9 @@ class RunControlMixin:
                 self._log_write("Process killed (force)", "WARN")
         threading.Thread(target=lambda: (self._process.wait(timeout=3),), daemon=True).start()
         self.after(3500, _ensure_killed)
+        if getattr(self, "_anim_id", None):
+            self.after_cancel(self._anim_id)
+            self._anim_id = None
         self._reset_buttons()
         self._set_status("● stopped", C["yellow"])
 

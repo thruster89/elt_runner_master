@@ -93,8 +93,11 @@ class DialogsMixin:
                     k, v = k_var.get().strip(), v_var.get().strip()
                     if k and v:
                         params[k] = v
-        def _short(v, limit=40):
-            return v if len(v) <= limit else v[:limit] + f"... +{len(v)-limit} chars"
+        def _short(v, max_items=3):
+            parts = [p.strip() for p in v.split(",")]
+            if len(parts) <= max_items:
+                return v
+            return ", ".join(parts[:max_items]) + f" ... +{len(parts)-max_items} lists"
         params_str = ", ".join(f"{k}={_short(v)}" for k, v in params.items())
         timeout_val = self._ov_timeout.get().strip() or "1800"
         ov_on = self._ov_overwrite.get()
