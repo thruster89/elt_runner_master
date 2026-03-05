@@ -84,7 +84,7 @@ def run(ctx: RunContext):
         union_dir = resolve_path(ctx, csv_union_dir)
         if union_dir.exists():
             generated_csvs = sorted(
-                p for p in union_dir.rglob("*")
+                p for p in union_dir.iterdir()
                 if p.is_file() and (p.name.endswith(".csv") or p.name.endswith(".csv.gz"))
             )
             logger.info("REPORT skip_sql=true | csv_union_dir=%s files=%d",
@@ -371,13 +371,6 @@ def _run_excel_export(ctx, report_cfg, cfg, csv_files: list):
     out_dir_str = cfg.get("out_dir") or report_cfg.get("export_csv", {}).get("out_dir", "data/report")
     out_dir = resolve_path(ctx, out_dir_str)
     max_files = int(cfg.get("max_files", 10))
-
-    if not csv_files:
-        if out_dir.exists():
-            csv_files = sorted(
-                p for p in out_dir.iterdir()
-                if p.is_file() and (p.name.endswith(".csv") or p.name.endswith(".csv.gz"))
-            )
 
     if not csv_files:
         logger.warning("REPORT excel: no target CSV found, skip")
