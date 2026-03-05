@@ -21,6 +21,7 @@ class RunContext:
     stage_filter: list = field(default_factory=list)      # --stage 필터 목록
     param_mode: str = "product"   # "product" (카르테시안 곱) | "zip" (위치별 1:1 매칭)
     stage_results: dict = field(default_factory=dict, repr=False)  # 스테이지별 실행 결과
+    exported_files: list = field(default_factory=list, repr=False)  # export가 생성한 CSV 경로 목록
 
     def report_stage_result(self, stage_name: str, *,
                             success: int = 0, failed: int = 0,

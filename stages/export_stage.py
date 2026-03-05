@@ -768,6 +768,7 @@ def run(ctx: RunContext):
 
     # ── 결과 요약 ────────────────────────────────────────
     success = failed = skipped = 0
+    exported_files = []
     try:
         with open(run_info_path, encoding="utf-8") as f:
             info = json.load(f)
@@ -775,6 +776,9 @@ def run(ctx: RunContext):
             st = entry.get("status", "")
             if st == "success":
                 success += 1
+                of = entry.get("output_file")
+                if of:
+                    exported_files.append(Path(of))
             elif st == "failed":
                 failed += 1
             elif st == "skipped":
@@ -783,4 +787,5 @@ def run(ctx: RunContext):
         logger.warning("EXPORT summary 집계 실패", exc_info=True)
     logger.info("EXPORT summary | success=%d failed=%d skipped=%d total=%d",
                 success, failed, skipped, len(tasks))
+    ctx.exported_files = exported_files
     ctx.report_stage_result("export", success=success, failed=failed, skipped=skipped)
