@@ -531,6 +531,8 @@ class RunControlMixin:
         _restoring_job 중에는 완전 스킵 (복원 완료 후 1회 실행)."""
         if getattr(self, "_restoring_job", False):
             return
+        # dirty 캐시 무효화 (변경 발생)
+        self._dirty_cached = None
         if hasattr(self, "_preview_debounce_id") and self._preview_debounce_id:
             self.after_cancel(self._preview_debounce_id)
         self._preview_debounce_id = self.after(50, self._refresh_preview_now)

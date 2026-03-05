@@ -183,3 +183,17 @@ def collect_sql_tree(sql_dir: Path) -> dict:
             tree["__files__"].append(item.name)
     _sql_tree_cache[cache_key] = (dir_mtime, tree)
     return tree
+
+
+def flatten_sql_tree(sql_dir: Path, tree: dict, prefix: str = "") -> list[Path]:
+    """collect_sql_tree 결과를 평탄화하여 모든 SQL 파일의 절대 경로 리스트 반환.
+    rglob("*.sql") 대체용 — 캐시된 tree를 재활용하여 파일시스템 재순회 회피."""
+    result: list[Path] = []
+    for fname in tree.get("__files__", []):
+        result.append(sql_dir / prefix / fname if prefix else sql_dir / fname)
+    for key, sub in tree.items():
+        if key == "__files__" or key == "__root__":
+            continue
+        child_prefix = f"{prefix}/{key}" if prefix else key
+        result.extend(flatten_sql_tree(sql_dir, sub, child_prefix))
+    return result

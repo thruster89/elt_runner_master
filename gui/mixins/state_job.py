@@ -14,6 +14,8 @@ import yaml
 
 from gui.constants import C, FONTS, THEMES, APP_VERSION, _CONF_PATH, STAGE_CONFIG
 from gui.utils import load_jobs, load_env_hosts, _scan_params_from_files
+from gui.utils import collect_sql_tree as _collect_sql_tree
+from gui.utils import flatten_sql_tree as _flatten_sql_tree
 from gui.widgets import SqlSelectorDialog
 
 if TYPE_CHECKING:
@@ -152,10 +154,18 @@ class StateJobMixin:
         # NOTE: _refresh_preview()는 호출자가 _restoring_job=False 후 직접 호출
 
     def _is_dirty(self: "BatchRunnerGUI") -> bool:
-        """현재 상태가 로드 시점 스냅샷과 다른지 확인"""
+        """현재 상태가 로드 시점 스냅샷과 다른지 확인.
+        고빈도 경로 (_update_title_dirty) 에서는 캐시된 플래그 사용,
+        저빈도 경로 (save 확인) 에서만 전체 비교."""
         if self._job_loaded_snapshot is None:
             return False
-        return self._snapshot() != self._job_loaded_snapshot
+        # 캐시된 dirty 플래그가 있으면 즉시 반환 (고빈도 경로 최적화)
+        cached = getattr(self, "_dirty_cached", None)
+        if cached is not None:
+            return cached
+        result = self._snapshot() != self._job_loaded_snapshot
+        self._dirty_cached = result
+        return result
 
     def _get_changed_fields(self: "BatchRunnerGUI") -> list[str]:
         """변경된 필드명 리스트 반환"""
@@ -188,6 +198,7 @@ class StateJobMixin:
     def _capture_loaded_snapshot(self: "BatchRunnerGUI"):
         """현재 GUI 상태를 로드 시점 스냅샷으로 캡처 (after로 지연)"""
         self._job_loaded_snapshot = self._snapshot()
+        self._dirty_cached = False  # 방금 캡처했으므로 clean
         self._update_title_dirty()
 
     # ── GUI config 빌드 ────────────────────────────────────────
@@ -500,6 +511,7 @@ class StateJobMixin:
         self._jobs[fname] = new_cfg
         self._log_sys(f"Saved: {out_path.name}")
         self._job_loaded_snapshot = self._snapshot()
+        self._dirty_cached = False
         self._update_title_dirty()
 
     def _show_save_confirm(self: "BatchRunnerGUI", fname, changed_fields) -> bool:
@@ -845,38 +857,23 @@ class StateJobMixin:
         # ── 스테이지별 SQL 파일 수집 + 파라미터 감지 ──
         stage_params: dict[str, set[str]] = {}
 
-        # export
-        export_files = []
-        export_dir = _resolve(self._export_sql_dir.get().strip())
-        if self._selected_sqls and export_dir:
-            export_files = [export_dir / p for p in self._selected_sqls
-                            if (export_dir / p).exists()]
-        elif export_dir:
-            export_files = list(export_dir.rglob("*.sql"))
-        if export_files:
-            stage_params["export"] = set(_scan_params_from_files(export_files))
-
-        # transform
-        tfm_files = []
-        tfm_dir = _resolve(self._transform_sql_dir.get().strip())
-        if getattr(self, "_selected_transform_sqls", set()) and tfm_dir:
-            tfm_files = [tfm_dir / p for p in self._selected_transform_sqls
-                         if (tfm_dir / p).exists()]
-        elif tfm_dir:
-            tfm_files = list(tfm_dir.rglob("*.sql"))
-        if tfm_files:
-            stage_params["transform"] = set(_scan_params_from_files(tfm_files))
-
-        # report
-        rpt_files = []
-        rpt_dir = _resolve(self._report_sql_dir.get().strip())
-        if getattr(self, "_selected_report_sqls", set()) and rpt_dir:
-            rpt_files = [rpt_dir / p for p in self._selected_report_sqls
-                         if (rpt_dir / p).exists()]
-        elif rpt_dir:
-            rpt_files = list(rpt_dir.rglob("*.sql"))
-        if rpt_files:
-            stage_params["report"] = set(_scan_params_from_files(rpt_files))
+        stage_cfg = [
+            ("export",    self._export_sql_dir,    self._selected_sqls),
+            ("transform", self._transform_sql_dir, getattr(self, "_selected_transform_sqls", set())),
+            ("report",    self._report_sql_dir,    getattr(self, "_selected_report_sqls", set())),
+        ]
+        for stage_key, dir_var, selected in stage_cfg:
+            sql_dir = _resolve(dir_var.get().strip())
+            if not sql_dir:
+                continue
+            if selected:
+                files = [sql_dir / p for p in selected if (sql_dir / p).exists()]
+            else:
+                # collect_sql_tree 캐시 활용 (rglob 대체)
+                tree = _collect_sql_tree(sql_dir)
+                files = _flatten_sql_tree(sql_dir, tree)
+            if files:
+                stage_params[stage_key] = set(_scan_params_from_files(files))
 
         all_detected = set()
         for s in stage_params.values():
