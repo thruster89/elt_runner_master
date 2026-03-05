@@ -264,4 +264,6 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
 
 def connect(db_path: Path):
     import sqlite3
-    return sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
