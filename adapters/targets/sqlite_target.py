@@ -252,8 +252,12 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
     _insert_history(conn, job_name, table_name, str(csv_path), file_hash, file_size, mtime)
 
     elapsed = time.time() - start
-    logger.info("LOAD done | table=%s rows=%d elapsed=%.2fs | mode=%s",
-                table_name, total_rows, elapsed, load_mode)
+    if total_rows == 0:
+        logger.info("LOAD done | table=%s rows=0 (empty) elapsed=%.2fs | mode=%s",
+                     table_name, elapsed, load_mode)
+    else:
+        logger.info("LOAD done | table=%s rows=%d elapsed=%.2fs | mode=%s",
+                     table_name, total_rows, elapsed, load_mode)
 
     return total_rows
 

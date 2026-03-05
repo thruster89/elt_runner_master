@@ -361,8 +361,12 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
                         file_hash, file_size, mtime)
 
         elapsed = time.time() - start
-        logger.info("LOAD done | table=%s rows=%d elapsed=%.2fs | mode=%s",
-                    full_table, total_rows, elapsed, load_mode)
+        if total_rows == 0:
+            logger.info("LOAD done | table=%s rows=0 (empty) elapsed=%.2fs | mode=%s",
+                         full_table, elapsed, load_mode)
+        else:
+            logger.info("LOAD done | table=%s rows=%d elapsed=%.2fs | mode=%s",
+                         full_table, total_rows, elapsed, load_mode)
         return total_rows
 
     finally:
