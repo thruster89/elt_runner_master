@@ -626,11 +626,11 @@ class RunControlMixin:
     # ── 경로 유효성 표시 ───────────────────────────────────────
 
     def _validate_paths(self: "BatchRunnerGUI"):
-        entries = getattr(self, "_path_entry_widgets", {})
+        entries = getattr(self, "_path_entry_widgets", [])
         if not entries:
             return
         wd = Path(self._work_dir.get())
-        for var, ent in entries.items():
+        for var, ent in entries:
             raw = var.get().strip()
             if not raw:
                 ent.config(highlightthickness=0)

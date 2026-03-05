@@ -1,5 +1,6 @@
 # file: v2/adapters/targets/duckdb_target.py
 
+import json
 import time
 import logging
 from datetime import datetime
@@ -98,6 +99,60 @@ def _delete_by_params(conn, schema: str, table_name: str, params: dict):
     logger.info("DELETE %s | %d rows | WHERE %s", tbl, del_count, where)
 
 
+def _find_meta_file(csv_path: Path) -> Path | None:
+    """CSV와 같은 디렉토리에서 대응하는 .meta.json 탐색."""
+    name = csv_path.name
+    stem = name[:-len(".csv.gz")] if name.endswith(".csv.gz") else name[:-len(".csv")]
+    meta = csv_path.parent / (stem + ".meta.json")
+    return meta if meta.exists() else None
+
+
+def _meta_type_to_duckdb(col: dict) -> str:
+    """meta.json 컬럼 정보 → DuckDB DDL 타입 문자열 변환."""
+    t = col.get("type", "").upper()
+    size = col.get("size")
+    precision = col.get("precision")
+    scale = col.get("scale")
+
+    if "NUMBER" in t or "BINARY_DOUBLE" in t or "BINARY_FLOAT" in t:
+        if precision and scale and scale > 0:
+            return f"DECIMAL({precision},{scale})"
+        elif precision:
+            return f"BIGINT"
+        return "DOUBLE"
+    if "FLOAT" in t:
+        return "DOUBLE"
+    if "DATE" in t and "TIMESTAMP" not in t:
+        return "DATE"
+    if "TIMESTAMP" in t:
+        if "TIME_ZONE" in t or "TZ" in t:
+            return "TIMESTAMPTZ"
+        return "TIMESTAMP"
+    if "CLOB" in t or "LONG" in t:
+        return "VARCHAR"
+    if "BLOB" in t or "RAW" in t:
+        return "BLOB"
+    if "NVARCHAR" in t or "NCHAR" in t:
+        return f"VARCHAR({size})" if size else "VARCHAR"
+    if "CHAR" in t:
+        return f"VARCHAR({size})" if size else "VARCHAR"
+    # VARCHAR / default
+    if size and size > 0:
+        return f"VARCHAR({size})"
+    return "VARCHAR"
+
+
+def _create_table_from_meta(conn, schema: str, table_name: str, meta: list[dict]):
+    """소스 메타데이터 기반으로 정확한 타입의 테이블 생성."""
+    tbl = f'"{schema}"."{table_name}"' if schema else f'"{table_name}"'
+    col_defs = [f'  "{col["name"]}" {_meta_type_to_duckdb(col)}' for col in meta]
+    ddl = f"CREATE TABLE {tbl} (\n" + ",\n".join(col_defs) + "\n)"
+
+    logger.info("CREATE TABLE %s (from source metadata)", tbl)
+    logger.debug("DDL:\n%s", ddl)
+    conn.execute(ddl)
+
+
 def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
              file_hash: str, mode: str, schema: str = None,
              load_mode: str = "replace", params: dict = None) -> int:
@@ -133,10 +188,20 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
 
     if not _table_exists(conn, schema, table_name):
         logger.info("Table not found, creating: %s", tbl)
-        conn.execute(
-            f"CREATE TABLE {tbl} AS SELECT * FROM read_csv_auto(?, header=True)",
-            [str(csv_path)],
-        )
+        meta_file = _find_meta_file(csv_path)
+        if meta_file:
+            meta = json.loads(meta_file.read_text(encoding="utf-8"))
+            columns = meta["columns"] if isinstance(meta, dict) and "columns" in meta else meta
+            _create_table_from_meta(conn, schema, table_name, columns)
+            conn.execute(
+                f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, header=True)",
+                [str(csv_path)],
+            )
+        else:
+            conn.execute(
+                f"CREATE TABLE {tbl} AS SELECT * FROM read_csv_auto(?, header=True)",
+                [str(csv_path)],
+            )
         row_count = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
     else:
         logger.debug("Table exists: %s", tbl)

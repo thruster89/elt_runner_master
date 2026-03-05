@@ -2,6 +2,7 @@
 
 import csv
 import gzip
+import json
 import time
 import logging
 from datetime import datetime
@@ -109,8 +110,50 @@ def _delete_by_params(conn, table_name: str, params: dict):
     logger.info("DELETE %s | %d rows | WHERE %s", table_name, cur.rowcount, where)
 
 
+def _find_meta_file(csv_path: Path) -> Path | None:
+    """CSV와 같은 디렉토리에서 대응하는 .meta.json 탐색."""
+    name = csv_path.name
+    stem = name[:-len(".csv.gz")] if name.endswith(".csv.gz") else name[:-len(".csv")]
+    meta = csv_path.parent / (stem + ".meta.json")
+    return meta if meta.exists() else None
+
+
+def _meta_type_to_sqlite(col: dict) -> str:
+    """meta.json 컬럼 정보 → SQLite DDL 타입 문자열 변환."""
+    t = col.get("type", "").upper()
+    precision = col.get("precision")
+    scale = col.get("scale")
+
+    if "NUMBER" in t or "BINARY_DOUBLE" in t or "BINARY_FLOAT" in t:
+        if precision and scale and scale > 0:
+            return "REAL"
+        return "INTEGER"
+    if "FLOAT" in t:
+        return "REAL"
+    if "DATE" in t or "TIMESTAMP" in t:
+        return "TEXT"
+    if "BLOB" in t or "RAW" in t:
+        return "BLOB"
+    return "TEXT"
+
+
 def _create_table_from_csv(conn, table_name: str, csv_path: Path):
-    """CSV 헤더 + 샘플 100행으로 SQLite 테이블 자동 생성"""
+    """CSV 헤더 + 메타 JSON(우선) 또는 샘플 100행으로 SQLite 테이블 자동 생성"""
+    # 메타 파일 우선 탐색 → 소스 타입 그대로 생성
+    meta_file = _find_meta_file(csv_path)
+    if meta_file:
+        meta = json.loads(meta_file.read_text(encoding="utf-8"))
+        columns = meta["columns"] if isinstance(meta, dict) and "columns" in meta else meta
+        col_defs = [f'  "{col["name"]}" {_meta_type_to_sqlite(col)}' for col in columns]
+        ddl = f'CREATE TABLE "{table_name}" (\n' + ",\n".join(col_defs) + "\n)"
+        logger.info("CREATE TABLE %s (from source metadata)", table_name)
+        logger.debug("DDL:\n%s", ddl)
+        conn.execute(ddl)
+        conn.commit()
+        return
+
+    # fallback: CSV 샘플 기반 타입 추론
+    logger.debug("No .meta.json found, inferring types from CSV samples")
     open_fn = gzip.open if str(csv_path).endswith(".gz") else open
 
     with open_fn(csv_path, "rt", encoding="utf-8") as f:
@@ -132,7 +175,7 @@ def _create_table_from_csv(conn, table_name: str, csv_path: Path):
 
     ddl = f'CREATE TABLE "{table_name}" (\n' + ",\n".join(col_defs) + "\n)"
 
-    logger.info("CREATE TABLE %s", table_name)
+    logger.info("CREATE TABLE %s (from CSV inference)", table_name)
     logger.debug("DDL:\n%s", ddl)
 
     conn.execute(ddl)

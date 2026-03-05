@@ -420,17 +420,71 @@ class DialogsMixin:
         self.after(500, lambda: self._on_run(scheduled=True))
 
     def _open_user_guide(self: "BatchRunnerGUI"):
-        """docs/USER_GUIDE.md를 OS 기본 프로그램으로 열기"""
-        # 프로젝트 루트 기준 (gui/mixins/ → 2단계 상위)
+        """docs/USER_GUIDE.md를 앱 내 팝업 창으로 표시"""
         guide = Path(__file__).resolve().parent.parent.parent / "docs" / "USER_GUIDE.md"
         if not guide.exists():
-            # Work Dir 기준 fallback
             guide = Path(self._work_dir.get()) / "docs" / "USER_GUIDE.md"
-        if guide.exists():
-            self._open_in_explorer(str(guide))
-        else:
-            from tkinter import messagebox
+        if not guide.exists():
             messagebox.showinfo("Help", "docs/USER_GUIDE.md 파일을 찾을 수 없습니다.")
+            return
+
+        text = guide.read_text(encoding="utf-8")
+
+        win = tk.Toplevel(self)
+        win.title("User Guide")
+        win.configure(bg=C["base"])
+        win.geometry("820x620")
+        win.transient(self)
+
+        txt = tk.Text(
+            win, wrap="word", font=FONTS["mono"],
+            bg=C["base"], fg=C["text"], insertbackground=C["text"],
+            relief="flat", padx=16, pady=12, spacing1=2, spacing3=2,
+        )
+        scrollbar = tk.Scrollbar(win, command=txt.yview)
+        txt.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        txt.pack(fill="both", expand=True)
+
+        # 간이 마크다운 스타일 태그
+        txt.tag_configure("h1", font=(FONTS["mono"][0], 18, "bold"), foreground=C["mauve"],
+                          spacing1=12, spacing3=6)
+        txt.tag_configure("h2", font=(FONTS["mono"][0], 15, "bold"), foreground=C["blue"],
+                          spacing1=10, spacing3=4)
+        txt.tag_configure("h3", font=(FONTS["mono"][0], 13, "bold"), foreground=C["green"],
+                          spacing1=8, spacing3=3)
+        txt.tag_configure("code", font=FONTS["mono"], background=C["surface0"],
+                          foreground=C["peach"])
+        txt.tag_configure("bullet", lmargin1=24, lmargin2=36)
+        txt.tag_configure("hr", foreground=C["surface1"])
+
+        for line in text.splitlines(keepends=True):
+            stripped = line.rstrip("\n")
+            if stripped.startswith("### "):
+                txt.insert("end", stripped[4:] + "\n", "h3")
+            elif stripped.startswith("## "):
+                txt.insert("end", stripped[3:] + "\n", "h2")
+            elif stripped.startswith("# "):
+                txt.insert("end", stripped[2:] + "\n", "h1")
+            elif stripped.startswith("---"):
+                txt.insert("end", "─" * 60 + "\n", "hr")
+            elif stripped.startswith("- ") or stripped.startswith("* "):
+                txt.insert("end", "  • " + stripped[2:] + "\n", "bullet")
+            elif stripped.startswith("  - ") or stripped.startswith("  * "):
+                txt.insert("end", "    ◦ " + stripped[4:] + "\n", "bullet")
+            elif stripped.startswith("```"):
+                txt.insert("end", stripped + "\n", "code")
+            else:
+                # 인라인 `code` 처리
+                parts = stripped.split("`")
+                for i, part in enumerate(parts):
+                    if i % 2 == 1:
+                        txt.insert("end", part, "code")
+                    else:
+                        txt.insert("end", part)
+                txt.insert("end", "\n")
+
+        txt.configure(state="disabled")
 
     def _open_log_folder(self: "BatchRunnerGUI"):
         """logs/ 폴더를 OS 탐색기로 연다"""
