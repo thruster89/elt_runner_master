@@ -144,13 +144,15 @@ def _create_table_from_csv(conn, table_name: str, csv_path: Path):
     if meta_file:
         meta = json.loads(meta_file.read_text(encoding="utf-8"))
         columns = meta["columns"] if isinstance(meta, dict) and "columns" in meta else meta
-        col_defs = [f'  "{col["name"]}" {_meta_type_to_sqlite(col)}' for col in columns]
-        ddl = f'CREATE TABLE "{table_name}" (\n' + ",\n".join(col_defs) + "\n)"
-        logger.info("CREATE TABLE %s (from source metadata)", table_name)
-        logger.debug("DDL:\n%s", ddl)
-        conn.execute(ddl)
-        conn.commit()
-        return
+        if columns:  # columns가 비어있으면 CSV fallback으로 진행
+            col_defs = [f'  "{col["name"]}" {_meta_type_to_sqlite(col)}' for col in columns]
+            ddl = f'CREATE TABLE "{table_name}" (\n' + ",\n".join(col_defs) + "\n)"
+            logger.info("CREATE TABLE %s (from source metadata)", table_name)
+            logger.debug("DDL:\n%s", ddl)
+            conn.execute(ddl)
+            conn.commit()
+            return
+        logger.debug("meta.json columns empty, falling back to CSV inference")
 
     # fallback: CSV 샘플 기반 타입 추론
     logger.debug("No .meta.json found, inferring types from CSV samples")

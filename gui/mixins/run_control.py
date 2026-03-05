@@ -527,6 +527,18 @@ class RunControlMixin:
             _recurse(self._left_inner)
 
     def _refresh_preview(self: "BatchRunnerGUI"):
+        """디바운싱: 50ms 내 연속 호출은 마지막 1회만 실행.
+        _restoring_job 중에는 완전 스킵 (복원 완료 후 1회 실행)."""
+        if getattr(self, "_restoring_job", False):
+            return
+        # dirty 캐시 무효화 (변경 발생)
+        self._dirty_cached = None
+        if hasattr(self, "_preview_debounce_id") and self._preview_debounce_id:
+            self.after_cancel(self._preview_debounce_id)
+        self._preview_debounce_id = self.after(50, self._refresh_preview_now)
+
+    def _refresh_preview_now(self: "BatchRunnerGUI"):
+        self._preview_debounce_id = None
         # UI 빌드 중에는 위젯이 아직 없으므로 무시
         if not hasattr(self, "_cmd_preview"):
             return

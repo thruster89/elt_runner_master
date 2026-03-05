@@ -391,6 +391,8 @@ class UiBuildMixin:
         """Stage ON/OFF에 따라 관련 섹션 pack_forget / pack."""
         if not hasattr(self, "_export_section"):
             return  # 빌드 중 guard
+        if getattr(self, "_restoring_job", False):
+            return  # 복원 중 불필요한 재배치 스킵
 
         # 모든 동적 섹션 forget (pack 순서 보장)
         for sec in (self._export_section, self._load_section,
@@ -566,7 +568,7 @@ class UiBuildMixin:
             d = filedialog.asksaveasfilename(
                 initialdir=self._work_dir.get(),
                 defaultextension=".duckdb",
-                filetypes=[("DuckDB", "*.duckdb"), ("SQLite", "*.db *.sqlite3"), ("All", "*.*")],
+                filetypes=[("DuckDB", "*.duckdb *.vdb"), ("SQLite", "*.db *.sqlite *.sqlite3"), ("All", "*.*")],
                 title="Select DB file")
             if d:
                 try:
@@ -782,7 +784,7 @@ class UiBuildMixin:
             d = filedialog.asksaveasfilename(
                 initialdir=self._work_dir.get(),
                 defaultextension=".duckdb",
-                filetypes=[("DuckDB", "*.duckdb"), ("SQLite", "*.db *.sqlite3"), ("All", "*.*")],
+                filetypes=[("DuckDB", "*.duckdb *.vdb"), ("SQLite", "*.db *.sqlite *.sqlite3"), ("All", "*.*")],
                 title="Select Transform DB file")
             if d:
                 try:
@@ -841,7 +843,7 @@ class UiBuildMixin:
             d = filedialog.asksaveasfilename(
                 initialdir=self._work_dir.get(),
                 defaultextension=".duckdb",
-                filetypes=[("DuckDB", "*.duckdb"), ("SQLite", "*.db *.sqlite3"), ("All", "*.*")],
+                filetypes=[("DuckDB", "*.duckdb *.vdb"), ("SQLite", "*.db *.sqlite *.sqlite3"), ("All", "*.*")],
                 title="Select Transfer Dest DB file")
             if d:
                 try:

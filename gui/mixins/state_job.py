@@ -14,6 +14,8 @@ import yaml
 
 from gui.constants import C, FONTS, THEMES, APP_VERSION, _CONF_PATH, STAGE_CONFIG
 from gui.utils import load_jobs, load_env_hosts, _scan_params_from_files
+from gui.utils import collect_sql_tree as _collect_sql_tree
+from gui.utils import flatten_sql_tree as _flatten_sql_tree
 from gui.widgets import SqlSelectorDialog
 
 if TYPE_CHECKING:
@@ -149,14 +151,21 @@ class StateJobMixin:
         self._ov_timeout.set(ov.get("timeout", "1800"))
         self._ov_name_style.set(ov.get("name_style", "full"))
         self._ov_strip_prefix.set(ov.get("strip_prefix", False))
-
-        self._refresh_preview()
+        # NOTE: _refresh_preview()는 호출자가 _restoring_job=False 후 직접 호출
 
     def _is_dirty(self: "BatchRunnerGUI") -> bool:
-        """현재 상태가 로드 시점 스냅샷과 다른지 확인"""
+        """현재 상태가 로드 시점 스냅샷과 다른지 확인.
+        고빈도 경로 (_update_title_dirty) 에서는 캐시된 플래그 사용,
+        저빈도 경로 (save 확인) 에서만 전체 비교."""
         if self._job_loaded_snapshot is None:
             return False
-        return self._snapshot() != self._job_loaded_snapshot
+        # 캐시된 dirty 플래그가 있으면 즉시 반환 (고빈도 경로 최적화)
+        cached = getattr(self, "_dirty_cached", None)
+        if cached is not None:
+            return cached
+        result = self._snapshot() != self._job_loaded_snapshot
+        self._dirty_cached = result
+        return result
 
     def _get_changed_fields(self: "BatchRunnerGUI") -> list[str]:
         """변경된 필드명 리스트 반환"""
@@ -175,19 +184,21 @@ class StateJobMixin:
         return changed
 
     def _update_title_dirty(self: "BatchRunnerGUI"):
-        """타이틀 바에 변경 표시(*) 업데이트"""
+        """타이틀 바에 변경 표시(*) 업데이트 (이전과 동일하면 스킵)"""
         base = f"ELT Runner  v{APP_VERSION}"
         fname = self.job_var.get()
         if fname:
             base = f"{fname} - {base}"
-        if self._is_dirty():
-            self.title(f"* {base}")
-        else:
-            self.title(base)
+        dirty = self._is_dirty()
+        new_title = f"* {base}" if dirty else base
+        if getattr(self, "_cached_title", None) != new_title:
+            self._cached_title = new_title
+            self.title(new_title)
 
     def _capture_loaded_snapshot(self: "BatchRunnerGUI"):
         """현재 GUI 상태를 로드 시점 스냅샷으로 캡처 (after로 지연)"""
         self._job_loaded_snapshot = self._snapshot()
+        self._dirty_cached = False  # 방금 캡처했으므로 clean
         self._update_title_dirty()
 
     # ── GUI config 빌드 ────────────────────────────────────────
@@ -467,6 +478,8 @@ class StateJobMixin:
         self._update_report_sql_preview()
 
         self._restoring_job = False
+        # 복원 중 스킵된 콜백 일괄 1회 실행
+        self._update_section_visibility()
         self._update_transform_target_visibility()
         self._update_transfer_visibility()
         self._refresh_preview()
@@ -498,6 +511,7 @@ class StateJobMixin:
         self._jobs[fname] = new_cfg
         self._log_sys(f"Saved: {out_path.name}")
         self._job_loaded_snapshot = self._snapshot()
+        self._dirty_cached = False
         self._update_title_dirty()
 
     def _show_save_confirm(self: "BatchRunnerGUI", fname, changed_fields) -> bool:
@@ -843,42 +857,30 @@ class StateJobMixin:
         # ── 스테이지별 SQL 파일 수집 + 파라미터 감지 ──
         stage_params: dict[str, set[str]] = {}
 
-        # export
-        export_files = []
-        export_dir = _resolve(self._export_sql_dir.get().strip())
-        if self._selected_sqls and export_dir:
-            export_files = [export_dir / p for p in self._selected_sqls
-                            if (export_dir / p).exists()]
-        elif export_dir:
-            export_files = list(export_dir.rglob("*.sql"))
-        if export_files:
-            stage_params["export"] = set(_scan_params_from_files(export_files))
-
-        # transform
-        tfm_files = []
-        tfm_dir = _resolve(self._transform_sql_dir.get().strip())
-        if getattr(self, "_selected_transform_sqls", set()) and tfm_dir:
-            tfm_files = [tfm_dir / p for p in self._selected_transform_sqls
-                         if (tfm_dir / p).exists()]
-        elif tfm_dir:
-            tfm_files = list(tfm_dir.rglob("*.sql"))
-        if tfm_files:
-            stage_params["transform"] = set(_scan_params_from_files(tfm_files))
-
-        # report
-        rpt_files = []
-        rpt_dir = _resolve(self._report_sql_dir.get().strip())
-        if getattr(self, "_selected_report_sqls", set()) and rpt_dir:
-            rpt_files = [rpt_dir / p for p in self._selected_report_sqls
-                         if (rpt_dir / p).exists()]
-        elif rpt_dir:
-            rpt_files = list(rpt_dir.rglob("*.sql"))
-        if rpt_files:
-            stage_params["report"] = set(_scan_params_from_files(rpt_files))
+        stage_cfg = [
+            ("export",    self._export_sql_dir,    self._selected_sqls),
+            ("transform", self._transform_sql_dir, getattr(self, "_selected_transform_sqls", set())),
+            ("report",    self._report_sql_dir,    getattr(self, "_selected_report_sqls", set())),
+        ]
+        for stage_key, dir_var, selected in stage_cfg:
+            sql_dir = _resolve(dir_var.get().strip())
+            if not sql_dir:
+                continue
+            if selected:
+                files = [sql_dir / p for p in selected if (sql_dir / p).exists()]
+            else:
+                # collect_sql_tree 캐시 활용 (rglob 대체)
+                tree = _collect_sql_tree(sql_dir)
+                files = _flatten_sql_tree(sql_dir, tree)
+            if files:
+                stage_params[stage_key] = set(_scan_params_from_files(files))
 
         all_detected = set()
         for s in stage_params.values():
             all_detected |= s
+
+        # 캐시: _check_missing_params() 에서 재사용
+        self._cached_detected_params = all_detected
 
         if not all_detected:
             return
@@ -928,103 +930,74 @@ class StateJobMixin:
             self._last_detected_params = set(all_detected)
             self._log_write(f"SQL params detected: {', '.join(sorted(all_detected))}", "INFO")
 
-    # ── SQL 선택 ─────────────────────────────────────────────
-    def _open_sql_selector(self: "BatchRunnerGUI"):
-        sql_dir_rel = self._export_sql_dir.get() or "sql/export"
+    # ── SQL 선택 (공통 헬퍼) ─────────────────────────────────
+    _SQL_SELECTOR_CFG = {
+        "export":    {"dir_var": "_export_sql_dir",    "default": "sql/export",
+                      "selected": "_selected_sqls",
+                      "label": "_sql_count_label",     "tip": "_sql_count_tip"},
+        "transform": {"dir_var": "_transform_sql_dir", "default": "sql/transform/duckdb",
+                      "selected": "_selected_transform_sqls",
+                      "label": "_transform_sql_count_label", "tip": "_transform_sql_count_tip"},
+        "report":    {"dir_var": "_report_sql_dir",    "default": "sql/report",
+                      "selected": "_selected_report_sqls",
+                      "label": "_report_sql_count_label",    "tip": "_report_sql_count_tip"},
+    }
+
+    def _open_sql_selector_for(self: "BatchRunnerGUI", stage: str):
+        """stage별 SQL 선택 다이얼로그 (공통)"""
+        cfg = self._SQL_SELECTOR_CFG[stage]
+        sql_dir_rel = getattr(self, cfg["dir_var"]).get() or cfg["default"]
         wd = Path(self._work_dir.get())
         sql_dir = wd / sql_dir_rel
         if not sql_dir.exists():
             messagebox.showwarning("SQL Filter",
-                                   f"export.sql_dir path not found:\n{sql_dir}",
+                                   f"{stage}.sql_dir path not found:\n{sql_dir}",
                                    parent=self)
             return
-
-        # 현재 선택 상태를 sql_dir 기준 상대경로로 변환하여 전달
-        pre = set()
-        for rel in self._selected_sqls:
-            pre.add(rel)
-
+        pre = set(getattr(self, cfg["selected"]))
         dlg = SqlSelectorDialog(self, sql_dir, pre_selected=pre)
         self.wait_window(dlg)
-
-        # 결과 반영 (sql_dir 기준 상대경로)
-        self._selected_sqls = set(dlg.selected)
-        self._update_sql_preview()
+        setattr(self, cfg["selected"], set(dlg.selected))
+        self._update_sql_preview_for(stage)
         self._scan_and_suggest_params()
         self._refresh_preview()
+
+    def _update_sql_preview_for(self: "BatchRunnerGUI", stage: str):
+        """stage별 SQL 선택 라벨 갱신 (공통)"""
+        cfg = self._SQL_SELECTOR_CFG[stage]
+        label_attr = cfg["label"]
+        if not hasattr(self, label_attr):
+            return
+        selected = getattr(self, cfg["selected"])
+        count = len(selected)
+        if count == 0:
+            getattr(self, label_attr).config(text="(all)", fg=C["subtext"])
+            tip_text = ""
+        else:
+            getattr(self, label_attr).config(text=f"({count})", fg=C["green"])
+            tip_text = "\n".join(sorted(selected))
+        tip_attr = cfg["tip"]
+        if hasattr(self, tip_attr):
+            getattr(self, tip_attr)._text = tip_text
+
+    # 기존 호출자 호환 래퍼
+    def _open_sql_selector(self: "BatchRunnerGUI"):
+        self._open_sql_selector_for("export")
 
     def _update_sql_preview(self: "BatchRunnerGUI"):
-        count = len(self._selected_sqls)
-        if count == 0:
-            self._sql_count_label.config(text="(all)", fg=C["subtext"])
-            tip_text = ""
-        else:
-            self._sql_count_label.config(text=f"({count})", fg=C["green"])
-            tip_text = "\n".join(sorted(self._selected_sqls))
-        if hasattr(self, "_sql_count_tip"):
-            self._sql_count_tip._text = tip_text
+        self._update_sql_preview_for("export")
 
-    # ── Transform SQL 선택 ───────────────────────────────────
     def _open_transform_sql_selector(self: "BatchRunnerGUI"):
-        sql_dir_rel = self._transform_sql_dir.get() or "sql/transform/duckdb"
-        wd = Path(self._work_dir.get())
-        sql_dir = wd / sql_dir_rel
-        if not sql_dir.exists():
-            messagebox.showwarning("SQL Filter",
-                                   f"transform.sql_dir path not found:\n{sql_dir}",
-                                   parent=self)
-            return
-        pre = set(self._selected_transform_sqls)
-        dlg = SqlSelectorDialog(self, sql_dir, pre_selected=pre)
-        self.wait_window(dlg)
-        self._selected_transform_sqls = set(dlg.selected)
-        self._update_transform_sql_preview()
-        self._scan_and_suggest_params()
-        self._refresh_preview()
+        self._open_sql_selector_for("transform")
 
     def _update_transform_sql_preview(self: "BatchRunnerGUI"):
-        if not hasattr(self, "_transform_sql_count_label"):
-            return
-        count = len(self._selected_transform_sqls)
-        if count == 0:
-            self._transform_sql_count_label.config(text="(all)", fg=C["subtext"])
-            tip_text = ""
-        else:
-            self._transform_sql_count_label.config(text=f"({count})", fg=C["green"])
-            tip_text = "\n".join(sorted(self._selected_transform_sqls))
-        if hasattr(self, "_transform_sql_count_tip"):
-            self._transform_sql_count_tip._text = tip_text
+        self._update_sql_preview_for("transform")
 
-    # ── Report SQL 선택 ──────────────────────────────────────
     def _open_report_sql_selector(self: "BatchRunnerGUI"):
-        sql_dir_rel = self._report_sql_dir.get() or "sql/report"
-        wd = Path(self._work_dir.get())
-        sql_dir = wd / sql_dir_rel
-        if not sql_dir.exists():
-            messagebox.showwarning("SQL Filter",
-                                   f"report.sql_dir path not found:\n{sql_dir}",
-                                   parent=self)
-            return
-        pre = set(self._selected_report_sqls)
-        dlg = SqlSelectorDialog(self, sql_dir, pre_selected=pre)
-        self.wait_window(dlg)
-        self._selected_report_sqls = set(dlg.selected)
-        self._update_report_sql_preview()
-        self._scan_and_suggest_params()
-        self._refresh_preview()
+        self._open_sql_selector_for("report")
 
     def _update_report_sql_preview(self: "BatchRunnerGUI"):
-        if not hasattr(self, "_report_sql_count_label"):
-            return
-        count = len(self._selected_report_sqls)
-        if count == 0:
-            self._report_sql_count_label.config(text="(all)", fg=C["subtext"])
-            tip_text = ""
-        else:
-            self._report_sql_count_label.config(text=f"({count})", fg=C["green"])
-            tip_text = "\n".join(sorted(self._selected_report_sqls))
-        if hasattr(self, "_report_sql_count_tip"):
-            self._report_sql_count_tip._text = tip_text
+        self._update_sql_preview_for("report")
 
     # ── Param 행 관리 ────────────────────────────────────────
 
