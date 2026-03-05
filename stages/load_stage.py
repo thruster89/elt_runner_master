@@ -233,17 +233,24 @@ def _run_load_loop(ctx, logger, csv_files, sql_map, tgt_type, load_fn):
     skipped = 0
     failed = 0
 
+    # 동일 테이블에 여러 CSV → 첫 번째만 원래 load_mode, 이후는 append
+    seen_tables: set[str] = set()
+
     for i, csv_path in enumerate(csv_files, 1):
         sqlname = extract_sqlname_from_csv(csv_path)
         sql_file = sql_map.get(sqlname)
 
         if sql_file:
             table_name = resolve_table_name(sql_file)
-            override_mode = None
         else:
-            # SQL 없음 → 파일명(__앞부분)을 테이블명으로 사용
             table_name = sqlname
+
+        # 같은 테이블에 두 번째 이상 적재 시 append로 전환
+        if table_name in seen_tables:
+            override_mode = "append"
+        else:
             override_mode = None
+            seen_tables.add(table_name)
 
         file_hash = _sha256_file(csv_path)
 

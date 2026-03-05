@@ -225,9 +225,14 @@ def run_pipeline(ctx: RunContext):
         ctx.logger.warning("No stages defined in pipeline")
         return
 
+    # stage 별칭 → 정규 이름 변환 (하위 호환)
+    _STAGE_ALIASES = {"load_local": "load"}
+    stages = [_STAGE_ALIASES.get(s, s) for s in stages]
+
     # --stage 필터 적용
     stage_filter = getattr(ctx, "stage_filter", []) or []
     if stage_filter:
+        stage_filter = [_STAGE_ALIASES.get(s, s) for s in stage_filter]
         before = stages[:]
         stages = [s for s in stages if s in stage_filter]
         ctx.logger.info("Stage filter: %s → %s", before, stages)
