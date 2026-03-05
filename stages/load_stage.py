@@ -86,16 +86,22 @@ def run(ctx: RunContext):
         return
 
     export_dir = export_base / ctx.job_name
-    if not export_dir.exists():
+    if not export_dir.exists() and not ctx.exported_files:
         if ctx.mode == "plan":
             logger.info("LOAD [PLAN] csv dir not found: %s (export 실행 후 확인 가능)", export_dir)
             return
-        export_dir = export_base
+        logger.warning("LOAD csv dir not found: %s — skipping (run export first)", export_dir)
+        return
 
-    csv_files = sorted([
-        p for p in export_dir.iterdir()
-        if p.is_file() and p.name.endswith((".csv", ".csv.gz"))
-    ])
+    # export → load 파이프라인: export가 생성한 파일만 로드 (잔여 CSV 혼입 방지)
+    if ctx.exported_files:
+        csv_files = sorted([p for p in ctx.exported_files if p.exists()])
+        logger.info("LOAD using %d files from current export run", len(csv_files))
+    else:
+        csv_files = sorted([
+            p for p in export_dir.iterdir()
+            if p.is_file() and p.name.endswith((".csv", ".csv.gz"))
+        ])
     if not csv_files:
         if ctx.mode == "plan":
             logger.info("LOAD [PLAN] CSV 파일 없음 — export 실행 후 확인 가능 (%s)", export_dir)

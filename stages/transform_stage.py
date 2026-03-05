@@ -7,6 +7,10 @@ job.yml 설정:
   transform:
     sql_dir: sql/transform/duckdb    # target DB에서 실행할 SQL 디렉토리
     on_error: stop                   # stop(기본) / continue
+    transfer:                        # (선택) DB→DB 전송 모드
+      dest:
+        type: duckdb                 # source와 동일 타입만 지원
+        db_path: data/dest.duckdb
 """
 
 import re
@@ -87,6 +91,25 @@ def run(ctx: RunContext):
 
     conn, conn_type, label = connect_target(ctx, target_cfg)
 
+    # ── Transfer: dest DB ATTACH ─────────────────────────────
+    transfer_cfg = transform_cfg.get("transfer", {})
+    dest_cfg = transfer_cfg.get("dest", {})
+    dest_attached = False
+    if dest_cfg.get("type", "").strip():
+        dest_type = dest_cfg["type"].strip().lower()
+        if dest_type != conn_type:
+            conn.close()
+            raise ValueError(
+                f"Transfer는 동일 DB 타입만 지원: source={conn_type}, dest={dest_type}")
+        if dest_type not in ("duckdb", "sqlite3"):
+            conn.close()
+            raise ValueError(
+                f"Transfer는 duckdb/sqlite3만 지원: {dest_type}")
+        dest_path = resolve_path(ctx, dest_cfg.get("db_path", ""))
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        _attach_dest(conn, conn_type, str(dest_path), logger)
+        dest_attached = True
+
     # schema 결정: transform.schema 우선, 없으면 target.schema fallback
     schema = (transform_cfg.get("schema") or "").strip() \
              or (target_cfg.get("schema") or "").strip() \
@@ -101,8 +124,9 @@ def run(ctx: RunContext):
         _ensure_param_schemas(conn, sql_files, stage_params, logger)
 
     schema_display = schema if schema else "(default)"
-    logger.info("TRANSFORM target=%s | schema=%s | sql_count=%d | on_error=%s",
-                label, schema_display, len(sql_files), on_error)
+    transfer_display = f" | transfer=dest({dest_cfg.get('db_path', '')})" if dest_attached else ""
+    logger.info("TRANSFORM target=%s | schema=%s | sql_count=%d | on_error=%s%s",
+                label, schema_display, len(sql_files), on_error, transfer_display)
 
     # ── run_info.json 초기화 & retry ────────────────────────
     tracking_base = resolve_path(ctx, transform_cfg.get("tracking_dir", "data/transform"))
@@ -123,6 +147,8 @@ def run(ctx: RunContext):
                       run_info_path=run_info_path,
                       failed_task_keys=failed_task_keys)
     finally:
+        if dest_attached:
+            _detach_dest(conn, conn_type, logger)
         conn.close()
 
 
@@ -211,6 +237,28 @@ def _run_sql_loop(ctx, conn, conn_type, sql_files, on_error, *,
     logger.info("TRANSFORM summary | success=%d failed=%d skipped=%d total=%d",
                 success, failed, skipped, total)
     ctx.report_stage_result("transform", success=success, failed=failed, skipped=skipped)
+
+
+def _attach_dest(conn, conn_type, dest_path, logger):
+    """Transfer dest DB를 source 커넥션에 ATTACH (alias=dest)."""
+    safe_path = dest_path.replace("'", "''")
+    if conn_type == "duckdb":
+        conn.execute(f"ATTACH '{safe_path}' AS dest")
+    elif conn_type == "sqlite3":
+        conn.execute(f"ATTACH DATABASE '{safe_path}' AS dest")
+    logger.info("TRANSFER dest DB attached: %s (alias=dest)", dest_path)
+
+
+def _detach_dest(conn, conn_type, logger):
+    """Transfer dest DB를 DETACH."""
+    try:
+        if conn_type == "duckdb":
+            conn.execute("DETACH dest")
+        elif conn_type == "sqlite3":
+            conn.execute("DETACH DATABASE dest")
+        logger.info("TRANSFER dest DB detached")
+    except Exception as e:
+        logger.warning("TRANSFER detach failed (ignored): %s", e)
 
 
 def _ensure_param_schemas(conn, sql_files, params, logger):
