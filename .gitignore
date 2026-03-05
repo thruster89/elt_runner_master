@@ -22,6 +22,9 @@ plan_report.json
 # Sensitive config (contains passwords)
 config/env.yml
 
+# Patches (offline update용)
+patches/
+
 # IDE / OS
 .claude/d
 *.swp
