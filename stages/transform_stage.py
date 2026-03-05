@@ -241,10 +241,11 @@ def _run_sql_loop(ctx, conn, conn_type, sql_files, on_error, *,
 
 def _attach_dest(conn, conn_type, dest_path, logger):
     """Transfer dest DB를 source 커넥션에 ATTACH (alias=dest)."""
+    safe_path = dest_path.replace("'", "''")
     if conn_type == "duckdb":
-        conn.execute(f"ATTACH '{dest_path}' AS dest")
+        conn.execute(f"ATTACH '{safe_path}' AS dest")
     elif conn_type == "sqlite3":
-        conn.execute(f"ATTACH DATABASE '{dest_path}' AS dest")
+        conn.execute(f"ATTACH DATABASE '{safe_path}' AS dest")
     logger.info("TRANSFER dest DB attached: %s (alias=dest)", dest_path)
 
 

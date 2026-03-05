@@ -408,6 +408,7 @@ class UiBuildMixin:
         if self._stage_transform.get():
             self._transform_section.pack(fill="x")
             self._update_transform_target_visibility()
+            self._update_transfer_visibility()
 
         if self._stage_report.get():
             self._report_section.pack(fill="x")
