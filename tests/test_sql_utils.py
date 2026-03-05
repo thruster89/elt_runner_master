@@ -12,6 +12,7 @@ from engine.sql_utils import (
     extract_params_from_csv,
     _strip_sql_comments,
     _remove_empty_param_lines,
+    read_sql_file,
 )
 
 
@@ -318,3 +319,36 @@ class TestStripSqlComments:
         sql = "SELECT '--not-a-comment' FROM t"
         result = _strip_sql_comments(sql)
         assert "SELECT" in result
+
+
+# =====================================================================
+# read_sql_file (인코딩 자동 감지)
+# =====================================================================
+class TestReadSqlFile:
+
+    def test_utf8(self, tmp_path):
+        """UTF-8 파일 정상 읽기."""
+        f = tmp_path / "test.sql"
+        f.write_bytes("SELECT '한글' FROM t".encode("utf-8"))
+        assert "한글" in read_sql_file(f)
+
+    def test_cp949(self, tmp_path):
+        """CP949(EUC-KR) 인코딩 파일도 읽기."""
+        f = tmp_path / "test.sql"
+        f.write_bytes("-- 계약 테이블\nSELECT 1".encode("cp949"))
+        result = read_sql_file(f)
+        assert "계약 테이블" in result
+        assert "SELECT 1" in result
+
+    def test_euc_kr(self, tmp_path):
+        """EUC-KR 인코딩 파일도 읽기."""
+        f = tmp_path / "test.sql"
+        f.write_bytes("-- 보험료\nSELECT 1".encode("euc-kr"))
+        result = read_sql_file(f)
+        assert "보험료" in result
+
+    def test_ascii(self, tmp_path):
+        """ASCII 파일은 UTF-8으로 문제 없이 읽힘."""
+        f = tmp_path / "test.sql"
+        f.write_text("SELECT 1 FROM dual", encoding="ascii")
+        assert "SELECT 1" in read_sql_file(f)

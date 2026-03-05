@@ -7,6 +7,21 @@ SQL_PREFIX_PATTERN = re.compile(r"^(\d+)_.*\.sql$", re.IGNORECASE)
 SQL_PREFIX_STRIP = re.compile(r"^(\d+)_")
 TABLE_HINT_PATTERN = re.compile(r"^--\[(.+)\]$")
 
+# SQL 파일 읽기에 시도할 인코딩 목록 (우선순위순)
+_SQL_ENCODINGS = ("utf-8", "cp949", "euc-kr", "latin-1")
+
+
+def read_sql_file(path: Path) -> str:
+    """SQL 파일을 읽어 문자열로 반환. UTF-8 실패 시 cp949/euc-kr/latin-1 순으로 시도."""
+    raw = path.read_bytes()
+    for enc in _SQL_ENCODINGS:
+        try:
+            return raw.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    # latin-1은 모든 바이트를 받아들이므로 여기 도달하지 않지만 방어 코드
+    return raw.decode("utf-8", errors="replace")
+
 
 def strip_sql_prefix(name: str) -> str:
     """숫자 접두사 제거: '01_contract' → 'contract', 'contract' → 'contract'"""
@@ -45,17 +60,17 @@ def resolve_table_name(sql_file: Path) -> str:
     SQL 첫 줄(정확히는 첫 non-empty line)에 --[table_name] 이 있으면 그 값을 테이블명으로 사용.
     없으면 sql_file.stem 사용.
     """
-    with open(sql_file, "r", encoding="utf-8") as f:
-        for line in f:
-            s = line.strip()
-            if not s:
-                continue
+    text = read_sql_file(sql_file)
+    for line in text.splitlines():
+        s = line.strip()
+        if not s:
+            continue
 
-            m = TABLE_HINT_PATTERN.match(s)
-            if m:
-                return m.group(1).strip()
+        m = TABLE_HINT_PATTERN.match(s)
+        if m:
+            return m.group(1).strip()
 
-            break
+        break
 
     return sql_file.stem
 
