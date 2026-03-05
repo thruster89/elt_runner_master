@@ -355,9 +355,7 @@ class StateJobMixin:
         src_type = src.get("type", "oracle")
         self._source_type_var.set(src_type)
         self._on_source_type_change()
-        src_host = src.get("host", "")
-        if src_host:
-            self._source_host_var.set(src_host)
+        self._source_host_var.set(src.get("host", ""))
 
         # Target
         tgt = cfg.get("target", {})
