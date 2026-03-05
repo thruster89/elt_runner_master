@@ -45,6 +45,8 @@ class StateJobMixin:
             "export_sql_dir": self._export_sql_dir.get(),
             "export_out_dir": self._export_out_dir.get(),
             "load_csv_dir":   self._load_csv_dir.get(),
+            "transform_target_type": self._transform_target_type.get(),
+            "transform_db_path":    self._transform_db_path.get(),
             "transform_schema":  self._transform_schema.get(),
             "transform_sql_dir": self._transform_sql_dir.get(),
             "report_sql_dir":    self._report_sql_dir.get(),
@@ -95,6 +97,8 @@ class StateJobMixin:
         self._export_sql_dir.set(snap.get("export_sql_dir", "sql/export"))
         self._export_out_dir.set(snap.get("export_out_dir", "data/export"))
         self._load_csv_dir.set(snap.get("load_csv_dir", ""))
+        self._transform_target_type.set(snap.get("transform_target_type", "(global)"))
+        self._transform_db_path.set(snap.get("transform_db_path", ""))
         self._transform_schema.set(snap.get("transform_schema", ""))
         self._transform_sql_dir.set(snap.get("transform_sql_dir", "sql/transform/duckdb"))
         self._report_sql_dir.set(snap.get("report_sql_dir", "sql/report"))
@@ -254,6 +258,12 @@ class StateJobMixin:
             cfg["target"]["db_path"] = self._target_db_path.get().strip()
         if self._target_schema.get().strip():
             cfg["target"]["schema"] = self._target_schema.get().strip()
+        # transform 전용 target (글로벌과 다를 때만 설정)
+        tfm_type = self._transform_target_type.get()
+        if tfm_type and tfm_type != "(global)":
+            cfg["transform"]["target"] = {"type": tfm_type}
+            if tfm_type in ("duckdb", "sqlite3") and self._transform_db_path.get().strip():
+                cfg["transform"]["target"]["db_path"] = self._transform_db_path.get().strip()
         if not self._ov_csv.get():
             cfg["report"]["skip_sql"] = True
         if self._ov_union_dir.get().strip():
@@ -366,10 +376,16 @@ class StateJobMixin:
         load_cfg = cfg.get("load", {})
         self._load_csv_dir.set(load_cfg.get("csv_dir", ""))
 
-        # Transform / Report paths
+        # Transform target / paths
         tfm = cfg.get("transform", {})
+        tfm_tgt = tfm.get("target", {})
+        tfm_tgt_type = tfm_tgt.get("type", "").strip()
+        self._transform_target_type.set(tfm_tgt_type if tfm_tgt_type else "(global)")
+        self._transform_db_path.set(tfm_tgt.get("db_path", ""))
         self._transform_schema.set(tfm.get("schema", ""))
-        self._transform_sql_dir.set(tfm.get("sql_dir", f"sql/transform/{tgt.get('type', 'duckdb')}"))
+        # sql_dir 기본값: transform 전용 target이면 그 type, 아니면 글로벌 target type
+        effective_type = tfm_tgt_type if tfm_tgt_type else tgt.get("type", "duckdb")
+        self._transform_sql_dir.set(tfm.get("sql_dir", f"sql/transform/{effective_type}"))
         rep = cfg.get("report", {})
         rep_csv = rep.get("export_csv", {})
         self._report_sql_dir.set(rep_csv.get("sql_dir", "sql/report"))
@@ -434,6 +450,7 @@ class StateJobMixin:
         self._update_report_sql_preview()
 
         self._restoring_job = False
+        self._update_transform_target_visibility()
         self._refresh_preview()
         self.after(100, self._capture_loaded_snapshot)
 
@@ -660,11 +677,13 @@ class StateJobMixin:
 
     def _on_target_type_change(self: "BatchRunnerGUI", *_):
         tgt = self._target_type_var.get()
-        # 기본 패턴(sql/transform/<type>)일 때만 자동 변경, 사용자 커스텀 경로는 유지
+        # transform 전용 target이 (global)일 때만 sql_dir 자동 변경
         import re
+        tfm_type = self._transform_target_type.get()
+        effective_type = tgt if (not tfm_type or tfm_type == "(global)") else tfm_type
         cur = self._transform_sql_dir.get()
         if not cur or re.match(r"^sql/transform/\w+$", cur):
-            self._transform_sql_dir.set(f"sql/transform/{tgt}")
+            self._transform_sql_dir.set(f"sql/transform/{effective_type}")
         self._update_target_visibility()
         self._update_transform_target_visibility()
         self._update_load_mode_options()
@@ -689,15 +708,16 @@ class StateJobMixin:
         self._schema_row.pack(fill="x", padx=12, pady=2)
 
     def _update_transform_target_visibility(self: "BatchRunnerGUI"):
-        """Load OFF + Transform ON 시 Transform 섹션에 target 선택 UI 표시."""
+        """Transform 섹션의 target 선택 UI 가시성 관리.
+        Load OFF 시 표시, (global) 이외의 duckdb/sqlite3 선택 시 DB Path 행 표시."""
         if not hasattr(self, "_transform_target_frame"):
             return
         self._transform_target_frame.pack_forget()
         if not self._stage_load_local.get():
             self._transform_target_frame.pack(fill="x", before=self._transform_sql_dir_row)
-            # db_path 행: duckdb/sqlite3만 표시
-            tgt = self._target_type_var.get()
-            if tgt in ("duckdb", "sqlite3"):
+            # db_path 행: transform 전용 type이 duckdb/sqlite3일 때만 표시
+            tfm_type = self._transform_target_type.get()
+            if tfm_type in ("duckdb", "sqlite3"):
                 self._tfm_db_row.pack(fill="x", padx=12, pady=2)
             else:
                 self._tfm_db_row.pack_forget()

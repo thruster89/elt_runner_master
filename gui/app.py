@@ -70,6 +70,9 @@ class BatchRunnerGUI(
         self._export_out_dir  = tk.StringVar(value="data/export")
         # Load
         self._load_csv_dir    = tk.StringVar(value="")
+        # Transform target (별도 DB 사용 가능)
+        self._transform_target_type = tk.StringVar(value="")  # 빈값 = 글로벌 target 따름
+        self._transform_db_path     = tk.StringVar(value="")  # 빈값 = 글로벌 db_path 따름
         # Transform / Report paths
         self._transform_schema  = tk.StringVar(value="")
         self._transform_sql_dir = tk.StringVar(value="sql/transform/duckdb")

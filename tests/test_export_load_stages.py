@@ -77,6 +77,28 @@ class TestBuildCsvName:
         result = build_csv_name("tbl", "", {"k": "hello world"}, "csv")
         assert "hello_world" in result
 
+    def test_long_param_value_truncated(self):
+        """50자 초과 파라미터 값은 앞 20자 + 해시로 축약."""
+        long_val = ",".join(f"'LA{i:05d}'" for i in range(100))
+        assert len(long_val) > 50
+        result = build_csv_name("tbl", "h", {"codes": long_val}, "csv")
+        # 파일명이 적당히 짧아야 함
+        assert len(result) < 200
+        assert "__codes_" in result
+        assert "_h" in result  # 해시 prefix
+
+    def test_long_param_value_deterministic(self):
+        """같은 긴 값이면 항상 같은 파일명 생성 (해시 결정적)."""
+        long_val = "x" * 100
+        r1 = build_csv_name("tbl", "", {"k": long_val}, "csv")
+        r2 = build_csv_name("tbl", "", {"k": long_val}, "csv")
+        assert r1 == r2
+
+    def test_short_param_value_unchanged(self):
+        """50자 이하 파라미터 값은 그대로 유지."""
+        result = build_csv_name("tbl", "", {"k": "short_value"}, "csv")
+        assert result == "tbl__k_short_value.csv"
+
 
 # =====================================================================
 # export_stage — build_log_prefix
