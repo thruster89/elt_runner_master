@@ -57,7 +57,7 @@ class LogPanelMixin:
     def _set_log_filter(self: "BatchRunnerGUI", level):
         self._log_filter.set(level)
         self._refresh_log_filter_btns()
-        self._refilter_log()
+        self._apply_log_filter_elide()
 
     def _refresh_log_filter_btns(self: "BatchRunnerGUI"):
         cur = self._log_filter.get()
@@ -84,6 +84,21 @@ class LogPanelMixin:
         for text, tag, ts in self._log_raw_lines:
             if self._should_show_line(tag):
                 self._insert_log_line(text, tag, ts)
+        self._log.see("end")
+
+    # 모든 로그 tag 목록 (elide 토글 대상)
+    _LOG_ALL_TAGS = ("INFO", "DEBUG", "WARN", "ERROR", "SYS",
+                     "JOB_INFO", "STAGE_HEADER", "STAGE_DONE",
+                     "SUMMARY", "SUCCESS", "TIME")
+
+    def _apply_log_filter_elide(self: "BatchRunnerGUI"):
+        """필터 변경 시 tag elide 토글로 숨김/표시 (delete+re-insert 없이)"""
+        for tag in self._LOG_ALL_TAGS:
+            show = self._should_show_line(tag) if tag != "TIME" else self._show_time.get()
+            try:
+                self._log.tag_configure(tag, elide=not show)
+            except tk.TclError:
+                pass  # 해당 tag가 아직 없을 수 있음
         self._log.see("end")
 
     def _insert_log_line(self: "BatchRunnerGUI", text: str, tag: str, ts: str):

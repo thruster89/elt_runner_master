@@ -191,6 +191,8 @@ class SqlSelectorDialog(tk.Toplevel):
             self._render_tree(child_frame, sub, prefix=folder_prefix, indent=indent + 1)
 
     def _on_check(self, rel: str):
+        if getattr(self, "_batch_update", False):
+            return  # 일괄 업데이트 중 trace 콜백 스킵
         var = self._check_vars.get(rel)
         if var:
             if var.get():
@@ -205,18 +207,23 @@ class SqlSelectorDialog(tk.Toplevel):
         self._count_label.config(text=f"{count} / {total} selected")
 
     def _select_all(self):
+        self._batch_update = True
         for v in self._check_vars.values():
             v.set(True)
+        self._batch_update = False
         self.selected = set(self._check_vars.keys())
         self._update_count()
 
     def _deselect_all(self):
+        self._batch_update = True
         for v in self._check_vars.values():
             v.set(False)
+        self._batch_update = False
         self.selected = set()
         self._update_count()
 
     def _select_folder(self, folder_prefix: str, node: dict, value: bool):
+        self._batch_update = True
         def _recurse(nd, pfx):
             for fname in nd.get("__files__", []):
                 rel = (pfx + "/" + fname).lstrip("/")
@@ -227,6 +234,9 @@ class SqlSelectorDialog(tk.Toplevel):
                     continue
                 _recurse(sub, (pfx + "/" + key).lstrip("/"))
         _recurse(node, folder_prefix)
+        self._batch_update = False
+        # 일괄 업데이트 후 selected set 동기화
+        self.selected = {rel for rel, v in self._check_vars.items() if v.get()}
         self._update_count()
 
     def _apply_search_filter(self):

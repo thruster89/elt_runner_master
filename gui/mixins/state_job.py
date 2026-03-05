@@ -174,15 +174,16 @@ class StateJobMixin:
         return changed
 
     def _update_title_dirty(self: "BatchRunnerGUI"):
-        """타이틀 바에 변경 표시(*) 업데이트"""
+        """타이틀 바에 변경 표시(*) 업데이트 (이전과 동일하면 스킵)"""
         base = f"ELT Runner  v{APP_VERSION}"
         fname = self.job_var.get()
         if fname:
             base = f"{fname} - {base}"
-        if self._is_dirty():
-            self.title(f"* {base}")
-        else:
-            self.title(base)
+        dirty = self._is_dirty()
+        new_title = f"* {base}" if dirty else base
+        if getattr(self, "_cached_title", None) != new_title:
+            self._cached_title = new_title
+            self.title(new_title)
 
     def _capture_loaded_snapshot(self: "BatchRunnerGUI"):
         """현재 GUI 상태를 로드 시점 스냅샷으로 캡처 (after로 지연)"""
@@ -466,6 +467,8 @@ class StateJobMixin:
         self._update_report_sql_preview()
 
         self._restoring_job = False
+        # 복원 중 스킵된 콜백 일괄 1회 실행
+        self._update_section_visibility()
         self._update_transform_target_visibility()
         self._update_transfer_visibility()
         self._refresh_preview()
