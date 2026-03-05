@@ -568,7 +568,7 @@ class UiBuildMixin:
             d = filedialog.asksaveasfilename(
                 initialdir=self._work_dir.get(),
                 defaultextension=".duckdb",
-                filetypes=[("DuckDB", "*.duckdb"), ("SQLite", "*.db *.sqlite3"), ("All", "*.*")],
+                filetypes=[("DuckDB", "*.duckdb *.vdb"), ("SQLite", "*.db *.sqlite *.sqlite3"), ("All", "*.*")],
                 title="Select DB file")
             if d:
                 try:
@@ -784,7 +784,7 @@ class UiBuildMixin:
             d = filedialog.asksaveasfilename(
                 initialdir=self._work_dir.get(),
                 defaultextension=".duckdb",
-                filetypes=[("DuckDB", "*.duckdb"), ("SQLite", "*.db *.sqlite3"), ("All", "*.*")],
+                filetypes=[("DuckDB", "*.duckdb *.vdb"), ("SQLite", "*.db *.sqlite *.sqlite3"), ("All", "*.*")],
                 title="Select Transform DB file")
             if d:
                 try:
@@ -843,7 +843,7 @@ class UiBuildMixin:
             d = filedialog.asksaveasfilename(
                 initialdir=self._work_dir.get(),
                 defaultextension=".duckdb",
-                filetypes=[("DuckDB", "*.duckdb"), ("SQLite", "*.db *.sqlite3"), ("All", "*.*")],
+                filetypes=[("DuckDB", "*.duckdb *.vdb"), ("SQLite", "*.db *.sqlite *.sqlite3"), ("All", "*.*")],
                 title="Select Transfer Dest DB file")
             if d:
                 try:
