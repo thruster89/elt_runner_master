@@ -73,6 +73,10 @@ class BatchRunnerGUI(
         # Transform target (별도 DB 사용 가능)
         self._transform_target_type = tk.StringVar(value="")  # 빈값 = 글로벌 target 따름
         self._transform_db_path     = tk.StringVar(value="")  # 빈값 = 글로벌 db_path 따름
+        # Transfer (transform 내 DB→DB 전송 옵션)
+        self._transfer_enabled   = tk.BooleanVar(value=False)
+        self._transfer_dest_type = tk.StringVar(value="duckdb")
+        self._transfer_dest_db_path = tk.StringVar(value="")
         # Transform / Report paths
         self._transform_schema  = tk.StringVar(value="")
         self._transform_sql_dir = tk.StringVar(value="sql/transform/duckdb")

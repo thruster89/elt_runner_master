@@ -796,6 +796,65 @@ class UiBuildMixin:
 
         ttk.Separator(tf, orient="horizontal").pack(fill="x", padx=12, pady=4)
 
+        # ── Transfer 옵션 (DB→DB 전송) ─────────────────────────
+        self._transfer_frame = tk.Frame(body, bg=C["mantle"])
+        xfr = self._transfer_frame
+
+        xfr_hdr = tk.Frame(xfr, bg=C["mantle"])
+        xfr_hdr.pack(fill="x", padx=12, pady=(6, 2))
+        tk.Checkbutton(
+            xfr_hdr, text="Transfer", font=FONTS["body_bold"],
+            variable=self._transfer_enabled,
+            bg=C["mantle"], fg=C["mauve"], selectcolor=C["surface0"],
+            activebackground=C["mantle"], activeforeground=C["mauve"],
+            command=self._update_transfer_visibility,
+        ).pack(side="left")
+        Tooltip(xfr_hdr, TOOLTIPS["transfer"])
+
+        # Source DB 표시 (읽기전용 라벨 — load ON 시 자동 승계 표시)
+        self._transfer_src_row = tk.Frame(xfr, bg=C["mantle"])
+        tk.Label(self._transfer_src_row, text="Source", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w").pack(side="left")
+        self._transfer_src_label = tk.Label(
+            self._transfer_src_row, text="(global target)", font=FONTS["mono"],
+            bg=C["surface0"], fg=C["text"], anchor="w", padx=4)
+        self._transfer_src_label.pack(side="left", fill="x", expand=True, ipady=2)
+
+        # Dest DB 타입 + 경로
+        self._transfer_dest_row = tk.Frame(xfr, bg=C["mantle"])
+        tk.Label(self._transfer_dest_row, text="Dest Type", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w").pack(side="left")
+        self._transfer_dest_combo = ttk.Combobox(
+            self._transfer_dest_row, textvariable=self._transfer_dest_type,
+            values=["duckdb", "sqlite3"], state="readonly",
+            font=FONTS["mono"], width=12)
+        self._transfer_dest_combo.pack(side="left")
+
+        self._transfer_dest_db_row = tk.Frame(xfr, bg=C["mantle"])
+        tk.Label(self._transfer_dest_db_row, text="Dest Path", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w").pack(side="left")
+        tk.Entry(self._transfer_dest_db_row, textvariable=self._transfer_dest_db_path,
+                 bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
+                 relief="flat", font=FONTS["mono"], width=16).pack(side="left", fill="x", expand=True, ipady=2)
+        def _browse_transfer_dest():
+            d = filedialog.asksaveasfilename(
+                initialdir=self._work_dir.get(),
+                defaultextension=".duckdb",
+                filetypes=[("DuckDB", "*.duckdb"), ("SQLite", "*.db *.sqlite3"), ("All", "*.*")],
+                title="Select Transfer Dest DB file")
+            if d:
+                try:
+                    rel = Path(d).relative_to(Path(self._work_dir.get()))
+                    self._transfer_dest_db_path.set(rel.as_posix())
+                except ValueError:
+                    self._transfer_dest_db_path.set(d)
+        tk.Button(self._transfer_dest_db_row, text="...", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
+                  activebackground=C["surface1"],
+                  command=_browse_transfer_dest).pack(side="left", padx=(2, 0))
+
+        self._transfer_sep = ttk.Separator(xfr, orient="horizontal")
+
         # sql_dir + filter 버튼 (한 줄)
         tfm_sql_row = tk.Frame(body, bg=C["mantle"])
         tfm_sql_row.pack(fill="x", padx=12, pady=2)

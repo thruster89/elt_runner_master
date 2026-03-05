@@ -47,6 +47,9 @@ class StateJobMixin:
             "load_csv_dir":   self._load_csv_dir.get(),
             "transform_target_type": self._transform_target_type.get(),
             "transform_db_path":    self._transform_db_path.get(),
+            "transfer_enabled":     self._transfer_enabled.get(),
+            "transfer_dest_type":   self._transfer_dest_type.get(),
+            "transfer_dest_db_path": self._transfer_dest_db_path.get(),
             "transform_schema":  self._transform_schema.get(),
             "transform_sql_dir": self._transform_sql_dir.get(),
             "report_sql_dir":    self._report_sql_dir.get(),
@@ -99,6 +102,9 @@ class StateJobMixin:
         self._load_csv_dir.set(snap.get("load_csv_dir", ""))
         self._transform_target_type.set(snap.get("transform_target_type", "(global)"))
         self._transform_db_path.set(snap.get("transform_db_path", ""))
+        self._transfer_enabled.set(snap.get("transfer_enabled", False))
+        self._transfer_dest_type.set(snap.get("transfer_dest_type", "duckdb"))
+        self._transfer_dest_db_path.set(snap.get("transfer_dest_db_path", ""))
         self._transform_schema.set(snap.get("transform_schema", ""))
         self._transform_sql_dir.set(snap.get("transform_sql_dir", "sql/transform/duckdb"))
         self._report_sql_dir.set(snap.get("report_sql_dir", "sql/report"))
@@ -264,6 +270,13 @@ class StateJobMixin:
             cfg["transform"]["target"] = {"type": tfm_type}
             if tfm_type in ("duckdb", "sqlite3") and self._transform_db_path.get().strip():
                 cfg["transform"]["target"]["db_path"] = self._transform_db_path.get().strip()
+        # transfer (DB→DB 전송)
+        if self._transfer_enabled.get():
+            dest_type = self._transfer_dest_type.get()
+            transfer_cfg: dict = {"dest": {"type": dest_type}}
+            if dest_type in ("duckdb", "sqlite3") and self._transfer_dest_db_path.get().strip():
+                transfer_cfg["dest"]["db_path"] = self._transfer_dest_db_path.get().strip()
+            cfg["transform"]["transfer"] = transfer_cfg
         if not self._ov_csv.get():
             cfg["report"]["skip_sql"] = True
         if self._ov_union_dir.get().strip():
@@ -381,6 +394,12 @@ class StateJobMixin:
         self._transform_target_type.set(tfm_tgt_type if tfm_tgt_type else "(global)")
         self._transform_db_path.set(tfm_tgt.get("db_path", ""))
         self._transform_schema.set(tfm.get("schema", ""))
+        # Transfer 설정 복원
+        xfr = tfm.get("transfer", {})
+        self._transfer_enabled.set(bool(xfr.get("dest")))
+        xfr_dest = xfr.get("dest", {})
+        self._transfer_dest_type.set(xfr_dest.get("type", "duckdb"))
+        self._transfer_dest_db_path.set(xfr_dest.get("db_path", ""))
         # sql_dir 기본값: transform 전용 target이면 그 type, 아니면 글로벌 target type
         effective_type = tfm_tgt_type if tfm_tgt_type else tgt.get("type", "duckdb")
         self._transform_sql_dir.set(tfm.get("sql_dir", f"sql/transform/{effective_type}"))
@@ -449,6 +468,7 @@ class StateJobMixin:
 
         self._restoring_job = False
         self._update_transform_target_visibility()
+        self._update_transfer_visibility()
         self._refresh_preview()
         self.after(100, self._capture_loaded_snapshot)
 
@@ -684,6 +704,7 @@ class StateJobMixin:
             self._transform_sql_dir.set(f"sql/transform/{effective_type}")
         self._update_target_visibility()
         self._update_transform_target_visibility()
+        self._update_transfer_src_label()
         self._update_load_mode_options()
         self._refresh_preview()
 
@@ -719,6 +740,63 @@ class StateJobMixin:
                 self._tfm_db_row.pack(fill="x", padx=12, pady=2)
             else:
                 self._tfm_db_row.pack_forget()
+
+    def _update_transfer_visibility(self: "BatchRunnerGUI"):
+        """Transfer 옵션의 가시성 관리.
+        - Transfer 프레임은 항상 표시 (체크박스 포함)
+        - 체크 ON → Source/Dest 행 표시
+        - Source 라벨: load ON → 글로벌 target 자동 표시, load OFF → transform target 표시
+        """
+        if not hasattr(self, "_transfer_frame"):
+            return
+
+        # transfer 프레임 자체는 transform 섹션에 항상 표시
+        self._transfer_frame.pack(fill="x", before=self._transform_sql_dir_row)
+
+        enabled = self._transfer_enabled.get()
+        if enabled:
+            self._transfer_src_row.pack(fill="x", padx=12, pady=2)
+            self._transfer_dest_row.pack(fill="x", padx=12, pady=2)
+            self._transfer_dest_db_row.pack(fill="x", padx=12, pady=2)
+            self._transfer_sep.pack(fill="x", padx=12, pady=4)
+            self._update_transfer_src_label()
+        else:
+            self._transfer_src_row.pack_forget()
+            self._transfer_dest_row.pack_forget()
+            self._transfer_dest_db_row.pack_forget()
+            self._transfer_sep.pack_forget()
+
+    def _update_transfer_src_label(self: "BatchRunnerGUI"):
+        """Transfer Source DB 라벨을 현재 상태에 맞게 갱신."""
+        if not hasattr(self, "_transfer_src_label"):
+            return
+        if self._stage_load_local.get():
+            # Load ON → 글로벌 target 승계
+            tgt_type = self._target_type_var.get()
+            db_path = self._target_db_path.get()
+            if tgt_type in ("duckdb", "sqlite3") and db_path:
+                text = f"{tgt_type} ({db_path})"
+            else:
+                text = f"{tgt_type}" if tgt_type else "(global target)"
+            self._transfer_src_label.config(text=f"← global target: {text}")
+        else:
+            # Load OFF → transform 전용 target
+            tfm_type = self._transform_target_type.get()
+            if tfm_type and tfm_type != "(global)":
+                db_path = self._transform_db_path.get()
+                if tfm_type in ("duckdb", "sqlite3") and db_path:
+                    text = f"{tfm_type} ({db_path})"
+                else:
+                    text = tfm_type
+                self._transfer_src_label.config(text=f"← transform target: {text}")
+            else:
+                tgt_type = self._target_type_var.get()
+                db_path = self._target_db_path.get()
+                if tgt_type in ("duckdb", "sqlite3") and db_path:
+                    text = f"{tgt_type} ({db_path})"
+                else:
+                    text = f"{tgt_type}" if tgt_type else "(global target)"
+                self._transfer_src_label.config(text=f"← global target: {text}")
 
     def _update_load_mode_options(self: "BatchRunnerGUI"):
         """target type에 따라 load.mode 선택지 자동 전환"""
@@ -1018,6 +1096,9 @@ class StateJobMixin:
         var = getattr(self, f"_stage_{stage_key}")
         var.set(not var.get())
         self._refresh_stage_buttons()
+        # load 토글 시 transfer source label 갱신
+        if stage_key == "load_local":
+            self._update_transfer_src_label()
         self._refresh_preview()
 
     def _refresh_stage_buttons(self: "BatchRunnerGUI"):

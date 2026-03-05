@@ -189,6 +189,9 @@ TOOLTIPS = {
     # Transform
     "schema":       "SQL 실행 시 세션 스키마\nDuckDB: SET schema / Oracle: ALTER SESSION",
     "on_error":     "에러 발생 시 동작\nstop: 즉시 중단 / continue: 나머지 계속 실행",
+    "transfer":     "DB→DB 전송 모드\nSource DB에 Dest DB를 ATTACH하여\n"
+                    "SQL에서 dest.schema.table로 참조 가능\n"
+                    "(DuckDB↔DuckDB, SQLite↔SQLite만 지원)",
     # Report
     "excel":        "Excel(.xlsx) 리포트 생성",
     "csv":          "CSV 리포트 생성",
