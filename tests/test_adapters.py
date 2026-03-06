@@ -2,6 +2,7 @@
 import csv
 import gzip
 import io
+import json
 import logging
 from datetime import date, datetime
 from pathlib import Path
@@ -273,6 +274,80 @@ class TestVerticaSourceNullHandling:
         lines = content.strip().split("\n")
         assert lines[1] == "1,"        # None → ""
         assert lines[2] == ",text"     # None → ""
+
+
+# =====================================================================
+# oracle_target — meta.json에 columns 없을 때 CSV fallback
+# =====================================================================
+class TestOracleTargetMetaFallback:
+    """meta.json에 params만 있고 columns가 없을 때 TypeError 없이 CSV fallback."""
+
+    def test_params_only_meta_falls_back_to_csv(self, tmp_path):
+        """Vertica source가 생성한 params-only meta.json → CSV 기반 테이블 생성."""
+        from adapters.targets.oracle_target import _create_table_from_csv
+
+        # CSV 파일 생성
+        csv_file = tmp_path / "test__host__ym_202602.csv"
+        csv_file.write_text("PY_BJNO,PPDT,RTAMT\n26A,2026-02-01,100\n")
+
+        # params만 있는 meta.json (columns 키 없음)
+        meta_file = tmp_path / "test__host__ym_202602.meta.json"
+        meta_file.write_text(json.dumps({"params": {"ym": "202602"}}))
+
+        mock_cur = MagicMock()
+        mock_conn = MagicMock()
+
+        # TypeError 없이 정상 실행 (CSV fallback으로 CREATE TABLE)
+        _create_table_from_csv(mock_cur, mock_conn, "SCHEMA", "TEST_TABLE", csv_file)
+
+        # CREATE TABLE DDL이 실행되었는지 확인
+        calls = [str(c) for c in mock_cur.execute.call_args_list]
+        assert any("CREATE TABLE" in c for c in calls)
+
+    def test_empty_columns_list_falls_back(self, tmp_path):
+        """columns가 빈 리스트일 때도 CSV fallback."""
+        from adapters.targets.oracle_target import _create_table_from_csv
+
+        csv_file = tmp_path / "test.csv"
+        csv_file.write_text("A,B\n1,2\n")
+
+        meta_file = tmp_path / "test.meta.json"
+        meta_file.write_text(json.dumps({"columns": [], "params": {"ym": "202602"}}))
+
+        mock_cur = MagicMock()
+        mock_conn = MagicMock()
+
+        _create_table_from_csv(mock_cur, mock_conn, "SCHEMA", "TEST_TABLE", csv_file)
+
+        calls = [str(c) for c in mock_cur.execute.call_args_list]
+        assert any("CREATE TABLE" in c for c in calls)
+
+
+# =====================================================================
+# sqlite_target — meta.json에 columns 없을 때 CSV fallback
+# =====================================================================
+class TestSqliteTargetMetaFallback:
+
+    def test_params_only_meta_falls_back_to_csv(self, tmp_path):
+        """params-only meta.json → CSV fallback."""
+        from adapters.targets.sqlite_target import _create_table_from_csv
+        import sqlite3
+
+        csv_file = tmp_path / "test__host__ym_202602.csv"
+        csv_file.write_text("COL_A,COL_B\nval1,val2\n")
+
+        meta_file = tmp_path / "test__host__ym_202602.meta.json"
+        meta_file.write_text(json.dumps({"params": {"ym": "202602"}}))
+
+        conn = sqlite3.connect(":memory:")
+        _create_table_from_csv(conn, "TEST_TABLE", csv_file)
+
+        # 테이블이 생성되었는지 확인
+        result = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='TEST_TABLE'"
+        ).fetchone()
+        assert result is not None
+        conn.close()
 
 
 # =====================================================================
