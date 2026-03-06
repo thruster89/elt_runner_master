@@ -228,6 +228,69 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
     return row_count
 
 
+def load_csv_batch(conn, job_name: str, table_name: str, csv_paths: list[Path],
+                   file_hashes: list[str], mode: str, schema: str = None,
+                   load_mode: str = "replace") -> int:
+    """
+    동일 테이블에 여러 CSV를 한번에 적재 (replace/truncate 전용).
+    read_csv_auto([파일목록]) 으로 단일 INSERT 수행.
+    반환값: 적재된 총 row 수.
+    """
+    tbl = f'"{schema}"."{table_name}"' if schema else f'"{table_name}"'
+    full_table = f"{schema}.{table_name}" if schema else table_name
+    path_strs = [str(p) for p in csv_paths]
+
+    start = time.time()
+
+    # 1) DROP or TRUNCATE
+    if load_mode == "replace" and _table_exists(conn, schema, table_name):
+        logger.info("LOAD mode=replace → DROP TABLE %s", tbl)
+        conn.execute(f"DROP TABLE IF EXISTS {tbl}")
+        prefix = f'"{schema}".' if schema else ""
+        conn.execute(
+            f"DELETE FROM {prefix}_LOAD_HISTORY WHERE job_name = ? AND table_name = ?",
+            [job_name, full_table],
+        )
+    elif load_mode == "truncate" and _table_exists(conn, schema, table_name):
+        logger.info("LOAD mode=truncate → DELETE FROM %s", tbl)
+        conn.execute(f"DELETE FROM {tbl}")
+
+    # 2) CREATE or INSERT (read_csv_auto에 리스트 전달)
+    if not _table_exists(conn, schema, table_name):
+        meta_file = _find_meta_file(csv_paths[0])
+        if meta_file:
+            meta = json.loads(meta_file.read_text(encoding="utf-8"))
+            columns = meta["columns"] if isinstance(meta, dict) and "columns" in meta else meta
+            _create_table_from_meta(conn, schema, table_name, columns)
+            conn.execute(
+                f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, header=True)",
+                [path_strs],
+            )
+        else:
+            conn.execute(
+                f"CREATE TABLE {tbl} AS SELECT * FROM read_csv_auto(?, header=True)",
+                [path_strs],
+            )
+    else:
+        conn.execute(
+            f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, header=True)",
+            [path_strs],
+        )
+
+    row_count = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
+
+    # 3) 파일별 히스토리 기록
+    for csv_path, file_hash in zip(csv_paths, file_hashes):
+        file_size = csv_path.stat().st_size
+        mtime = datetime.fromtimestamp(csv_path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+        _insert_history(conn, schema, job_name, full_table, str(csv_path), file_hash, file_size, mtime)
+
+    elapsed = time.time() - start
+    logger.info("LOAD done (batch) | table=%s | %d files | rows=%d | elapsed=%.2fs | mode=%s",
+                full_table, len(csv_paths), row_count, elapsed, load_mode)
+    return row_count
+
+
 def connect(db_path: Path):
     import duckdb
     return duckdb.connect(str(db_path))

@@ -165,15 +165,24 @@ def run(ctx: RunContext):
 
     try:
         if conn_type == "duckdb":
-            from adapters.targets.duckdb_target import load_csv, _ensure_schema, _ensure_history
+            from adapters.targets.duckdb_target import load_csv, load_csv_batch, _ensure_schema, _ensure_history
             if schema:
                 _ensure_schema(conn, schema)
             _ensure_history(conn, schema)
+
+            # replace/truncate → 동일 테이블 다중 CSV를 batch로 한방 INSERT
+            batch_fn = None
+            if load_mode in ("replace", "truncate"):
+                batch_fn = lambda table, csv_paths, file_hashes: \
+                    load_csv_batch(conn, ctx.job_name, table, csv_paths, file_hashes,
+                                   ctx.mode, schema, load_mode=load_mode)
+
             _run_load_loop(ctx, logger, csv_files, sql_map, conn_type,
                            load_fn=lambda table, csv_path, file_hash, lm=None:
                                load_csv(conn, ctx.job_name, table, csv_path, file_hash,
                                         ctx.mode, schema, load_mode=lm or load_mode,
-                                        params=_extract_params(csv_path)))
+                                        params=_extract_params(csv_path)),
+                           batch_fn=batch_fn)
 
         elif conn_type == "sqlite3":
             from adapters.targets.sqlite_target import load_csv, _ensure_history
@@ -233,47 +242,75 @@ def _run_load_plan(ctx, logger, csv_files, sql_map, tgt_type, schema, load_mode)
     logger.info("LOAD [PLAN] 완료 — 실제 로드는 run 모드에서 실행하세요.")
 
 
-def _run_load_loop(ctx, logger, csv_files, sql_map, tgt_type, load_fn):
+def _group_by_table(csv_files, sql_map):
+    """CSV 파일을 테이블명 기준으로 그룹핑 (순서 유지)."""
+    from collections import OrderedDict
+    groups = OrderedDict()
+    for csv_path in csv_files:
+        sqlname = extract_sqlname_from_csv(csv_path)
+        sql_file = sql_map.get(sqlname)
+        table_name = resolve_table_name(sql_file) if sql_file else sqlname
+        groups.setdefault(table_name, []).append((csv_path, sql_file))
+    return groups
+
+
+def _run_load_loop(ctx, logger, csv_files, sql_map, tgt_type, load_fn, batch_fn=None):
     total = len(csv_files)
     loaded = 0
     skipped = 0
     failed = 0
 
-    # 동일 테이블에 여러 CSV → 첫 번째만 원래 load_mode, 이후는 append
-    seen_tables: set[str] = set()
+    groups = _group_by_table(csv_files, sql_map)
+    file_idx = 0
 
-    for i, csv_path in enumerate(csv_files, 1):
-        sqlname = extract_sqlname_from_csv(csv_path)
-        sql_file = sql_map.get(sqlname)
+    for table_name, group in groups.items():
+        has_sql = group[0][1] is not None
 
-        if sql_file:
-            table_name = resolve_table_name(sql_file)
-        else:
-            table_name = sqlname
+        # ── batch: 동일 테이블 다중 CSV → read_csv_auto([리스트]) 한방 INSERT ──
+        if batch_fn and len(group) > 1:
+            csv_paths = [g[0] for g in group]
+            file_hashes = [_sha256_file(p) for p in csv_paths]
+            start_idx = file_idx + 1
+            file_idx += len(group)
+            file_names = ", ".join(p.name for p in csv_paths)
+            logger.info("LOAD [%d~%d/%d] | table=%s | %d files (batch)%s | %s",
+                        start_idx, file_idx, total, table_name, len(group),
+                        "" if has_sql else " (direct)", file_names)
+            try:
+                result = batch_fn(table_name, csv_paths, file_hashes)
+                loaded += len(group)
+            except Exception as e:
+                logger.exception("LOAD batch failed | table=%s | %s", table_name, e)
+                failed += len(group)
+            continue
 
-        # 같은 테이블에 두 번째 이상 적재 시 append로 전환
-        if table_name in seen_tables:
-            override_mode = "append"
-        else:
-            override_mode = None
-            seen_tables.add(table_name)
+        # ── 단건: 기존 per-file 로직 ──
+        seen_tables: set[str] = set()
+        for csv_path, sql_file in group:
+            file_idx += 1
 
-        file_hash = _sha256_file(csv_path)
-
-        if sql_file:
-            logger.info("LOAD [%d/%d] | table=%s | file=%s", i, total, table_name, csv_path.name)
-        else:
-            logger.info("LOAD [%d/%d] | table=%s (direct) | file=%s", i, total, table_name, csv_path.name)
-
-        try:
-            result = load_fn(table_name, csv_path, file_hash, override_mode)
-            if result == -1:
-                skipped += 1
+            if table_name in seen_tables:
+                override_mode = "append"
             else:
-                loaded += 1
-        except Exception as e:
-            logger.exception("LOAD failed | table=%s | file=%s | %s", table_name, csv_path.name, e)
-            failed += 1
+                override_mode = None
+                seen_tables.add(table_name)
+
+            file_hash = _sha256_file(csv_path)
+
+            if has_sql:
+                logger.info("LOAD [%d/%d] | table=%s | file=%s", file_idx, total, table_name, csv_path.name)
+            else:
+                logger.info("LOAD [%d/%d] | table=%s (direct) | file=%s", file_idx, total, table_name, csv_path.name)
+
+            try:
+                result = load_fn(table_name, csv_path, file_hash, override_mode)
+                if result == -1:
+                    skipped += 1
+                else:
+                    loaded += 1
+            except Exception as e:
+                logger.exception("LOAD failed | table=%s | file=%s | %s", table_name, csv_path.name, e)
+                failed += 1
 
     logger.info("LOAD summary | loaded=%d skipped=%d failed=%d", loaded, skipped, failed)
     ctx.report_stage_result("load", success=loaded, failed=failed, skipped=skipped)
