@@ -3,9 +3,41 @@
 import csv
 import gzip
 import json
+import re
 import time
+from datetime import date, datetime
 from pathlib import Path
 from engine.runtime_state import stop_event
+
+# 날짜 컬럼 접미사 패턴 (대소문자 무시)
+# DT, _ST, _CLSTR, _DTHMS 로 끝나는 컬럼을 자동 포맷팅
+_DATE_COL_RE = re.compile(r"(?:DT|_ST|_CLSTR|_DTHMS)$", re.IGNORECASE)
+
+# YYYYMMDD (8자리) 또는 YYYYMMDD HH:MM:SS / YYYYMMDD HH24:MI:SS 패턴
+_YYYYMMDD_RE = re.compile(r"^(\d{4})(\d{2})(\d{2})([ T]\d{2}:\d{2}:\d{2}.*)?$")
+
+
+def _normalize_date_value(val):
+    """날짜 컬럼 값을 YYYY-MM-DD 형식으로 정규화.
+
+    - Python datetime/date 객체 → 문자열 변환
+    - 'YYYYMMDD...' 문자열 → 'YYYY-MM-DD...' 로 변환
+    - 이미 'YYYY-MM-DD' 형식이면 그대로 반환
+    """
+    if val is None or val == "":
+        return val
+    if isinstance(val, datetime):
+        return val.strftime("%Y-%m-%d %H:%M:%S")
+    if isinstance(val, date):
+        return val.strftime("%Y-%m-%d")
+    s = str(val).strip()
+    m = _YYYYMMDD_RE.match(s)
+    if m:
+        formatted = f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+        if m.group(4):
+            formatted += m.group(4)
+        return formatted
+    return s
 
 
 def export_sql_to_csv(
@@ -29,6 +61,14 @@ def export_sql_to_csv(
             return 0
 
         columns = [col[0] for col in cursor.description]
+
+        # 날짜 컬럼 인덱스 감지 (DT, _ST, _CLSTR, _DTHMS 접미사)
+        date_col_indices = [i for i, c in enumerate(columns) if _DATE_COL_RE.search(c)]
+        if date_col_indices:
+            logger.debug(
+                "Auto date-format columns detected: %s",
+                [columns[i] for i in date_col_indices],
+            )
 
         out_file = Path(out_file)
         tmp_file = out_file.with_suffix(out_file.suffix + ".tmp")
@@ -67,7 +107,12 @@ def export_sql_to_csv(
                         )
 
                     for row in rows:
-                        writer.writerow(["" if v is None else v for v in row])
+                        out = ["" if v is None else v for v in row]
+                        if date_col_indices:
+                            for i in date_col_indices:
+                                if out[i] != "":
+                                    out[i] = _normalize_date_value(out[i])
+                        writer.writerow(out)
                     total_rows += len(rows)
 
                     if total_rows % (fetch_size * 5) == 0:
