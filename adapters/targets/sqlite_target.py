@@ -144,7 +144,7 @@ def _create_table_from_csv(conn, table_name: str, csv_path: Path):
     if meta_file:
         meta = json.loads(meta_file.read_text(encoding="utf-8"))
         columns = meta["columns"] if isinstance(meta, dict) and "columns" in meta else meta
-        if isinstance(columns, list) and columns and isinstance(columns[0], dict):
+        if columns:  # columns가 비어있으면 CSV fallback으로 진행
             col_defs = [f'  "{col["name"]}" {_meta_type_to_sqlite(col)}' for col in columns]
             ddl = f'CREATE TABLE "{table_name}" (\n' + ",\n".join(col_defs) + "\n)"
             logger.info("CREATE TABLE %s (from source metadata)", table_name)

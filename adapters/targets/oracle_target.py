@@ -230,10 +230,8 @@ def _create_table_from_csv(cur, conn, schema: str, table_name: str, csv_path: Pa
         meta = json.loads(meta_file.read_text(encoding="utf-8"))
         # 새 dict 구조 {"columns": [...], "params": {...}} 또는 기존 list 구조 호환
         columns = meta["columns"] if isinstance(meta, dict) and "columns" in meta else meta
-        if isinstance(columns, list) and columns and isinstance(columns[0], dict):
-            _create_table_from_meta(cur, conn, schema, table_name, columns)
-            return
-        logger.debug("meta.json columns empty or invalid, falling back to CSV inference")
+        _create_table_from_meta(cur, conn, schema, table_name, columns)
+        return
 
     # fallback: CSV 샘플 기반 타입 추론
     logger.debug("No .meta.json found, inferring types from CSV samples")
