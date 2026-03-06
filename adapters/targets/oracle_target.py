@@ -27,7 +27,7 @@ def _qualified(schema: str, name: str) -> str:
 
 def _schema_exists(cur, schema: str) -> bool:
     cur.execute(
-        "SELECT COUNT(1) FROM dba_users WHERE username = :1",
+        "SELECT COUNT(1) FROM all_users WHERE username = :1",
         (schema.upper(),),
     )
     return cur.fetchone()[0] > 0
@@ -416,8 +416,8 @@ def connect(env_config: dict, schema: str = None, schema_password: str = None):
     finally:
         _cur.close()
 
-    # 스키마 자동 생성 (schema 지정된 경우)
-    if schema:
+    # 스키마 자동 생성 (접속 유저와 다른 schema를 지정한 경우만)
+    if schema and schema.upper() != host_cfg["user"].upper():
         cur = conn.cursor()
         try:
             _ensure_schema(cur, conn, schema, schema_password)
