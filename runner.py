@@ -440,7 +440,8 @@ def main():
 
     signal.signal(signal.SIGINT, lambda sig, frame: (logger.warning("STOP requested (Ctrl+C)"), stop_event.set()))
 
-    export_base = Path(job_config.get("export", {}).get("out_dir", "data/export"))
+    _out_dir = Path(job_config.get("export", {}).get("out_dir", "data/export"))
+    export_base = _out_dir if _out_dir.is_absolute() else work_dir / _out_dir
 
     # params: yml 기본값 → CLI override
     params = dict(job_config.get("params", {}))
