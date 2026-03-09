@@ -129,7 +129,7 @@ def run(ctx: RunContext):
 def _run_csv_export(ctx, report_cfg, cfg, *,
                     stage_params=None, stage_param_mode="product",
                     run_info_path=None, failed_task_keys=None) -> tuple:
-    """CSV export. 반환: (generated_files, failed_count)."""
+    """CSV export. 반환: (generated_files, failed_count, skipped_count)."""
     from stages.export_stage import expand_params
     from engine.sql_utils import detect_used_params
 
@@ -144,12 +144,12 @@ def _run_csv_export(ctx, report_cfg, cfg, *,
 
     if not sql_dir.exists():
         logger.warning("REPORT sql_dir not found: %s", sql_dir)
-        return [], 0
+        return [], 0, 0
 
     sql_files = sort_sql_files(sql_dir)
     if not sql_files:
         logger.info("REPORT no SQL files in %s", sql_dir)
-        return [], 0
+        return [], 0, 0
 
     # ── --include-report 필터 적용 ──────────────────────────
     include_patterns = getattr(ctx, "include_report_patterns", []) or []
@@ -169,7 +169,7 @@ def _run_csv_export(ctx, report_cfg, cfg, *,
         )
         if not sql_files:
             logger.warning("REPORT --include filter resulted in no SQL files (patterns=%s)", include_patterns)
-            return [], 0
+            return [], 0, 0
 
     # report.source 결정: 기본값은 "target"
     report_source = (report_cfg.get("source") or "target").strip().lower()

@@ -71,7 +71,7 @@ class BatchRunnerGUI(
         # Load
         self._load_csv_dir    = tk.StringVar(value="")
         # Transform target (별도 DB 사용 가능)
-        self._transform_target_type = tk.StringVar(value="")  # 빈값 = 글로벌 target 따름
+        self._transform_target_type = tk.StringVar(value="(global)")  # (global) = 글로벌 target 따름
         self._transform_db_path     = tk.StringVar(value="")  # 빈값 = 글로벌 db_path 따름
         # Transfer (transform 내 DB→DB 전송 옵션)
         self._transfer_enabled   = tk.BooleanVar(value=False)

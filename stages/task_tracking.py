@@ -63,7 +63,7 @@ def init_run_info(run_info_path: Path, *, job_name: str, run_id: str,
 
 def update_task_status(run_info_path: Path, task_key: str, status: str,
                        rows: int | None = None, elapsed: float | None = None,
-                       error: str | None = None):
+                       error: str | None = None, output_file: str | None = None):
     """run_info.json의 tasks 필드에 task 상태 업데이트 (thread-safe)."""
     with _lock:
         try:
@@ -80,6 +80,8 @@ def update_task_status(run_info_path: Path, task_key: str, status: str,
                 entry["elapsed"] = round(elapsed, 2)
             if error is not None:
                 entry["error"] = str(error)[:500]
+            if output_file is not None:
+                entry["output_file"] = str(output_file)
 
             info["tasks"][task_key] = entry
 

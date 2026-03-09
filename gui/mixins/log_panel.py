@@ -46,6 +46,12 @@ class LogPanelMixin:
         del self._log_raw_lines[:LOG_TRIM_CHUNK]
         # Text 위젯 갱신
         self._refilter_log()
+        # 첫 번째 트림 시에만 사용자에게 알림
+        if not getattr(self, "_log_trim_warned", False):
+            self._log_raw_lines.append(
+                (f"[Log] 로그 {LOG_MAX_LINES:,}줄 초과 — 오래된 {LOG_TRIM_CHUNK:,}줄 자동 삭제됨",
+                 "WARN", datetime.now().strftime("%H:%M:%S")))
+            self._log_trim_warned = True
 
     def _log_sys(self: "BatchRunnerGUI", msg):
         self._log_write(msg, "SYS")
@@ -53,6 +59,7 @@ class LogPanelMixin:
     def _clear_log(self: "BatchRunnerGUI"):
         self._log.delete("1.0", "end")
         self._log_raw_lines.clear()
+        self._log_trim_warned = False
 
     def _set_log_filter(self: "BatchRunnerGUI", level):
         self._log_filter.set(level)

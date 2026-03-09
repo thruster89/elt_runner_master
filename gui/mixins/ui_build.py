@@ -415,12 +415,13 @@ class UiBuildMixin:
         if self._stage_report.get():
             self._report_section.pack(fill="x")
 
-        # 스크롤 영역 갱신 + 스크롤 위치 리셋
+        # 스크롤 영역 갱신 (현재 위치 유지)
         if hasattr(self, "_left_canvas"):
             def _refresh_scroll():
                 self.update_idletasks()
+                pos = self._left_canvas.yview()[0]  # 현재 스크롤 위치 보존
                 self._left_canvas.configure(scrollregion=self._left_canvas.bbox("all"))
-                self._left_canvas.yview_moveto(0)
+                self._left_canvas.yview_moveto(pos)
             self.after(50, _refresh_scroll)
 
     # ── 인라인 Params 헬퍼 ─────────────────────────────────────

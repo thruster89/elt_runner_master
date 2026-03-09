@@ -23,11 +23,14 @@ def validate_pre_run(ctx: RunContext):
     job_cfg = ctx.job_config
     env_cfg = ctx.env_config
 
-    # 활성 스테이지 목록 결정
+    # 활성 스테이지 목록 결정 (load_local → load 별칭 변환 포함)
+    _STAGE_ALIASES = {"load_local": "load"}
     pipeline_cfg = job_cfg.get("pipeline", {})
     stages = pipeline_cfg.get("stages", ["export", "load", "transform", "report"])
+    stages = [_STAGE_ALIASES.get(s, s) for s in stages]
     if ctx.stage_filter:
-        stages = [s for s in stages if s in ctx.stage_filter]
+        normalized_filter = [_STAGE_ALIASES.get(s, s) for s in ctx.stage_filter]
+        stages = [s for s in stages if s in normalized_filter]
 
     # ── 1. Source 설정 검증 ──────────────────────────────
     if "export" in stages and job_cfg.get("export"):

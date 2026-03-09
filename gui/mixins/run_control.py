@@ -211,10 +211,21 @@ class RunControlMixin:
         if not getattr(self, "_manually_stopped", False):
             self._reset_buttons()
         self._start_idle_timer()
-        # J: Job 큐 — 다음 Job 자동 실행 (성공 시만)
+        # J: Job 큐 — 다음 Job 자동 실행
         q = getattr(self, "_job_queue", [])
-        if q and ret == 0 and not getattr(self, "_manually_stopped", False):
-            self.after(2000, self._run_next_queued_job)
+        if q:
+            if getattr(self, "_manually_stopped", False):
+                skipped = ", ".join(j.replace(".yml", "") for j in q)
+                self._log_write(f"[Queue] 사용자 중지로 큐 중단 (미실행: {skipped})", "WARN")
+                q.clear()
+            elif ret != 0:
+                skipped = ", ".join(j.replace(".yml", "") for j in q)
+                self._log_write(
+                    f"[Queue] {job_name} 실패(code={ret})로 큐 중단 "
+                    f"(미실행 {len(q)}개: {skipped})", "WARN")
+                q.clear()
+            else:
+                self.after(2000, self._run_next_queued_job)
 
     def _on_stop(self: "BatchRunnerGUI"):
         if not self._process or self._process.poll() is not None:
