@@ -292,9 +292,17 @@ class CollapsibleSection(tk.Frame):
         if expanded:
             self._body.pack(fill="x")
 
-        # 클릭 바인딩
+        # 클릭 + 키보드 바인딩
         for w in (self._header, self._toggle_label, self._title_label, self._color_bar):
             w.bind("<Button-1>", lambda e: self.toggle())
+        # Tab 포커스 지원: 헤더에 포커스 가능 + Enter/Space로 토글
+        self._header.configure(takefocus=1)
+        self._header.bind("<Return>", lambda e: self.toggle())
+        self._header.bind("<space>", lambda e: self.toggle())
+        self._header.bind("<FocusIn>", lambda e: self._header.configure(
+            highlightbackground=C[color_key], highlightthickness=2))
+        self._header.bind("<FocusOut>", lambda e: self._header.configure(
+            highlightthickness=0))
 
     @property
     def body(self):

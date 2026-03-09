@@ -1002,10 +1002,17 @@ class StateJobMixin:
         count = len(selected)
         if count == 0:
             getattr(self, label_attr).config(text="(all)", fg=C["subtext"])
-            tip_text = ""
+            tip_text = "전체 SQL 실행 (필터 없음)"
         else:
-            getattr(self, label_attr).config(text=f"({count})", fg=C["green"])
-            tip_text = "\n".join(sorted(selected))
+            sorted_names = sorted(selected)
+            # 라벨: 파일 수 + 첫 번째 파일명 힌트
+            first = sorted_names[0].replace(".sql", "")
+            if count == 1:
+                getattr(self, label_attr).config(text=f"(1: {first})", fg=C["green"])
+            else:
+                getattr(self, label_attr).config(
+                    text=f"({count}: {first}+{count-1})", fg=C["green"])
+            tip_text = f"선택된 SQL ({count}개):\n" + "\n".join(sorted_names)
         tip_attr = cfg["tip"]
         if hasattr(self, tip_attr):
             getattr(self, tip_attr)._text = tip_text

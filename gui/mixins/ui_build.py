@@ -104,15 +104,22 @@ class UiBuildMixin:
         main = tk.Frame(self, bg=C["base"])
         main.pack(fill="both", expand=True, padx=10, pady=(4, 0))
 
-        left = tk.Frame(main, bg=C["mantle"], width=430)
-        left.pack(side="left", fill="y", padx=(0, 8))
-        left.pack_propagate(False)
+        # PanedWindow로 좌/우 비율 조절 가능하게
+        paned = tk.PanedWindow(main, orient="horizontal", bg=C["base"],
+                               sashwidth=6, sashrelief="flat",
+                               opaqueresize=True)
+        paned.pack(fill="both", expand=True)
+        self._main_paned = paned
+
+        left = tk.Frame(paned, bg=C["mantle"])
         self._left_frame = left
         self._build_left(left)
 
-        right = tk.Frame(main, bg=C["mantle"])
-        right.pack(side="left", fill="both", expand=True)
+        right = tk.Frame(paned, bg=C["mantle"])
         self._build_right(right)
+
+        paned.add(left, minsize=350, width=430)
+        paned.add(right, minsize=300)
 
         # 마우스휠 바인딩 (위치 기반)
         self._setup_mousewheel()
@@ -1053,6 +1060,12 @@ class UiBuildMixin:
                        ).pack(side="left", padx=(0, 6))
 
         # 로그 필터 버튼
+        _filter_tips = {
+            "ALL":   "모든 로그 표시",
+            "SUM":   "요약: 시스템 메시지 + 스테이지 헤더 + 결과",
+            "WARN+": "경고 + 에러만 표시",
+            "ERR":   "에러만 표시",
+        }
         self._log_filter_btns = {}
         for level in ("ALL", "SUM", "WARN+", "ERR"):
             btn = tk.Button(header, text=level, font=FONTS["shortcut"],
@@ -1061,6 +1074,7 @@ class UiBuildMixin:
                             command=lambda lv=level: self._set_log_filter(lv))
             btn.pack(side="left", padx=(0, 2))
             self._log_filter_btns[level] = btn
+            Tooltip(btn, _filter_tips[level])
         self._refresh_log_filter_btns()
 
         # 타임스탬프 토글 버튼

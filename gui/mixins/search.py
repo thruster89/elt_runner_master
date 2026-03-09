@@ -38,21 +38,27 @@ class SearchMixin:
             start = end
         count = len(self._search_matches)
         self._search_match_idx = 0
-        self._search_count_label.config(text=f"{count} found" if count else "not found")
-        if self._search_matches:
+        if count:
+            self._search_count_label.config(text=f"1/{count}")
             self._log.see(self._search_matches[0])
+        else:
+            self._search_count_label.config(text="not found")
 
     def _search_next(self: "BatchRunnerGUI"):
         if not self._search_matches:
             return
         self._search_match_idx = (self._search_match_idx + 1) % len(self._search_matches)
         self._log.see(self._search_matches[self._search_match_idx])
+        self._search_count_label.config(
+            text=f"{self._search_match_idx + 1}/{len(self._search_matches)}")
 
     def _search_prev(self: "BatchRunnerGUI"):
         if not self._search_matches:
             return
         self._search_match_idx = (self._search_match_idx - 1) % len(self._search_matches)
         self._log.see(self._search_matches[self._search_match_idx])
+        self._search_count_label.config(
+            text=f"{self._search_match_idx + 1}/{len(self._search_matches)}")
 
     def _clear_search_highlights(self: "BatchRunnerGUI"):
         self._log.tag_remove("HIGHLIGHT", "1.0", "end")
