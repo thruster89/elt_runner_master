@@ -707,7 +707,8 @@ def run(ctx: RunContext):
             _cleanup_alt_ext(out_file, out_dir / "_backup", backup_keep, logger)
 
             update_task_status(run_info_path, task_key, "success",
-                                rows=rows or 0, elapsed=elapsed)
+                                rows=rows or 0, elapsed=elapsed,
+                                output_file=str(out_file))
 
         except Exception as e:
             # 커넥션 오류 시 즉시 close + thread-local에서 제거 → 다음 task에서 새 커넥션 생성
