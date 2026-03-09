@@ -879,15 +879,20 @@ class StateJobMixin:
             p = Path(rel) if Path(rel).is_absolute() else wd / rel
             return p if p.exists() else None
 
-        # ── 스테이지별 SQL 파일 수집 + 파라미터 감지 ──
+        # ── 스테이지별 SQL 파일 수집 + 파라미터 감지 (활성 스테이지만) ──
         stage_params: dict[str, set[str]] = {}
 
         stage_cfg = [
-            ("export",    self._export_sql_dir,    self._selected_sqls),
-            ("transform", self._transform_sql_dir, getattr(self, "_selected_transform_sqls", set())),
-            ("report",    self._report_sql_dir,    getattr(self, "_selected_report_sqls", set())),
+            ("export",    self._export_sql_dir,    self._selected_sqls,
+             self._stage_export),
+            ("transform", self._transform_sql_dir, getattr(self, "_selected_transform_sqls", set()),
+             self._stage_transform),
+            ("report",    self._report_sql_dir,    getattr(self, "_selected_report_sqls", set()),
+             self._stage_report),
         ]
-        for stage_key, dir_var, selected in stage_cfg:
+        for stage_key, dir_var, selected, stage_toggle in stage_cfg:
+            if not stage_toggle.get():
+                continue
             sql_dir = _resolve(dir_var.get().strip())
             if not sql_dir:
                 continue
