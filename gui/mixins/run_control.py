@@ -742,9 +742,9 @@ class RunControlMixin:
         except (ValueError, IndexError):
             self._log_write("[Schedule] Format: +30m, +2h, 18:00, 0302 18:00", "WARN")
             return
-        # S-3: 현재 mode 캡처 (트리거 시 복원)
+        # S-3: 예약 실행은 항상 run 모드 (plan을 예약할 이유 없음)
         self._schedule_target = target
-        self._schedule_mode = self.mode_var.get()
+        self._schedule_mode = "run"
         self._schedule_id = self.after(1000, self._tick_schedule)
         self._schedule_btn.config(text="✕ Cancel", bg=C["red"], fg=C["crust"],
                                   activebackground=C["peach"])
