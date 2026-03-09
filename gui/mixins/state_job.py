@@ -17,6 +17,7 @@ from gui.utils import load_jobs, load_env_hosts, _scan_params_from_files
 from gui.utils import collect_sql_tree as _collect_sql_tree
 from gui.utils import flatten_sql_tree as _flatten_sql_tree
 from gui.widgets import SqlSelectorDialog
+from engine.path_utils import get_job_defaults
 
 if TYPE_CHECKING:
     from gui.app import BatchRunnerGUI
@@ -86,7 +87,7 @@ class StateJobMixin:
         }
 
     def _restore_snapshot(self: "BatchRunnerGUI", snap: dict):
-        """스냅샷으로 GUI 설정 복원"""
+        """스냅샷으로 GUI 설정 복원 (저장된 경로를 그대로 복원)"""
         self._source_type_var.set(snap.get("source_type", "oracle"))
         if hasattr(self, "_source_type_combo"):
             self._on_source_type_change()
@@ -379,6 +380,13 @@ class StateJobMixin:
 
         self._restoring_job = True
 
+        # ── Job convention 기본값 결정 ──
+        job_name = cfg.get("job_name", Path(fname).stem if fname else "")
+        tgt = cfg.get("target", {})
+        tgt_type = tgt.get("type", "duckdb")
+        work_dir = Path(self._work_dir.get())
+        defaults = get_job_defaults(work_dir, job_name, tgt_type)
+
         # Source
         src = cfg.get("source", {})
         src_type = src.get("type", "oracle")
@@ -387,17 +395,16 @@ class StateJobMixin:
         self._source_host_var.set(src.get("host", ""))
 
         # Target
-        tgt = cfg.get("target", {})
-        self._target_type_var.set(tgt.get("type", "duckdb"))
-        self._target_db_path.set(tgt.get("db_path", "data/local/result.duckdb"))
+        self._target_type_var.set(tgt_type)
+        self._target_db_path.set(tgt.get("db_path", defaults["target_db_path"]))
         self._target_schema.set(tgt.get("schema", ""))
         self._update_target_visibility()
         self._update_load_mode_options()
 
         # Export paths
         exp = cfg.get("export", {})
-        self._export_sql_dir.set(exp.get("sql_dir", "sql/export"))
-        self._export_out_dir.set(exp.get("out_dir", "data/export"))
+        self._export_sql_dir.set(exp.get("sql_dir", defaults["export_sql_dir"]))
+        self._export_out_dir.set(exp.get("out_dir", defaults["export_out_dir"]))
 
         # Load
         load_cfg = cfg.get("load", {})
@@ -416,13 +423,17 @@ class StateJobMixin:
         xfr_dest = xfr.get("dest", {})
         self._transfer_dest_type.set(xfr_dest.get("type", "duckdb"))
         self._transfer_dest_db_path.set(xfr_dest.get("db_path", ""))
-        # sql_dir 기본값: transform 전용 target이면 그 type, 아니면 글로벌 target type
-        effective_type = tfm_tgt_type if tfm_tgt_type else tgt.get("type", "duckdb")
-        self._transform_sql_dir.set(tfm.get("sql_dir", f"sql/transform/{effective_type}"))
+        # sql_dir: job convention 우선, 없으면 기존 로직 (transform 전용 target type 기반)
+        effective_type = tfm_tgt_type if tfm_tgt_type else tgt_type
+        if defaults["job_dir_exists"]:
+            transform_sql_default = defaults["transform_sql_dir"]
+        else:
+            transform_sql_default = f"sql/transform/{effective_type}"
+        self._transform_sql_dir.set(tfm.get("sql_dir", transform_sql_default))
         rep = cfg.get("report", {})
         rep_csv = rep.get("export_csv", {})
-        self._report_sql_dir.set(rep_csv.get("sql_dir", "sql/report"))
-        self._report_out_dir.set(rep_csv.get("out_dir", rep.get("excel", {}).get("out_dir", "data/report")))
+        self._report_sql_dir.set(rep_csv.get("sql_dir", defaults["report_sql_dir"]))
+        self._report_out_dir.set(rep_csv.get("out_dir", rep.get("excel", {}).get("out_dir", defaults["report_out_dir"])))
         self._report_schema.set(rep.get("schema", ""))
 
         # Stages
@@ -714,13 +725,22 @@ class StateJobMixin:
 
     def _on_target_type_change(self: "BatchRunnerGUI", *_):
         tgt = self._target_type_var.get()
-        # transform 전용 target이 (global)일 때만 sql_dir 자동 변경
+        # job convention 폴더가 있으면 transform sql_dir은 convention 우선
         import re
+        job_name = (self._jobs.get(self.job_var.get()) or {}).get(
+            "job_name", Path(self.job_var.get()).stem if self.job_var.get() else "")
+        work_dir = Path(self._work_dir.get())
+        defaults = get_job_defaults(work_dir, job_name, tgt)
         tfm_type = self._transform_target_type.get()
         effective_type = tgt if (not tfm_type or tfm_type == "(global)") else tfm_type
         cur = self._transform_sql_dir.get()
-        if not cur or re.match(r"^sql/transform/\w+$", cur):
-            self._transform_sql_dir.set(f"sql/transform/{effective_type}")
+        if defaults["job_dir_exists"]:
+            # job-centric: convention 폴더 → DB 엔진별 분리 불필요
+            if not cur or re.match(r"^(sql/transform/\w+|jobs/\w+/sql/transform)$", cur):
+                self._transform_sql_dir.set(defaults["transform_sql_dir"])
+        else:
+            if not cur or re.match(r"^sql/transform/\w+$", cur):
+                self._transform_sql_dir.set(f"sql/transform/{effective_type}")
         self._update_target_visibility()
         self._update_transform_target_visibility()
         self._update_transfer_src_label()

@@ -54,7 +54,7 @@ def run(ctx: RunContext):
     stage_param_mode = ctx.get_stage_param_mode("report")
 
     # ── run_info.json 초기화 & retry ────────────────────────
-    tracking_base = resolve_path(ctx, report_cfg.get("tracking_dir", "data/report_tracking"))
+    tracking_base = resolve_path(ctx, report_cfg.get("tracking_dir", ctx.get_default("tracking_dir_report")))
     run_info_dir = tracking_base / ctx.job_name / ctx.run_id
     run_info_path = run_info_dir / "run_info.json"
 
@@ -79,7 +79,7 @@ def run(ctx: RunContext):
         csv_union_dir = report_cfg.get("csv_union_dir")
         if not csv_union_dir:
             export_cfg = ctx.job_config.get("export", {})
-            export_out = export_cfg.get("out_dir", "data/export")
+            export_out = export_cfg.get("out_dir", ctx.get_default("export_out_dir"))
             csv_union_dir = str(Path(export_out) / ctx.job_name)
         union_dir = resolve_path(ctx, csv_union_dir)
         if union_dir.exists():
@@ -136,8 +136,8 @@ def _run_csv_export(ctx, report_cfg, cfg, *,
     logger = ctx.logger
     if stage_params is None:
         stage_params = ctx.get_stage_params("report")
-    sql_dir = resolve_path(ctx, cfg.get("sql_dir", "sql/report"))
-    out_dir  = resolve_path(ctx, cfg.get("out_dir",  "data/report"))
+    sql_dir = resolve_path(ctx, cfg.get("sql_dir", ctx.get_default("report_sql_dir")))
+    out_dir  = resolve_path(ctx, cfg.get("out_dir",  ctx.get_default("report_out_dir")))
     compression = (cfg.get("compression") or "none").strip().lower()
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -368,7 +368,7 @@ def _get_excel_output_path(ctx, out_dir: Path, job_name: str, max_files: int) ->
 
 def _run_excel_export(ctx, report_cfg, cfg, csv_files: list):
     logger = ctx.logger
-    out_dir_str = cfg.get("out_dir") or report_cfg.get("export_csv", {}).get("out_dir", "data/report")
+    out_dir_str = cfg.get("out_dir") or report_cfg.get("export_csv", {}).get("out_dir", ctx.get_default("report_out_dir"))
     out_dir = resolve_path(ctx, out_dir_str)
     max_files = int(cfg.get("max_files", 10))
 

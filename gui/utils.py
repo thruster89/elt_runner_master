@@ -89,24 +89,23 @@ def _extract_params(text: str) -> set[str]:
     return found
 
 
-def scan_sql_params(sql_dir: Path) -> list[str]:
+def scan_sql_params(sql_dir: Path, extra_dirs: list[Path] | None = None) -> list[str]:
     """
     sql_dir 하위 .sql 파일 전체 스캔,
     :param  {#param}  ${param} 세 가지 패턴으로 파라미터 이름 추출 → 정렬된 리스트 반환.
     싱글쿼트 문자열 리터럴 내부의 :word 는 파라미터로 인식하지 않음.
-    sql_dir 의 부모(workdir/sql/)에서 transform/, report/ 도 함께 스캔.
+
+    extra_dirs: 추가로 스캔할 디렉토리 리스트 (명시적 지정만 탐색, 부모 자동 탐색 없음).
     """
     found: set[str] = set()
     if not sql_dir.exists():
         return []
 
-    # sql_dir 외에 transform/, report/ sql 폴더도 자동 포함
     scan_dirs = [sql_dir]
-    sql_root = sql_dir.parent  # 보통 workdir/sql/
-    for extra in ("transform", "report"):
-        extra_dir = sql_root / extra
-        if extra_dir.exists() and extra_dir not in scan_dirs:
-            scan_dirs.append(extra_dir)
+    if extra_dirs:
+        for d in extra_dirs:
+            if d.exists() and d not in scan_dirs:
+                scan_dirs.append(d)
 
     for scan_dir in scan_dirs:
         for sql_file in scan_dir.rglob("*.sql"):

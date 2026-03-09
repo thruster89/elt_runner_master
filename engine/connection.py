@@ -53,14 +53,14 @@ def connect_target(ctx, target_cfg: dict) -> tuple:
 
     if tgt_type == "duckdb":
         from adapters.targets.duckdb_target import connect
-        db_path = resolve_path(ctx, target_cfg.get("db_path", "data/local/result.duckdb"))
+        db_path = resolve_path(ctx, target_cfg.get("db_path", ctx.get_default("target_db_path")))
         db_path.parent.mkdir(parents=True, exist_ok=True)
         label = f"duckdb ({db_path.resolve()})"
         return connect(db_path), "duckdb", label
 
     elif tgt_type == "sqlite3":
         from adapters.targets.sqlite_target import connect
-        db_path = resolve_path(ctx, target_cfg.get("db_path", "data/local/result.sqlite"))
+        db_path = resolve_path(ctx, target_cfg.get("db_path", ctx.get_default("target_db_path")))
         db_path.parent.mkdir(parents=True, exist_ok=True)
         label = f"sqlite3 ({db_path.resolve()})"
         return connect(db_path), "sqlite3", label

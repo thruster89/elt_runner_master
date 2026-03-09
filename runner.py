@@ -440,7 +440,10 @@ def main():
 
     signal.signal(signal.SIGINT, lambda sig, frame: (logger.warning("STOP requested (Ctrl+C)"), stop_event.set()))
 
-    _out_dir = Path(job_config.get("export", {}).get("out_dir", "data/export"))
+    from engine.path_utils import get_job_defaults as _get_job_defaults
+    _tgt_type = (job_config.get("target", {}).get("type") or "duckdb").lower()
+    _defaults = _get_job_defaults(work_dir, job_name, _tgt_type)
+    _out_dir = Path(job_config.get("export", {}).get("out_dir", _defaults["export_out_dir"]))
     export_base = _out_dir if _out_dir.is_absolute() else work_dir / _out_dir
 
     # params: yml 기본값 → CLI override
