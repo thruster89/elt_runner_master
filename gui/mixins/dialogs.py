@@ -420,6 +420,8 @@ class DialogsMixin:
         next_job = q.pop(0)
         remaining = len(q)
         self._log_sys(f"[Queue] {next_job} 시작 (남은 {remaining}개)")
+        # 큐 전환 시에는 미저장 경고 스킵 (_on_job_change 내부에서 리셋됨)
+        self._restoring_job = True
         self.job_var.set(next_job)
         self._on_job_change()
         self.mode_var.set("run")

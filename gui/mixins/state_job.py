@@ -360,17 +360,22 @@ class StateJobMixin:
         if not cfg:
             return
 
-        # 미저장 변경 경고
-        if not self._restoring_job and self._is_dirty():
-            prev_job = self._job_loaded_snapshot.get("job", "") if self._job_loaded_snapshot else ""
-            ans = messagebox.askyesnocancel(
-                "Unsaved Changes",
-                "You have unsaved changes.\nSave now?")
-            if ans is None:  # Cancel → 이전 job으로 롤백
-                self.job_var.set(prev_job)
-                return
-            if ans:  # Yes → 저장
-                self._on_save_yml()
+        # 미저장 변경 경고 — job 필드 자체의 변경은 제외하고 비교
+        if not self._restoring_job and self._job_loaded_snapshot is not None:
+            prev_job = self._job_loaded_snapshot.get("job", "")
+            cur_snap = self._snapshot()
+            cur_snap["job"] = prev_job  # job 전환 자체는 dirty가 아님
+            if cur_snap != self._job_loaded_snapshot:
+                ans = messagebox.askyesnocancel(
+                    "Unsaved Changes",
+                    "You have unsaved changes.\nSave now?")
+                if ans is None:  # Cancel → 이전 job으로 롤백
+                    self.job_var.set(prev_job)
+                    return
+                if ans:  # Yes → 저장 (이전 job 이름으로 복원 후 저장)
+                    self.job_var.set(prev_job)
+                    self._on_save_yml()
+                    self.job_var.set(fname)
 
         self._restoring_job = True
 
