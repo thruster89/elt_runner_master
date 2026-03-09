@@ -80,7 +80,7 @@ def run(ctx: RunContext):
     if csv_dir_str:
         export_base = resolve_path(ctx, csv_dir_str)
     elif export_cfg:
-        export_base = resolve_path(ctx, export_cfg.get("out_dir", "data/export"))
+        export_base = resolve_path(ctx, export_cfg.get("out_dir", ctx.get_default("export_out_dir")))
     else:
         logger.info("LOAD stage skipped (no csv_dir / export config)")
         return
@@ -109,7 +109,7 @@ def run(ctx: RunContext):
             logger.warning("No CSV/CSV.GZ files found in %s", export_dir)
         return
 
-    sql_dir = resolve_path(ctx, export_cfg.get("sql_dir", "sql/export"))
+    sql_dir = resolve_path(ctx, export_cfg.get("sql_dir", ctx.get_default("export_sql_dir")))
     sql_files = sort_sql_files(sql_dir)
     sql_map = {p.stem: p for p in sql_files}
     # prefix 제거된 CSV도 매핑되도록 stripped key 추가 (csv_strip_prefix 호환)

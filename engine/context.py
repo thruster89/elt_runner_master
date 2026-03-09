@@ -46,3 +46,12 @@ class RunContext:
         """스테이지별 param_mode 반환. 스테이지 section 우선, 없으면 글로벌."""
         stage_cfg = self.job_config.get(stage_name, {})
         return stage_cfg.get("param_mode") or self.param_mode
+
+    def get_default(self, key: str) -> str:
+        """Convention-aware 기본 경로.
+        jobs/{job_name}/ 폴더가 있으면 job-centric 기본값, 없으면 글로벌 기본값."""
+        if not hasattr(self, "_job_defaults"):
+            from engine.path_utils import get_job_defaults
+            tgt_type = (self.job_config.get("target", {}).get("type") or "duckdb").lower()
+            self._job_defaults = get_job_defaults(self.work_dir, self.job_name, tgt_type)
+        return self._job_defaults.get(key, "")

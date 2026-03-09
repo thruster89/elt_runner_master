@@ -129,7 +129,7 @@ def run(ctx: RunContext):
                 label, schema_display, len(sql_files), on_error, transfer_display)
 
     # ── run_info.json 초기화 & retry ────────────────────────
-    tracking_base = resolve_path(ctx, transform_cfg.get("tracking_dir", "data/transform"))
+    tracking_base = resolve_path(ctx, transform_cfg.get("tracking_dir", ctx.get_default("tracking_dir_transform")))
     run_info_dir = tracking_base / ctx.job_name / ctx.run_id
     run_info_path = run_info_dir / "run_info.json"
 
