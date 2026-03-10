@@ -657,6 +657,8 @@ class RunControlMixin:
             return
         wd = Path(self._work_dir.get())
         for var, ent in entries:
+            if not ent.winfo_exists():
+                continue
             raw = var.get().strip()
             if not raw:
                 ent.config(highlightthickness=0)
