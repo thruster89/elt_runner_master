@@ -197,7 +197,7 @@ TOOLTIPS = {
     "csv":          "CSV 리포트 생성",
     "max_files":    "Excel 파일당 최대 시트 수 (1~100)\n초과 시 새 파일 생성",
     "skip_sql":     "SQL 실행 건너뜀\nunion_dir의 CSV를 바로 Excel로 변환",
-    "union_dir":    "CSV 원본 폴더\nskip_sql=ON 시 CSV를 합쳐 Excel로 변환",
+    "union_dir":    "CSV 원본 폴더 (입력)\nskip_sql=ON 시 이 폴더의 CSV를\n→ report_out 경로에 Excel로 변환",
     "name_style":   "CSV 파일명 파라미터 형식\nfull: key_value (clsYymm_202003)\ncompact: value만 (202003)",
     "strip_prefix": "SQL 파일명에서 숫자 접두어 제거\nON: 01_contract → contract\nOFF: 01_contract (그대로 유지)",
 }

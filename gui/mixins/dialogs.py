@@ -152,6 +152,18 @@ class DialogsMixin:
                 row=row, column=1, columnspan=3, sticky="w", **pad_v)
             row += 1
 
+            # ── 데이터 흐름 요약 ──
+            tk.Frame(body, bg=C["surface1"], height=1).grid(
+                row=row, column=0, columnspan=4, sticky="ew", padx=12, pady=4)
+            row += 1
+            tk.Label(body, text="Data Flow", **kw_key).grid(row=row, column=0, sticky="ne", **pad_k)
+            flow_lines = self._build_flow_lines()
+            flow_text = "\n".join(flow_lines)
+            tk.Label(body, text=flow_text, bg=C["base"], fg=C["teal"],
+                     font=FONTS["mono_small"], justify="left", anchor="w").grid(
+                row=row, column=1, columnspan=3, sticky="w", **pad_v)
+            row += 1
+
             if params_str:
                 tk.Label(body, text="Params", **kw_key).grid(row=row, column=0, sticky="e", **pad_k)
                 tk.Label(body, text=params_str, **kw_val).grid(
@@ -180,6 +192,50 @@ class DialogsMixin:
                     row=row, column=1, columnspan=3, sticky="w", **pad_v)
 
         return self._themed_confirm("━ Run Confirm", build)
+
+    def _build_flow_lines(self: "BatchRunnerGUI") -> list[str]:
+        """확인 다이얼로그용 데이터 흐름 요약 텍스트 생성"""
+        lines = []
+        has_export    = self._stage_export.get()
+        has_load      = self._stage_load_local.get()
+        has_transform = self._stage_transform.get()
+        has_report    = self._stage_report.get()
+
+        src_type = self._source_type_var.get()
+        src_host = self._source_host_var.get()
+        tgt_type = self._target_type_var.get()
+        tgt_db   = self._target_db_path.get() or "(default)"
+
+        if has_export:
+            out_dir = self._export_out_dir.get() or "data/export"
+            lines.append(f"Export:  {src_type}/{src_host} → {out_dir}/")
+        if has_load:
+            csv_dir = self._load_csv_dir.get().strip()
+            if not csv_dir:
+                csv_dir = self._export_out_dir.get() or "data/export"
+            lines.append(f"Load:   {csv_dir}/ → {tgt_type} [{tgt_db}]")
+        if has_transform:
+            tfm_tgt = self._transform_target_type.get()
+            if tfm_tgt == "(global)":
+                tfm_tgt = tgt_type
+            tfm_db = self._transform_db_path.get() or tgt_db
+            line = f"Trans:  {tfm_tgt} [{tfm_db}] (in-place)"
+            if self._transfer_enabled.get():
+                dest_type = self._transfer_dest_type.get()
+                dest_db = self._transfer_dest_db_path.get() or "(default)"
+                line += f" → {dest_type} [{dest_db}]"
+            lines.append(line)
+        if has_report:
+            rpt_out = self._report_out_dir.get() or "data/report"
+            csv_on  = self._ov_csv.get()
+            xl_on   = self._ov_excel.get()
+            fmt = "+".join(f for f in (["CSV"] if csv_on else []) + (["Excel"] if xl_on else []))
+            skip_sql = not csv_on
+            if skip_sql and self._ov_union_dir.get().strip():
+                lines.append(f"Report: {self._ov_union_dir.get()} → {rpt_out}/ [{fmt}]")
+            else:
+                lines.append(f"Report: {tgt_type} → {rpt_out}/ [{fmt}]")
+        return lines
 
     def _check_missing_params(self: "BatchRunnerGUI") -> set[str]:
         """SQL에서 필요한 파라미터 vs GUI 입력 파라미터 비교 → 누락 목록 반환.
@@ -592,3 +648,107 @@ class DialogsMixin:
         content = self._log.get("1.0", "end")
         Path(path).write_text(content, encoding="utf-8")
         self._log_sys(f"Log saved: {path}")
+
+    # ── Standard Dir Setup ──────────────────────────────────
+
+    def _setup_standard_dirs(self: "BatchRunnerGUI"):
+        """Best-practice 디렉토리 구조를 자동 생성"""
+        wd = Path(self._work_dir.get())
+
+        # 글로벌 표준 구조
+        dirs = [
+            "config",
+            "jobs",
+            "sql/export",
+            "sql/transform/duckdb",
+            "sql/report",
+            "data/export",
+            "data/local",
+            "data/report",
+            "data/transform",
+            "data/report_tracking",
+            "logs",
+        ]
+
+        existing = []
+        to_create = []
+        for d in dirs:
+            p = wd / d
+            if p.is_dir():
+                existing.append(d)
+            else:
+                to_create.append(d)
+
+        if not to_create:
+            self._log_sys("[DirSetup] 모든 표준 디렉토리가 이미 존재합니다")
+            messagebox.showinfo("Dir Setup", "모든 표준 디렉토리가 이미 존재합니다.")
+            return
+
+        def build(body):
+            tk.Label(body, text="표준 디렉토리 구조 생성", bg=C["base"],
+                     fg=C["blue"], font=FONTS["h2"]).pack(pady=(0, 8))
+
+            # 트리 구조 표시
+            tree_text = (
+                "work_dir/\n"
+                "├── config/          ← env.yml (DB 접속정보)\n"
+                "├── jobs/            ← Job YAML 파일\n"
+                "├── sql/\n"
+                "│   ├── export/      ← Source DB → CSV 추출 SQL\n"
+                "│   ├── transform/\n"
+                "│   │   └── duckdb/  ← DuckDB 내부 변환 SQL\n"
+                "│   └── report/      ← 리포트 SQL\n"
+                "├── data/\n"
+                "│   ├── export/      ← Export CSV 출력\n"
+                "│   ├── local/       ← DuckDB 파일 (.duckdb)\n"
+                "│   ├── transform/   ← Transform 트래킹\n"
+                "│   ├── report/      ← CSV·Excel 결과물\n"
+                "│   └── report_tracking/\n"
+                "└── logs/            ← 실행 로그"
+            )
+            tree_lbl = tk.Label(body, text=tree_text, bg=C["surface0"],
+                                fg=C["text"], font=FONTS["mono_small"],
+                                justify="left", anchor="w", padx=8, pady=6)
+            tree_lbl.pack(fill="x", padx=12, pady=4)
+
+            # 새로 생성될 디렉토리
+            if to_create:
+                tk.Label(body, text=f"새로 생성: {len(to_create)}개 폴더",
+                         bg=C["base"], fg=C["green"], font=FONTS["body_bold"]).pack(pady=(6, 2))
+                create_text = "\n".join(f"  + {d}/" for d in to_create)
+                tk.Label(body, text=create_text, bg=C["base"], fg=C["green"],
+                         font=FONTS["mono_small"], justify="left", anchor="w").pack()
+            if existing:
+                tk.Label(body, text=f"이미 존재: {len(existing)}개 폴더",
+                         bg=C["base"], fg=C["subtext"], font=FONTS["body"]).pack(pady=(4, 0))
+
+        if not self._themed_confirm("━ Standard Dir Setup", build,
+                                    ok_text="Create", ok_color="blue", ok_active="sapphire"):
+            return
+
+        created = []
+        for d in to_create:
+            p = wd / d
+            p.mkdir(parents=True, exist_ok=True)
+            created.append(d)
+
+        # env.sample.yml이 없으면 config/ 에 안내 파일 생성
+        sample = wd / "config" / "env.sample.yml"
+        env_file = wd / "config" / "env.yml"
+        if not env_file.exists() and not sample.exists():
+            sample.write_text(
+                "# ELT Runner 환경 설정 — 아래를 env.yml로 복사 후 수정하세요\n"
+                "sources:\n"
+                "  oracle:\n"
+                "    hosts:\n"
+                "      local:\n"
+                "        dsn: localhost:1521/XEPDB1\n"
+                "        user: your_user\n"
+                "        password: your_password\n",
+                encoding="utf-8")
+            created.append("config/env.sample.yml")
+
+        for d in created:
+            self._log_sys(f"[DirSetup] Created: {d}/")
+        self._log_sys(f"[DirSetup] 완료 — {len(created)}개 생성됨 (work_dir: {wd})")
+        self._reload_project()

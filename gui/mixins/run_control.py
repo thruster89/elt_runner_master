@@ -51,6 +51,7 @@ class RunControlMixin:
 
         cmd = self._build_command()
         self._log_sys(f"Run: {chr(32).join(cmd)}")
+        self._log_data_flow_summary()
         self._set_status("● running", C["green"])
         self._elapsed_start = time.time()
         self._progress_bar["value"] = 0
@@ -536,6 +537,82 @@ class RunControlMixin:
                 _recurse(child)
         if hasattr(self, '_left_inner'):
             _recurse(self._left_inner)
+
+    # ── 데이터 흐름 요약 로그 ─────────────────────────────────
+
+    def _log_data_flow_summary(self: "BatchRunnerGUI"):
+        """실행 시작 시 각 Stage의 source→dest 흐름을 로그에 한눈에 표시"""
+        sep = "─" * 50
+        self._log_write(sep, "SYS")
+        self._log_write("  Data Flow", "SYS")
+        self._log_write(sep, "SYS")
+
+        has_export    = self._stage_export.get()
+        has_load      = self._stage_load_local.get()
+        has_transform = self._stage_transform.get()
+        has_report    = self._stage_report.get()
+
+        src_type = self._source_type_var.get()
+        src_host = self._source_host_var.get()
+        tgt_type = self._target_type_var.get()
+        tgt_db   = self._target_db_path.get() or "(default)"
+
+        if has_export:
+            sql_dir = self._export_sql_dir.get() or "sql/export"
+            out_dir = self._export_out_dir.get() or "data/export"
+            self._log_write(
+                f"  Export     {src_type}/{src_host}  →  {out_dir}/", "SYS")
+            self._log_write(
+                f"             SQL: {sql_dir}/", "SYS")
+
+        if has_load:
+            csv_dir = self._load_csv_dir.get().strip()
+            if not csv_dir:
+                csv_dir = self._export_out_dir.get() or "data/export"
+            self._log_write(
+                f"  Load       {csv_dir}/  →  {tgt_type} [{tgt_db}]", "SYS")
+
+        if has_transform:
+            tfm_sql = self._transform_sql_dir.get() or "sql/transform/duckdb"
+            tfm_tgt = self._transform_target_type.get()
+            if tfm_tgt == "(global)":
+                tfm_tgt = tgt_type
+            tfm_db = self._transform_db_path.get() or tgt_db
+            self._log_write(
+                f"  Transform  {tfm_tgt} [{tfm_db}]  (in-place)", "SYS")
+            self._log_write(
+                f"             SQL: {tfm_sql}/", "SYS")
+            if self._transfer_enabled.get():
+                dest_type = self._transfer_dest_type.get()
+                dest_db = self._transfer_dest_db_path.get() or "(default)"
+                self._log_write(
+                    f"             Transfer → {dest_type} [{dest_db}]", "SYS")
+
+        if has_report:
+            rpt_sql = self._report_sql_dir.get() or "sql/report"
+            rpt_out = self._report_out_dir.get() or "data/report"
+            csv_on  = self._ov_csv.get()
+            xl_on   = self._ov_excel.get()
+            formats = []
+            if csv_on:
+                formats.append("CSV")
+            if xl_on:
+                formats.append("Excel")
+            fmt_str = "+".join(formats) if formats else "none"
+            skip_sql = not csv_on
+            if skip_sql and self._ov_union_dir.get().strip():
+                union_dir = self._ov_union_dir.get().strip()
+                self._log_write(
+                    f"  Report     {union_dir}/  →  {rpt_out}/ [{fmt_str}]", "SYS")
+                self._log_write(
+                    f"             (skip_sql: CSV→Excel 변환만)", "SYS")
+            else:
+                self._log_write(
+                    f"  Report     {tgt_type} [{tgt_db}]  →  {rpt_out}/ [{fmt_str}]", "SYS")
+                self._log_write(
+                    f"             SQL: {rpt_sql}/", "SYS")
+
+        self._log_write(sep, "SYS")
 
     def _refresh_preview(self: "BatchRunnerGUI"):
         """디바운싱: 50ms 내 연속 호출은 마지막 1회만 실행.
