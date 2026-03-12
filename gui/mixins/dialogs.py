@@ -723,7 +723,7 @@ class DialogsMixin:
                          bg=C["base"], fg=C["subtext"], font=FONTS["body"]).pack(pady=(4, 0))
 
         if not self._themed_confirm("━ Standard Dir Setup", build,
-                                    ok_text="Create", ok_color="blue", ok_active="sapphire"):
+                                    ok_text="Create", ok_color="blue", ok_active="sky"):
             return
 
         created = []
