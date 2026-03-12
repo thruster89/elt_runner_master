@@ -18,6 +18,9 @@ job.yml 설정:
       enabled: true
       out_dir: data/report/
       max_files: 10
+      csv_filter:              # CSV 파일명 LIKE 필터 (대소문자 무시)
+                               # 문자열: "contract" → 파일명에 포함된 것만
+                               # 리스트: ["contract", "order"] → OR 조건
 """
 
 import csv
@@ -371,6 +374,17 @@ def _run_excel_export(ctx, report_cfg, cfg, csv_files: list):
     out_dir_str = cfg.get("out_dir") or report_cfg.get("export_csv", {}).get("out_dir", ctx.get_default("report_out_dir"))
     out_dir = resolve_path(ctx, out_dir_str)
     max_files = int(cfg.get("max_files", 10))
+
+    # ── csv_filter: LIKE 필터링 (대소문자 무시) ──
+    csv_filter = cfg.get("csv_filter")
+    if csv_filter:
+        keywords = csv_filter if isinstance(csv_filter, list) else [csv_filter]
+        keywords = [str(k).lower() for k in keywords]
+        before = len(csv_files)
+        csv_files = [f for f in csv_files
+                     if any(k in f.name.lower() for k in keywords)]
+        logger.info("REPORT excel csv_filter=%s | %d → %d files",
+                    keywords, before, len(csv_files))
 
     if not csv_files:
         logger.warning("REPORT excel: no target CSV found, skip")

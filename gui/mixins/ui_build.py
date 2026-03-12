@@ -160,6 +160,10 @@ class UiBuildMixin:
                   activebackground=C["surface1"],
                   command=self._reload_project)
         self._reload_btn.pack(side="left", padx=(0, 2))
+        tk.Button(bar1, text="Dir Setup", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
+                  activebackground=C["surface1"],
+                  command=self._setup_standard_dirs).pack(side="left", padx=(0, 2))
         tk.Button(bar1, text="↗ New Window", font=FONTS["mono_small"],
                   bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
                   activebackground=C["surface1"],
@@ -499,12 +503,16 @@ class UiBuildMixin:
             tk.Label(r, text=note, font=FONTS["shortcut"],
                      bg=C["mantle"], fg=C["subtext"]).pack(side="left", padx=4)
 
-    def _path_row(self: "BatchRunnerGUI", parent_frame, label, var, browse_title="Select folder"):
+    def _path_row(self: "BatchRunnerGUI", parent_frame, label, var, browse_title="Select folder",
+                  tooltip=None):
         """경로 입력 + ... 버튼 행 (경로+버튼 우측 정렬)"""
         row = tk.Frame(parent_frame, bg=C["mantle"])
         row.pack(fill="x", padx=12, pady=2)
-        tk.Label(row, text=label, font=FONTS["label"],
-                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w").pack(side="left")
+        lbl_w = tk.Label(row, text=label, font=FONTS["label"],
+                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w")
+        lbl_w.pack(side="left")
+        if tooltip:
+            Tooltip(lbl_w, tooltip)
         def _browse():
             wd = self._work_dir.get()
             d = filedialog.askdirectory(initialdir=var.get() or wd, title=browse_title)
@@ -980,7 +988,8 @@ class UiBuildMixin:
         _r_sql.pack(side="right", fill="x", expand=True, ipady=2)
         self._path_entry_widgets.append((self._report_sql_dir, _r_sql))
 
-        self._path_row(body, "out_dir", self._report_out_dir, "Select report output dir")
+        self._path_row(body, "report_out", self._report_out_dir, "Select report output dir",
+                       tooltip="CSV·Excel 공통 출력 폴더\nSQL→CSV, CSV→Excel 결과 모두 이 경로에 저장")
 
         def _w_rpt_schema(r):
             tk.Entry(r, textvariable=self._report_schema,
@@ -1005,7 +1014,7 @@ class UiBuildMixin:
         # report.csv_union_dir
         union_row = tk.Frame(body, bg=C["mantle"])
         union_row.pack(fill="x", padx=12, pady=2)
-        _union_lbl = tk.Label(union_row, text="union_dir", font=FONTS["label"],
+        _union_lbl = tk.Label(union_row, text="csv_source", font=FONTS["label"],
                  width=12, anchor="w", bg=C["mantle"], fg=C["text"])
         _union_lbl.pack(side="left")
         Tooltip(_union_lbl, TOOLTIPS["union_dir"])
@@ -1036,6 +1045,13 @@ class UiBuildMixin:
         self._union_file_count = tk.Label(union_row, text="", font=FONTS["mono_small"],
                                           bg=C["mantle"], fg=C["subtext"])
         self._union_file_count.pack(side="left", padx=(4, 0))
+
+        def _w_csv_filter(r):
+            tk.Entry(r, textvariable=self._ov_csv_filter,
+                     bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
+                     relief="flat", font=FONTS["mono"], width=16).pack(side="left", fill="x", expand=True, ipady=2)
+        self._ov_row(body, "csv_filter", _w_csv_filter,
+                     tooltip="Excel 병합 시 파일명 LIKE 필터\n예: contract → 파일명에 'contract' 포함된 CSV만\n쉼표 구분으로 여러 키워드 가능: contract,order")
 
         def _w_max_files(r):
             tk.Spinbox(r, from_=1, to=100, width=4, textvariable=self._ov_max_files,
