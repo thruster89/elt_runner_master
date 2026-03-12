@@ -652,87 +652,114 @@ class DialogsMixin:
     # ── Standard Dir Setup ──────────────────────────────────
 
     def _setup_standard_dirs(self: "BatchRunnerGUI"):
-        """Best-practice 디렉토리 구조를 자동 생성"""
+        """Best-practice 디렉토리 구조를 자동 생성 (job_name 기반)"""
+        from engine.path_utils import get_job_defaults
+
         wd = Path(self._work_dir.get())
 
-        # 글로벌 표준 구조
-        dirs = [
-            "config",
-            "jobs",
-            "sql/export",
-            "sql/transform/duckdb",
-            "sql/report",
-            "data/export",
-            "data/local",
-            "data/report",
-            "data/transform",
-            "data/report_tracking",
-            "logs",
+        # ── 현재 job 정보 읽기 ──
+        job_cfg = self._jobs.get(self.job_var.get()) or {}
+        job_name = job_cfg.get(
+            "job_name",
+            Path(self.job_var.get()).stem if self.job_var.get() else "")
+        tgt_type = job_cfg.get("target", {}).get("type", "duckdb")
+
+        if not job_name or job_name in ("default", "_default", "gui_run"):
+            self._log_sys("[DirSetup] job을 먼저 선택하세요 (default 제외)")
+            messagebox.showwarning("Dir Setup", "job을 먼저 선택하세요.\n(_default 제외)")
+            return
+
+        defaults = get_job_defaults(wd, job_name, tgt_type)
+
+        # ── 생성할 디렉토리 목록 ──
+        # 글로벌 공통 + job-centric 하위 폴더
+        global_dirs = ["config", "jobs", "logs"]
+        job_base = f"jobs/{job_name}"
+        job_dirs = [
+            defaults["export_sql_dir"],
+            defaults["export_out_dir"],
+            defaults["transform_sql_dir"],
+            defaults["report_sql_dir"],
+            defaults["report_out_dir"],
+            defaults["tracking_dir_transform"],
+            defaults["tracking_dir_report"],
         ]
+        # db_path의 부모 디렉토리
+        db_parent = str(Path(defaults["target_db_path"]).parent)
+        if db_parent != ".":
+            job_dirs.append(db_parent)
+
+        all_dirs = global_dirs + job_dirs
 
         existing = []
         to_create = []
-        for d in dirs:
-            p = wd / d
-            if p.is_dir():
+        for d in all_dirs:
+            if (wd / d).is_dir():
                 existing.append(d)
             else:
                 to_create.append(d)
 
         if not to_create:
-            self._log_sys("[DirSetup] 모든 표준 디렉토리가 이미 존재합니다")
-            messagebox.showinfo("Dir Setup", "모든 표준 디렉토리가 이미 존재합니다.")
+            self._log_sys(f"[DirSetup] '{job_name}' 디렉토리가 이미 모두 존재합니다")
+            messagebox.showinfo("Dir Setup", f"'{job_name}' 디렉토리가 이미 모두 존재합니다.")
             return
 
-        def build(body):
-            tk.Label(body, text="표준 디렉토리 구조 생성", bg=C["base"],
-                     fg=C["blue"], font=FONTS["h2"]).pack(pady=(0, 8))
+        # ── 확인 다이얼로그 ──
+        db_ext = "duckdb" if tgt_type == "duckdb" else "sqlite"
 
-            # 트리 구조 표시
+        def build(body):
+            tk.Label(body, text=f"Job 디렉토리 생성: {job_name}",
+                     bg=C["base"], fg=C["blue"], font=FONTS["h2"]).pack(pady=(0, 8))
+
             tree_text = (
-                "work_dir/\n"
-                "├── config/          ← env.yml (DB 접속정보)\n"
-                "├── jobs/            ← Job YAML 파일\n"
-                "├── sql/\n"
-                "│   ├── export/      ← Source DB → CSV 추출 SQL\n"
-                "│   ├── transform/\n"
-                "│   │   └── duckdb/  ← DuckDB 내부 변환 SQL\n"
-                "│   └── report/      ← 리포트 SQL\n"
-                "├── data/\n"
-                "│   ├── export/      ← Export CSV 출력\n"
-                "│   ├── local/       ← DuckDB 파일 (.duckdb)\n"
-                "│   ├── transform/   ← Transform 트래킹\n"
-                "│   ├── report/      ← CSV·Excel 결과물\n"
-                "│   └── report_tracking/\n"
-                "└── logs/            ← 실행 로그"
+                f"work_dir/\n"
+                f"├── config/\n"
+                f"├── jobs/\n"
+                f"│   └── {job_name}/\n"
+                f"│       ├── sql/\n"
+                f"│       │   ├── export/      ← Export SQL\n"
+                f"│       │   ├── transform/   ← Transform SQL\n"
+                f"│       │   └── report/      ← Report SQL\n"
+                f"│       └── data/\n"
+                f"│           ├── export/      ← Export CSV\n"
+                f"│           ├── {job_name}.{db_ext}\n"
+                f"│           ├── transform/   ← 트래킹\n"
+                f"│           ├── report/      ← 결과물\n"
+                f"│           └── report_tracking/\n"
+                f"└── logs/"
             )
             tree_lbl = tk.Label(body, text=tree_text, bg=C["surface0"],
                                 fg=C["text"], font=FONTS["mono_small"],
                                 justify="left", anchor="w", padx=8, pady=6)
             tree_lbl.pack(fill="x", padx=12, pady=4)
 
-            # 새로 생성될 디렉토리
             if to_create:
                 tk.Label(body, text=f"새로 생성: {len(to_create)}개 폴더",
-                         bg=C["base"], fg=C["green"], font=FONTS["body_bold"]).pack(pady=(6, 2))
+                         bg=C["base"], fg=C["green"],
+                         font=FONTS["body_bold"]).pack(pady=(6, 2))
                 create_text = "\n".join(f"  + {d}/" for d in to_create)
                 tk.Label(body, text=create_text, bg=C["base"], fg=C["green"],
                          font=FONTS["mono_small"], justify="left", anchor="w").pack()
             if existing:
                 tk.Label(body, text=f"이미 존재: {len(existing)}개 폴더",
-                         bg=C["base"], fg=C["subtext"], font=FONTS["body"]).pack(pady=(4, 0))
+                         bg=C["base"], fg=C["subtext"],
+                         font=FONTS["body"]).pack(pady=(4, 0))
 
-        if not self._themed_confirm("━ Standard Dir Setup", build,
+            tk.Label(body, text="생성 후 GUI 경로가 자동 업데이트됩니다",
+                     bg=C["base"], fg=C["yellow"],
+                     font=FONTS["small"]).pack(pady=(8, 0))
+
+        if not self._themed_confirm("━ Job Dir Setup", build,
                                     ok_text="Create", ok_color="blue", ok_active="sky"):
             return
 
+        # ── 디렉토리 생성 ──
         created = []
         for d in to_create:
-            p = wd / d
-            p.mkdir(parents=True, exist_ok=True)
+            (wd / d).mkdir(parents=True, exist_ok=True)
             created.append(d)
 
-        # env.sample.yml이 없으면 config/ 에 안내 파일 생성
+        # env.sample.yml 생성 (최초 1회)
         sample = wd / "config" / "env.sample.yml"
         env_file = wd / "config" / "env.yml"
         if not env_file.exists() and not sample.exists():
@@ -750,5 +777,15 @@ class DialogsMixin:
 
         for d in created:
             self._log_sys(f"[DirSetup] Created: {d}/")
-        self._log_sys(f"[DirSetup] 완료 — {len(created)}개 생성됨 (work_dir: {wd})")
+        self._log_sys(f"[DirSetup] 완료 — {len(created)}개 생성됨 (job: {job_name})")
+
+        # ── GUI 경로 필드 자동 업데이트 ──
+        self._export_sql_dir.set(defaults["export_sql_dir"])
+        self._export_out_dir.set(defaults["export_out_dir"])
+        self._transform_sql_dir.set(defaults["transform_sql_dir"])
+        self._report_sql_dir.set(defaults["report_sql_dir"])
+        self._report_out_dir.set(defaults["report_out_dir"])
+        self._target_db_path.set(defaults["target_db_path"])
+
         self._reload_project()
+        self._log_sys(f"[DirSetup] GUI 경로가 '{job_name}' convention으로 업데이트됨")
