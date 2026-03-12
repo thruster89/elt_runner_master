@@ -1046,6 +1046,13 @@ class UiBuildMixin:
                                           bg=C["mantle"], fg=C["subtext"])
         self._union_file_count.pack(side="left", padx=(4, 0))
 
+        def _w_csv_filter(r):
+            tk.Entry(r, textvariable=self._ov_csv_filter,
+                     bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
+                     relief="flat", font=FONTS["mono"], width=16).pack(side="left", fill="x", expand=True, ipady=2)
+        self._ov_row(body, "csv_filter", _w_csv_filter,
+                     tooltip="Excel 병합 시 파일명 LIKE 필터\n예: contract → 파일명에 'contract' 포함된 CSV만\n쉼표 구분으로 여러 키워드 가능: contract,order")
+
         def _w_max_files(r):
             tk.Spinbox(r, from_=1, to=100, width=4, textvariable=self._ov_max_files,
                        bg=C["surface0"], fg=C["text"], buttonbackground=C["surface1"],

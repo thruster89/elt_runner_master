@@ -78,6 +78,7 @@ class StateJobMixin:
                 "excel":        self._ov_excel.get(),
                 "csv":          self._ov_csv.get(),
                 "max_files":    self._ov_max_files.get(),
+                "csv_filter":   self._ov_csv_filter.get(),
                 "skip_sql":     self._ov_skip_sql.get(),
                 "union_dir":    self._ov_union_dir.get(),
                 "timeout":      self._ov_timeout.get(),
@@ -147,6 +148,7 @@ class StateJobMixin:
         self._ov_excel.set(ov.get("excel", True))
         self._ov_csv.set(ov.get("csv", True))
         self._ov_max_files.set(ov.get("max_files", 10))
+        self._ov_csv_filter.set(ov.get("csv_filter", ""))
         self._ov_skip_sql.set(ov.get("skip_sql", False))
         self._ov_union_dir.set(ov.get("union_dir", ""))
         self._ov_timeout.set(ov.get("timeout", "1800"))
@@ -201,6 +203,16 @@ class StateJobMixin:
         self._job_loaded_snapshot = self._snapshot()
         self._dirty_cached = False  # 방금 캡처했으므로 clean
         self._update_title_dirty()
+
+    def _build_csv_filter_cfg(self: "BatchRunnerGUI") -> dict:
+        """csv_filter GUI 값을 config dict로 변환 (빈값이면 빈 dict)"""
+        raw = self._ov_csv_filter.get().strip()
+        if not raw:
+            return {}
+        parts = [p.strip() for p in raw.split(",") if p.strip()]
+        if len(parts) == 1:
+            return {"csv_filter": parts[0]}
+        return {"csv_filter": parts}
 
     # ── GUI config 빌드 ────────────────────────────────────────
     def _build_gui_config(self: "BatchRunnerGUI") -> dict:
@@ -262,6 +274,7 @@ class StateJobMixin:
                     "enabled": self._ov_excel.get(),
                     "out_dir": self._report_out_dir.get(),
                     "max_files": self._ov_max_files.get(),
+                    **(_csv_filter_cfg if (_csv_filter_cfg := self._build_csv_filter_cfg()) else {}),
                 },
                 **({"params": {k.get().strip(): v.get().strip()
                     for k, v in self._stage_param_entries.get("report", [])
@@ -459,6 +472,10 @@ class StateJobMixin:
             csv_enabled = False
         self._ov_csv.set(csv_enabled)
         self._ov_max_files.set(int(rep.get("excel", {}).get("max_files", 10)))
+        csv_filter = rep.get("excel", {}).get("csv_filter", "")
+        if isinstance(csv_filter, list):
+            csv_filter = ", ".join(str(x) for x in csv_filter)
+        self._ov_csv_filter.set(str(csv_filter))
         self._ov_union_dir.set(str(rep.get("csv_union_dir", "")))
 
         # Param mode (per-stage)
