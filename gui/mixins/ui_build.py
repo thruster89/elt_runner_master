@@ -347,6 +347,7 @@ class UiBuildMixin:
                 var.trace_add("write", lambda *_: self._refresh_preview())
             # auto-suggest 트리거 (sql_dir 변경 시 파라미터 재스캔)
             self._export_sql_dir.trace_add("write", lambda *_: self.after(300, self._on_export_sql_dir_change))
+            self._export_out_dir.trace_add("write", lambda *_: self.after(300, self._on_export_out_dir_change))
             self._transform_sql_dir.trace_add("write", lambda *_: self.after(300, self._scan_and_suggest_params))
             self._report_sql_dir.trace_add("write", lambda *_: self.after(300, self._scan_and_suggest_params))
             self._target_type_var.trace_add("write", lambda *_: self._refresh_preview())
