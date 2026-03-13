@@ -17,7 +17,7 @@ from engine.path_utils import resolve_path
 from engine.sql_utils import sort_sql_files, render_sql, detect_used_params, _strip_sql_comments, read_sql_file
 from engine.runtime_state import stop_event
 from stages.task_tracking import (
-    make_task_key, update_task_status,
+    init_run_info, make_task_key, update_task_status,
     load_failed_tasks as _load_failed_tasks_shared,
 )
 
@@ -612,7 +612,11 @@ def run(ctx: RunContext):
 
     # run_info.json 경로 (task 상태 기록용)
     export_base = resolve_path(ctx, export_cfg.get("out_dir", ctx.get_default("export_out_dir")))
-    run_info_path = export_base / ctx.run_id / "run_info.json"
+    run_info_dir = export_base / ctx.run_id
+    run_info_dir.mkdir(parents=True, exist_ok=True)
+    run_info_path = run_info_dir / "run_info.json"
+    init_run_info(run_info_path, job_name=ctx.job_name, run_id=ctx.run_id,
+                  stage="export", mode=ctx.mode, params=ctx.params)
 
     stall_seconds = export_cfg.get("timeout_seconds", 1800)
 

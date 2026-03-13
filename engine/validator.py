@@ -128,7 +128,7 @@ def _validate_paths(ctx, job_cfg, stages, errors, warnings):
             sql_dir = resolve_path(ctx, sql_dir_str)
             if not sql_dir.exists():
                 errors.append(f"Export sql_dir가 존재하지 않습니다: {sql_dir}")
-            elif not list(sql_dir.glob("*.sql")):
+            elif not list(sql_dir.rglob("*.sql")):
                 warnings.append(f"Export sql_dir에 SQL 파일이 없습니다: {sql_dir}")
         else:
             if "export" in stages:
