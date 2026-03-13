@@ -85,7 +85,7 @@ def run(ctx: RunContext):
         logger.info("LOAD stage skipped (no csv_dir / export config)")
         return
 
-    export_dir = export_base / ctx.job_name
+    export_dir = export_base
     if not export_dir.exists() and not ctx.exported_files:
         if ctx.mode == "plan":
             logger.info("LOAD [PLAN] csv dir not found: %s (export 실행 후 확인 가능)", export_dir)

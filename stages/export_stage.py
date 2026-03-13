@@ -550,7 +550,7 @@ def run(ctx: RunContext):
     stage_param_mode = ctx.get_stage_param_mode("export")
 
     sql_dir = resolve_path(ctx, export_cfg["sql_dir"])
-    out_dir = resolve_path(ctx, export_cfg["out_dir"]) / ctx.job_name
+    out_dir = resolve_path(ctx, export_cfg["out_dir"])
     out_dir.mkdir(parents=True, exist_ok=True)
 
     source_sel = job_cfg.get("source", {})

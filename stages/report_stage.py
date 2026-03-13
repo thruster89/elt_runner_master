@@ -78,12 +78,12 @@ def run(ctx: RunContext):
 
     if skip_sql:
         # DB 연결 없이 csv_union_dir 의 CSV 파일들을 바로 사용
-        # 디폴트: export.out_dir / job_name (export 직후 바로 union하는 패턴)
+        # 디폴트: export.out_dir (export 직후 바로 union하는 패턴)
         csv_union_dir = report_cfg.get("csv_union_dir")
         if not csv_union_dir:
             export_cfg = ctx.job_config.get("export", {})
             export_out = export_cfg.get("out_dir", ctx.get_default("export_out_dir"))
-            csv_union_dir = str(Path(export_out) / ctx.job_name)
+            csv_union_dir = str(Path(export_out))
         union_dir = resolve_path(ctx, csv_union_dir)
         if union_dir.exists():
             generated_csvs = sorted(
