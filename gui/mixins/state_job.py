@@ -878,6 +878,19 @@ class StateJobMixin:
                 self._export_out_dir.set(suggested)
         self._scan_and_suggest_params()
 
+    def _on_export_out_dir_change(self: "BatchRunnerGUI"):
+        """export out_dir 변경 시 report 경로 자동 제안"""
+        if self._restoring_job:
+            return
+        out = self._export_out_dir.get()
+        if not out:
+            return
+        # report_out: data/export/… → data/report/…
+        if "data/export" in out:
+            self._report_out_dir.set(out.replace("data/export", "data/report", 1))
+        # csv_source: export out_dir 그대로 (CSV가 생성되는 경로)
+        self._ov_union_dir.set(out)
+
     # ── SQL 파라미터 자동 감지 ─────────────────────────────────
     def _scan_and_suggest_params(self: "BatchRunnerGUI"):
         """
