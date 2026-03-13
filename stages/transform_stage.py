@@ -130,7 +130,7 @@ def run(ctx: RunContext):
 
     # ── run_info.json 초기화 & retry ────────────────────────
     tracking_base = resolve_path(ctx, transform_cfg.get("tracking_dir", ctx.get_default("tracking_dir_transform")))
-    run_info_dir = tracking_base / ctx.job_name / ctx.run_id
+    run_info_dir = tracking_base / ctx.run_id
     run_info_path = run_info_dir / "run_info.json"
 
     init_run_info(run_info_path, job_name=ctx.job_name, run_id=ctx.run_id,
@@ -139,7 +139,7 @@ def run(ctx: RunContext):
     failed_task_keys = None
     if ctx.mode == "retry":
         failed_task_keys = load_failed_tasks(
-            tracking_base, ctx.job_name, ctx.run_id, stage="transform")
+            tracking_base, ctx.run_id, stage="transform")
 
     try:
         _run_sql_loop(ctx, conn, conn_type, sql_files, on_error,

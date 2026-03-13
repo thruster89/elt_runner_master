@@ -92,20 +92,19 @@ def update_task_status(run_info_path: Path, task_key: str, status: str,
 
 
 # ── 실패 task 로드 ──────────────────────────────────────────
-def load_failed_tasks(base_dir: Path, job_name: str, run_id: str,
+def load_failed_tasks(base_dir: Path, run_id: str,
                       stage: str) -> set | None:
     """
     이전 run 중 가장 최근 run_info.json에서 failed/pending task key 반환.
     실패 task 없거나 이전 run 없으면 None (전체 실행).
     """
-    job_dir = base_dir / job_name
-    if not job_dir.exists():
+    if not base_dir.exists():
         logger.warning("[%s] RETRY: no directory found (%s) — running all tasks",
-                       stage.upper(), job_dir)
+                       stage.upper(), base_dir)
         return None
 
     candidates = []
-    for d in sorted(job_dir.iterdir(), reverse=True):
+    for d in sorted(base_dir.iterdir(), reverse=True):
         if not d.is_dir():
             continue
         run_info_path = d / "run_info.json"

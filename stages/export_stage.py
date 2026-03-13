@@ -464,9 +464,9 @@ def run_plan(ctx, sql_files, export_cfg, out_dir, ext, name_style="full",
         "tasks": tasks,
     }
 
-    # 리포트 저장 경로: data/export/{job_name}/{run_id}/plan_report.json
+    # 리포트 저장 경로: {out_dir}/{run_id}/plan_report.json
     export_base = resolve_path(ctx, export_cfg.get("out_dir", ctx.get_default("export_out_dir")))
-    report_dir = export_base / ctx.job_name / ctx.run_id
+    report_dir = export_base / ctx.run_id
     report_dir.mkdir(parents=True, exist_ok=True)
 
     json_path = report_dir / "plan_report.json"
@@ -528,7 +528,7 @@ def load_failed_tasks(ctx, export_cfg) -> set:
     """이전 run의 failed/pending task_key 반환. task_tracking 모듈 위임."""
     export_base = resolve_path(ctx, export_cfg.get("out_dir", ctx.get_default("export_out_dir")))
     return _load_failed_tasks_shared(
-        export_base, ctx.job_name, ctx.run_id, stage="export"
+        export_base, ctx.run_id, stage="export"
     )
 
 
@@ -612,7 +612,7 @@ def run(ctx: RunContext):
 
     # run_info.json 경로 (task 상태 기록용)
     export_base = resolve_path(ctx, export_cfg.get("out_dir", ctx.get_default("export_out_dir")))
-    run_info_path = export_base / ctx.job_name / ctx.run_id / "run_info.json"
+    run_info_path = export_base / ctx.run_id / "run_info.json"
 
     stall_seconds = export_cfg.get("timeout_seconds", 1800)
 
