@@ -285,7 +285,7 @@ class RunControlMixin:
     def _build_command_args(self: "BatchRunnerGUI") -> list[str]:
         """yml 쓰기 없이 CLI 인자만 조립 (preview용)"""
         job_name = self.job_var.get() or "_gui_temp.yml"
-        cmd = ["python", "runner.py", "--job", job_name]
+        cmd = [sys.executable, "runner.py", "--job", job_name]
 
         # env
         env_path = self._env_path_var.get().strip()
