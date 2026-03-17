@@ -170,7 +170,8 @@ The largest stage (~662 lines). Extracts data from Oracle/Vertica into CSV files
 Examples:
   full mode:    01_contract__local__clsYymm_202303.csv.gz
   compact mode: 01_contract__local__202303.csv.gz
-  strip_prefix: contract__local__clsYymm_202303.csv.gz
+  strip_prefix: contract__local__clsYymm_202303.csv.gz   (01_contract → contract)
+  strip_prefix: qpv_005__local__clsYymm_202303.csv.gz   (3. qpv_005 → qpv_005)
   both:         contract__local__202303.csv.gz
 ```
 
@@ -451,7 +452,7 @@ export:
   compression: gzip         # gzip | none
   format: csv
   csv_name_style: full      # full | compact
-  csv_strip_prefix: false
+  csv_strip_prefix: false   # strip numeric prefix (separators: _ . - space)
 
 load:
   mode: replace             # replace | truncate | delete | append
