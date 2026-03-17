@@ -3,8 +3,8 @@
 import re
 from pathlib import Path
 
-SQL_PREFIX_PATTERN = re.compile(r"^(\d+)_.*\.sql$", re.IGNORECASE)
-SQL_PREFIX_STRIP = re.compile(r"^(\d+)_")
+SQL_PREFIX_PATTERN = re.compile(r"^(\d+)[.\-_ ]+.*\.sql$", re.IGNORECASE)
+SQL_PREFIX_STRIP = re.compile(r"^(\d+)[.\-_ ]+")
 TABLE_HINT_PATTERN = re.compile(r"^--\[(.+)\]$")
 
 # SQL 파일 읽기에 시도할 인코딩 목록 (우선순위순)

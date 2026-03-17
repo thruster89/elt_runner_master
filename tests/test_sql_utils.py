@@ -254,6 +254,18 @@ class TestStripSqlPrefix:
     def test_multiple_digits(self):
         assert strip_sql_prefix("123_big_table") == "big_table"
 
+    def test_dot_space_prefix(self):
+        """'3. qpv_005' 형태 접두사 제거."""
+        assert strip_sql_prefix("3. qpv_005") == "qpv_005"
+
+    def test_dot_no_space_prefix(self):
+        """'3.qpv_005' 형태."""
+        assert strip_sql_prefix("3.qpv_005") == "qpv_005"
+
+    def test_dash_prefix(self):
+        """'01-contract' 형태."""
+        assert strip_sql_prefix("01-contract") == "contract"
+
 
 # =====================================================================
 # resolve_table_name
