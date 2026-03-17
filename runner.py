@@ -391,6 +391,14 @@ def main():
     if args.job is None:
         jobs_dir = work_dir / "jobs"
         yml_files = sorted(jobs_dir.glob("*.yml")) if jobs_dir.exists() else []
+        # job-centric: jobs/{name}/{name}.yml 도 탐색
+        if jobs_dir.exists():
+            for d in sorted(jobs_dir.iterdir()):
+                if d.is_dir():
+                    jc = d / f"{d.name}.yml"
+                    if jc.is_file() and jc not in yml_files:
+                        yml_files.append(jc)
+            yml_files.sort(key=lambda p: p.name)
         if not yml_files:
             parser.error("specify --job or place a yml file in the jobs/ folder.")
         if len(yml_files) == 1:
@@ -398,22 +406,29 @@ def main():
         else:
             print("Found the following yml files in jobs/ folder:")
             for i, f in enumerate(yml_files, 1):
-                print(f"  [{i}] {f.name}")
+                rel = f.relative_to(jobs_dir)
+                print(f"  [{i}] {rel}")
             choice = input("Select number (Enter = 1): ").strip()
             idx = int(choice) - 1 if choice.isdigit() else 0
             job_path = yml_files[max(0, min(idx, len(yml_files) - 1))]
             print(f"  → {job_path.name} selected\n")
     else:
         job_path = Path(args.job)
-        # jobs/ 상대경로 자동 보완
+        # jobs/ 상대경로 자동 보완 (job-centric 포함)
         if not job_path.exists() and not job_path.is_absolute():
             candidate = work_dir / "jobs" / job_path
             if candidate.exists():
                 job_path = candidate
             else:
-                candidate2 = work_dir / job_path
-                if candidate2.exists():
-                    job_path = candidate2
+                # job-centric: jobs/{stem}/{stem}.yml
+                stem = job_path.stem
+                jc_candidate = work_dir / "jobs" / stem / f"{stem}.yml"
+                if jc_candidate.exists():
+                    job_path = jc_candidate
+                else:
+                    candidate2 = work_dir / job_path
+                    if candidate2.exists():
+                        job_path = candidate2
 
     env_path = Path(args.env)
 

@@ -7,6 +7,7 @@ from __future__ import annotations
 import os
 import sys
 import tkinter as tk
+import yaml
 from tkinter import messagebox, filedialog
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -652,8 +653,8 @@ class DialogsMixin:
     # ── Standard Dir Setup ──────────────────────────────────
 
     def _setup_standard_dirs(self: "BatchRunnerGUI"):
-        """Best-practice 디렉토리 구조를 자동 생성 (job_name 기반)"""
-        from engine.path_utils import get_job_defaults
+        """Best-practice 디렉토리 구조를 자동 생성 + yml 이동 (job-centric)"""
+        import shutil
 
         wd = Path(self._work_dir.get())
 
@@ -669,12 +670,28 @@ class DialogsMixin:
             messagebox.showwarning("Dir Setup", "job을 먼저 선택하세요.\n(_default 제외)")
             return
 
-        defaults = get_job_defaults(wd, job_name, tgt_type)
+        # ── job-centric 경로 (항상 강제) ──
+        base = f"jobs/{job_name}"
+        db_ext = "duckdb" if tgt_type == "duckdb" else "sqlite"
+        defaults = {
+            "export_sql_dir":          f"{base}/sql/export",
+            "export_out_dir":          f"{base}/data/export",
+            "transform_sql_dir":       f"{base}/sql/transform",
+            "report_sql_dir":          f"{base}/sql/report",
+            "report_out_dir":          f"{base}/data/report",
+            "target_db_path":          f"{base}/data/{job_name}.{db_ext}",
+            "tracking_dir_transform":  f"{base}/data/transform",
+            "tracking_dir_report":     f"{base}/data/report_tracking",
+        }
+
+        # yml 이동 대상 판별
+        fname = self.job_var.get()                     # "qpv.yml"
+        old_yml = wd / "jobs" / fname                  # jobs/qpv.yml
+        new_yml = wd / base / fname                    # jobs/qpv/qpv.yml
+        need_move = old_yml.is_file() and old_yml != new_yml and not new_yml.exists()
 
         # ── 생성할 디렉토리 목록 ──
-        # 글로벌 공통 + job-centric 하위 폴더
         global_dirs = ["config", "jobs", "logs"]
-        job_base = f"jobs/{job_name}"
         job_dirs = [
             defaults["export_sql_dir"],
             defaults["export_out_dir"],
@@ -684,7 +701,6 @@ class DialogsMixin:
             defaults["tracking_dir_transform"],
             defaults["tracking_dir_report"],
         ]
-        # db_path의 부모 디렉토리
         db_parent = str(Path(defaults["target_db_path"]).parent)
         if db_parent != ".":
             job_dirs.append(db_parent)
@@ -699,14 +715,12 @@ class DialogsMixin:
             else:
                 to_create.append(d)
 
-        if not to_create:
+        if not to_create and not need_move:
             self._log_sys(f"[DirSetup] '{job_name}' 디렉토리가 이미 모두 존재합니다")
             messagebox.showinfo("Dir Setup", f"'{job_name}' 디렉토리가 이미 모두 존재합니다.")
             return
 
         # ── 확인 다이얼로그 ──
-        db_ext = "duckdb" if tgt_type == "duckdb" else "sqlite"
-
         def build(body):
             tk.Label(body, text=f"Job 디렉토리 생성: {job_name}",
                      bg=C["base"], fg=C["blue"], font=FONTS["h2"]).pack(pady=(0, 8))
@@ -716,6 +730,7 @@ class DialogsMixin:
                 f"├── config/\n"
                 f"├── jobs/\n"
                 f"│   └── {job_name}/\n"
+                f"│       ├── {job_name}.yml   ← Job 설정\n"
                 f"│       ├── sql/\n"
                 f"│       │   ├── export/      ← Export SQL\n"
                 f"│       │   ├── transform/   ← Transform SQL\n"
@@ -745,7 +760,11 @@ class DialogsMixin:
                          bg=C["base"], fg=C["subtext"],
                          font=FONTS["body"]).pack(pady=(4, 0))
 
-            tk.Label(body, text="생성 후 GUI 경로가 자동 업데이트됩니다",
+            actions = ["생성 후 GUI 경로가 자동 업데이트됩니다"]
+            if need_move:
+                actions.append(f"{fname} → {base}/{fname} 로 이동됩니다")
+            actions.append("yml 내 경로가 job-centric으로 정리됩니다")
+            tk.Label(body, text="\n".join(actions),
                      bg=C["base"], fg=C["yellow"],
                      font=FONTS["small"]).pack(pady=(8, 0))
 
@@ -758,6 +777,55 @@ class DialogsMixin:
         for d in to_create:
             (wd / d).mkdir(parents=True, exist_ok=True)
             created.append(d)
+
+        # ── yml 이동: jobs/qpv.yml → jobs/qpv/qpv.yml ──
+        if need_move:
+            shutil.move(str(old_yml), str(new_yml))
+            self._log_sys(f"[DirSetup] {fname} → {base}/{fname} 이동 완료")
+
+        # ── yml 내 글로벌 경로 제거 (job-centric defaults 활용) ──
+        # job-centric 폴더가 존재하면 get_job_defaults가 자동으로 올바른 경로 반환하므로
+        # yml에 하드코딩된 경로를 제거하여 defaults에 위임
+        _global_path_keys = {
+            "export": ["sql_dir", "out_dir"],
+            "transform": ["sql_dir"],
+            "report": {
+                "_root": [],
+                "export_csv": ["sql_dir", "out_dir"],
+                "excel": ["out_dir"],
+            },
+            "target": ["db_path"],
+        }
+        yml_path = new_yml if new_yml.exists() else old_yml
+        if yml_path.exists():
+            cfg = yaml.safe_load(yml_path.read_text(encoding="utf-8")) or {}
+            changed = False
+
+            for section, keys in _global_path_keys.items():
+                if section == "report":
+                    rep = cfg.get("report", {})
+                    for sub, sub_keys in keys.items():
+                        if sub == "_root":
+                            continue
+                        sub_cfg = rep.get(sub, {})
+                        for k in sub_keys:
+                            if k in sub_cfg:
+                                del sub_cfg[k]
+                                changed = True
+                else:
+                    sec_cfg = cfg.get(section, {})
+                    for k in keys:
+                        if k in sec_cfg:
+                            del sec_cfg[k]
+                            changed = True
+
+            if changed:
+                yml_path.write_text(
+                    yaml.dump(cfg, allow_unicode=True, default_flow_style=False,
+                              sort_keys=False),
+                    encoding="utf-8"
+                )
+                self._log_sys("[DirSetup] yml 내 글로벌 경로 제거 → job-centric defaults 적용")
 
         # env.sample.yml 생성 (최초 1회)
         sample = wd / "config" / "env.sample.yml"
@@ -787,5 +855,7 @@ class DialogsMixin:
         self._report_out_dir.set(defaults["report_out_dir"])
         self._target_db_path.set(defaults["target_db_path"])
 
+        # job_var를 업데이트하여 job-centric 경로 인식
         self._reload_project()
-        self._log_sys(f"[DirSetup] GUI 경로가 '{job_name}' convention으로 업데이트됨")
+        self.job_var.set(fname)
+        self._log_sys(f"[DirSetup] GUI 경로가 '{job_name}' job-centric 으로 업데이트됨")
