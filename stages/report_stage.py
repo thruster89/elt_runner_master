@@ -428,7 +428,7 @@ def _run_excel_export(ctx, report_cfg, cfg, csv_files: list):
 
             try:
                 with open_fn(csv_file, "rt", encoding="utf-8") as f:
-                    df = pd.read_csv(f)
+                    df = pd.read_csv(f, dtype=str)
             except Exception:
                 logger.warning("REPORT excel: failed to read %s, skip", csv_file.name)
                 continue
