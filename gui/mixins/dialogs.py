@@ -94,12 +94,25 @@ class DialogsMixin:
                     k, v = k_var.get().strip(), v_var.get().strip()
                     if k and v:
                         params[k] = v
-        def _short(v, max_items=3):
-            parts = [p.strip() for p in v.split(",")]
+        def _short(v, max_items=3, max_len=40):
+            sep = "|" if "|" in v else ","
+            parts = [p.strip() for p in v.split(sep)]
             if len(parts) <= max_items:
-                return v
-            return ", ".join(parts[:max_items]) + f" ... +{len(parts)-max_items} lists"
-        params_str = ", ".join(f"{k}={_short(v)}" for k, v in params.items())
+                joined = f" {sep} ".join(parts)
+                if len(joined) <= max_len:
+                    return joined
+            shown = []
+            cur_len = 0
+            for p in parts:
+                if shown and cur_len + len(p) + 3 > max_len:
+                    break
+                shown.append(p)
+                cur_len += len(p) + 3
+            rest = len(parts) - len(shown)
+            if rest > 0:
+                return f" {sep} ".join(shown) + f"  ...+{rest}"
+            return f" {sep} ".join(shown)
+        param_lines = [f"{k} = {_short(v)}" for k, v in params.items()]
         timeout_val = self._ov_timeout.get().strip() or "1800"
         ov_on = self._ov_overwrite.get()
 
@@ -165,9 +178,10 @@ class DialogsMixin:
                 row=row, column=1, columnspan=3, sticky="w", **pad_v)
             row += 1
 
-            if params_str:
-                tk.Label(body, text="Params", **kw_key).grid(row=row, column=0, sticky="e", **pad_k)
-                tk.Label(body, text=params_str, **kw_val).grid(
+            if param_lines:
+                tk.Label(body, text="Params", **kw_key).grid(row=row, column=0, sticky="ne", **pad_k)
+                tk.Label(body, text="\n".join(param_lines), **kw_val,
+                         justify="left", anchor="w").grid(
                     row=row, column=1, columnspan=3, sticky="w", **pad_v)
                 row += 1
 
