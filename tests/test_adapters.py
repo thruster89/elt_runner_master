@@ -54,11 +54,10 @@ class TestNormalizeDateValue:
         from adapters.sources.vertica_source import _normalize_date_value
         assert _normalize_date_value("hello") == "hello"
 
-    def test_oracle_normalize_same_behavior(self):
-        """oracle_source의 _normalize_date_value도 동일 동작."""
-        from adapters.sources.oracle_source import _normalize_date_value
-        assert _normalize_date_value("20260201 00:00:00") == "2026-02-01 00:00:00"
-        assert _normalize_date_value(datetime(2026, 1, 15, 9, 0, 0)) == "2026-01-15 09:00:00"
+    def test_oracle_no_date_normalize(self):
+        """oracle_source는 날짜 자동 변환 없이 원본 그대로 export."""
+        import adapters.sources.oracle_source as mod
+        assert not hasattr(mod, "_normalize_date_value")
 
 
 # =====================================================================

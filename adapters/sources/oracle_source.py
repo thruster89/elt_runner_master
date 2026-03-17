@@ -1,33 +1,9 @@
 import csv
 import gzip
 import json
-import re
 import time
-from datetime import date, datetime
 from pathlib import Path
 from engine.runtime_state import stop_event
-
-# 날짜 컬럼 접미사 패턴 (대소문자 무시)
-_DATE_COL_RE = re.compile(r"(?:DT|_ST|_CLSTR|_DTHMS)$", re.IGNORECASE)
-_YYYYMMDD_RE = re.compile(r"^(\d{4})(\d{2})(\d{2})([ T]\d{2}:\d{2}:\d{2}.*)?$")
-
-
-def _normalize_date_value(val):
-    """날짜 컬럼 값을 YYYY-MM-DD 형식으로 정규화."""
-    if val is None or val == "":
-        return val
-    if isinstance(val, datetime):
-        return val.strftime("%Y-%m-%d %H:%M:%S")
-    if isinstance(val, date):
-        return val.strftime("%Y-%m-%d")
-    s = str(val).strip()
-    m = _YYYYMMDD_RE.match(s)
-    if m:
-        formatted = f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
-        if m.group(4):
-            formatted += m.group(4)
-        return formatted
-    return s
 
 
 def _describe_to_meta(description) -> list[dict]:
@@ -103,14 +79,6 @@ def export_sql_to_csv(
         columns = [col[0] for col in cursor.description]
         col_meta = _describe_to_meta(cursor.description)
 
-        # 날짜 컬럼 인덱스 감지 (DT, _ST, _CLSTR, _DTHMS 접미사)
-        date_col_indices = [i for i, c in enumerate(columns) if _DATE_COL_RE.search(c)]
-        if date_col_indices:
-            logger.debug(
-                "Auto date-format columns detected: %s",
-                [columns[i] for i in date_col_indices],
-            )
-
         out_file = Path(out_file)
         tmp_file = out_file.with_suffix(out_file.suffix + ".tmp")
         out_file.parent.mkdir(parents=True, exist_ok=True)
@@ -141,10 +109,6 @@ def export_sql_to_csv(
 
                     for row in rows:
                         out = ["" if v is None else v for v in row]
-                        if date_col_indices:
-                            for i in date_col_indices:
-                                if out[i] != "":
-                                    out[i] = _normalize_date_value(out[i])
                         writer.writerow(out)
                     total_rows += len(rows)
 
