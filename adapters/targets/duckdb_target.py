@@ -199,7 +199,7 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
             columns = meta["columns"] if isinstance(meta, dict) and "columns" in meta else meta
             _create_table_from_meta(conn, schema, table_name, columns)
             conn.execute(
-                f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, header=True)",
+                f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, header=True, all_varchar=true)",
                 [str(csv_path)],
             )
         else:
@@ -212,7 +212,7 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
         logger.debug("Table exists: %s", tbl)
         before = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
         conn.execute(
-            f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, header=True)",
+            f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, header=True, all_varchar=true)",
             [str(csv_path)],
         )
         row_count = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0] - before
@@ -263,7 +263,7 @@ def load_csv_batch(conn, job_name: str, table_name: str, csv_paths: list[Path],
             columns = meta["columns"] if isinstance(meta, dict) and "columns" in meta else meta
             _create_table_from_meta(conn, schema, table_name, columns)
             conn.execute(
-                f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, header=True)",
+                f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, header=True, all_varchar=true)",
                 [path_strs],
             )
         else:
@@ -273,7 +273,7 @@ def load_csv_batch(conn, job_name: str, table_name: str, csv_paths: list[Path],
             )
     else:
         conn.execute(
-            f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, header=True)",
+            f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, header=True, all_varchar=true)",
             [path_strs],
         )
 
