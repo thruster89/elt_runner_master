@@ -170,7 +170,8 @@ STAGE_REGISTRY = {
 예시:
   full 모드:      01_contract__local__clsYymm_202303.csv.gz
   compact 모드:   01_contract__local__202303.csv.gz
-  strip_prefix:   contract__local__clsYymm_202303.csv.gz
+  strip_prefix:   contract__local__clsYymm_202303.csv.gz   (01_contract → contract)
+  strip_prefix:   qpv_005__local__clsYymm_202303.csv.gz   (3. qpv_005 → qpv_005)
   둘 다 적용:     contract__local__202303.csv.gz
 ```
 
@@ -454,7 +455,7 @@ export:
   compression: gzip         # gzip | none
   format: csv
   csv_name_style: full      # full | compact
-  csv_strip_prefix: false   # 숫자 접두사 제거 여부
+  csv_strip_prefix: false   # 숫자 접두사 제거 여부 (구분자: _ . - 공백)
 
 load:
   mode: replace             # replace | truncate | delete | append

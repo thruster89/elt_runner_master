@@ -225,7 +225,7 @@ Transform 섹션 내에 **Transfer** 옵션이 있습니다.
 | **Union Dir** | skip_sql 시 CSV 원본 폴더 (입력) |
 | **On Error** | `stop` / `continue` |
 | **Name Style** | `full` (key_value) / `compact` (value만) |
-| **Strip Prefix** | ON: 숫자 접두어 제거 (01_contract → contract) |
+| **Strip Prefix** | ON: 숫자 접두어 제거. 구분자 `_` `.` `-` 공백 지원. 예: `01_contract`→`contract`, `3. qpv_005`→`qpv_005` |
 
 ### 4.10 파라미터 (Params)
 
