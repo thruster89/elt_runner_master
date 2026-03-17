@@ -1054,6 +1054,13 @@ class UiBuildMixin:
         self._ov_row(body, "csv_filter", _w_csv_filter,
                      tooltip="Excel 병합 시 파일명 LIKE 필터\n예: contract → 파일명에 'contract' 포함된 CSV만\n쉼표 구분으로 여러 키워드 가능: contract,order")
 
+        def _w_sheet_mode(r):
+            ttk.Combobox(r, textvariable=self._ov_sheet_mode,
+                         values=["merge", "separate"], state="readonly",
+                         width=10).pack(side="left")
+        self._ov_row(body, "sheet_mode", _w_sheet_mode,
+                     tooltip="merge: 동일 테이블명 CSV를 같은 시트에 union\nseparate: CSV 파일별 개별 시트 생성")
+
         def _w_max_files(r):
             tk.Spinbox(r, from_=1, to=100, width=4, textvariable=self._ov_max_files,
                        bg=C["surface0"], fg=C["text"], buttonbackground=C["surface1"],

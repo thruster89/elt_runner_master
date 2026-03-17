@@ -101,6 +101,7 @@ class BatchRunnerGUI(
         self._ov_csv          = tk.BooleanVar(value=True)
         self._ov_max_files    = tk.IntVar(value=10)
         self._ov_csv_filter   = tk.StringVar(value="")
+        self._ov_sheet_mode   = tk.StringVar(value="merge")
         self._ov_skip_sql     = tk.BooleanVar(value=False)
         self._ov_union_dir    = tk.StringVar(value="")
         self._ov_timeout      = tk.StringVar(value="1800")
