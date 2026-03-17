@@ -18,6 +18,8 @@ job.yml 설정:
       enabled: true
       out_dir: data/report/
       max_files: 10
+      sheet_mode: merge        # merge(기본): 동일 테이블 → 같은 시트에 union
+                               # separate: CSV 파일별 개별 시트 생성
       csv_filter:              # CSV 파일명 LIKE 필터 (대소문자 무시)
                                # 문자열: "contract" → 파일명에 포함된 것만
                                # 리스트: ["contract", "order"] → OR 조건
@@ -400,16 +402,27 @@ def _run_excel_export(ctx, report_cfg, cfg, csv_files: list):
         from openpyxl.styles import Font, PatternFill
         from openpyxl.utils import get_column_letter
 
-        # ── 같은 시트명끼리 DataFrame을 모아서 concat ──
+        # ── sheet_mode 에 따라 시트 구성 ──
+        sheet_mode = (cfg.get("sheet_mode") or "merge").strip().lower()
         from collections import OrderedDict
         sheet_frames: OrderedDict[str, list[pd.DataFrame]] = OrderedDict()
 
         for csv_file in csv_files:
-            # 시트명: __앞부분만 사용 + 숫자접두사 제거
-            # 예: 01_contract__local__clsYymm_202003.csv → CONTRACT
             raw_stem = csv_file.stem.replace(".csv", "")
             base_name = raw_stem.split("__", 1)[0]
-            sheet_name = strip_sql_prefix(base_name).upper()[:31]
+
+            if sheet_mode == "separate":
+                # 파일별 개별 시트: 전체 stem 사용 (31자 제한)
+                sheet_name = strip_sql_prefix(raw_stem).upper()[:31]
+                # 동일 이름 충돌 방지
+                if sheet_name in sheet_frames:
+                    idx = 2
+                    while f"{sheet_name[:28]}_{idx}" in sheet_frames:
+                        idx += 1
+                    sheet_name = f"{sheet_name[:28]}_{idx}"
+            else:
+                # merge(기본): 동일 테이블명 → 같은 시트에 union
+                sheet_name = strip_sql_prefix(base_name).upper()[:31]
 
             open_fn = gzip.open if str(csv_file).endswith(".gz") else open
 

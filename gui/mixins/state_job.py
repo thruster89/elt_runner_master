@@ -79,6 +79,7 @@ class StateJobMixin:
                 "csv":          self._ov_csv.get(),
                 "max_files":    self._ov_max_files.get(),
                 "csv_filter":   self._ov_csv_filter.get(),
+                "sheet_mode":   self._ov_sheet_mode.get(),
                 "skip_sql":     self._ov_skip_sql.get(),
                 "union_dir":    self._ov_union_dir.get(),
                 "timeout":      self._ov_timeout.get(),
@@ -149,6 +150,7 @@ class StateJobMixin:
         self._ov_csv.set(ov.get("csv", True))
         self._ov_max_files.set(ov.get("max_files", 10))
         self._ov_csv_filter.set(ov.get("csv_filter", ""))
+        self._ov_sheet_mode.set(ov.get("sheet_mode", "merge"))
         self._ov_skip_sql.set(ov.get("skip_sql", False))
         self._ov_union_dir.set(ov.get("union_dir", ""))
         self._ov_timeout.set(ov.get("timeout", "1800"))
@@ -274,6 +276,7 @@ class StateJobMixin:
                     "enabled": self._ov_excel.get(),
                     "out_dir": self._report_out_dir.get(),
                     "max_files": self._ov_max_files.get(),
+                    "sheet_mode": self._ov_sheet_mode.get(),
                     **(_csv_filter_cfg if (_csv_filter_cfg := self._build_csv_filter_cfg()) else {}),
                 },
                 **({"params": {k.get().strip(): v.get().strip()
@@ -476,6 +479,7 @@ class StateJobMixin:
         if isinstance(csv_filter, list):
             csv_filter = ", ".join(str(x) for x in csv_filter)
         self._ov_csv_filter.set(str(csv_filter))
+        self._ov_sheet_mode.set(str(rep.get("excel", {}).get("sheet_mode", "merge")))
         self._ov_union_dir.set(str(rep.get("csv_union_dir", "")))
 
         # Param mode (per-stage)
