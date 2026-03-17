@@ -49,7 +49,7 @@ def _collect_csv_info(csv_files, sql_map):
     for csv_path in csv_files:
         sqlname = extract_sqlname_from_csv(csv_path)
         sql_file = sql_map.get(sqlname)
-        table_name = resolve_table_name(sql_file) if sql_file else sqlname
+        table_name = resolve_table_name(sql_file) if sql_file else strip_sql_prefix(sqlname)
         size = csv_path.stat().st_size
         items.append({
             "csv_file": csv_path.name,
@@ -249,7 +249,7 @@ def _group_by_table(csv_files, sql_map):
     for csv_path in csv_files:
         sqlname = extract_sqlname_from_csv(csv_path)
         sql_file = sql_map.get(sqlname)
-        table_name = resolve_table_name(sql_file) if sql_file else sqlname
+        table_name = resolve_table_name(sql_file) if sql_file else strip_sql_prefix(sqlname)
         groups.setdefault(table_name, []).append((csv_path, sql_file))
     return groups
 

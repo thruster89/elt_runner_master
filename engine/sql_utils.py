@@ -72,7 +72,7 @@ def resolve_table_name(sql_file: Path) -> str:
 
         break
 
-    return sql_file.stem
+    return strip_sql_prefix(sql_file.stem)
 
 
 def extract_sqlname_from_csv(csv_path: Path) -> str:
