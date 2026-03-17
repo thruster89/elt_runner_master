@@ -11,16 +11,38 @@ _log = logging.getLogger(__name__)
 
 
 def load_jobs(work_dir: Path) -> dict:
-    """jobs/ 폴더의 *.yml 파싱 → {filename: parsed_dict}"""
+    """jobs/ 폴더의 *.yml 파싱 → {filename: parsed_dict}
+
+    탐색 순서:
+      1) jobs/*.yml          (글로벌)
+      2) jobs/{name}/{name}.yml  (job-centric)
+    동일 이름이면 job-centric(하위 폴더) 우선.
+    """
     jobs = {}
     jobs_dir = work_dir / "jobs"
-    if jobs_dir.exists():
-        for f in sorted(jobs_dir.glob("*.yml")):
+    if not jobs_dir.exists():
+        return jobs
+
+    # 1) 글로벌: jobs/*.yml
+    for f in sorted(jobs_dir.glob("*.yml")):
+        try:
+            data = yaml.safe_load(f.read_text(encoding="utf-8"))
+            jobs[f.name] = data
+        except Exception:
+            _log.debug("job yml 파싱 실패: %s", f, exc_info=True)
+
+    # 2) job-centric: jobs/{name}/{name}.yml
+    for d in sorted(jobs_dir.iterdir()):
+        if not d.is_dir():
+            continue
+        f = d / f"{d.name}.yml"
+        if f.is_file():
             try:
                 data = yaml.safe_load(f.read_text(encoding="utf-8"))
-                jobs[f.name] = data
+                jobs[f.name] = data          # 동일 이름이면 job-centric 우선
             except Exception:
                 _log.debug("job yml 파싱 실패: %s", f, exc_info=True)
+
     return jobs
 
 

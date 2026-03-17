@@ -537,9 +537,15 @@ class StateJobMixin:
         if not self._show_save_confirm(fname, changed):
             return
         jobs_dir = self._jobs_dir()
-        out_path = jobs_dir / fname
+        # job-centric: jobs/{name}/{name}.yml 우선
+        stem = Path(fname).stem
+        jc_dir = jobs_dir / stem
+        if jc_dir.is_dir():
+            out_path = jc_dir / fname
+        else:
+            out_path = jobs_dir / fname
         new_cfg = self._build_gui_config()
-        jobs_dir.mkdir(parents=True, exist_ok=True)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(
             yaml.dump(new_cfg, allow_unicode=True, default_flow_style=False,
                       sort_keys=False),
