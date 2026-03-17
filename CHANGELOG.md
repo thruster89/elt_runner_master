@@ -1,5 +1,19 @@
 # ELT Runner Changelog
 
+## v1.99.5 (2026-03-17)
+
+- **feat**: Dir Setup을 실제 job-centric 구조로 전환
+  - `jobs/{name}.yml` → `jobs/{name}/{name}.yml` 자동 이동
+  - yml 내 하드코딩된 글로벌 경로 제거 → job-centric defaults에 위임
+  - 확인 다이얼로그에 yml 이동 안내 추가
+- **feat**: `load_jobs()`에서 `jobs/{name}/{name}.yml` (job-centric) 탐색 추가
+- **feat**: `runner.py` — `--job` 미지정 시 job-centric yml 자동 탐색, `--job qpv.yml` 지정 시 `jobs/qpv/qpv.yml` fallback
+- **feat**: `_on_save_yml` — job-centric 폴더 존재 시 해당 경로에 저장
+- **docs**: USER_GUIDE.md 전면 최신화 (Dir Setup, Transfer, Job 관리 버튼, Param Mode 등)
+- **docs**: job_structure_guide.md — Dir Setup 워크플로우, yml 폴더 내 배치 반영
+- **docs**: architecture.md / architecture_ko.md — Transfer, GUI 구조, job-centric YAML 예시
+- **docs**: DEV_GUIDE.md — Job-centric 관련 코드 포인트 섹션 추가
+
 ## v1.98.9 (2026-03-01)
 
 - **feat**: CSV `name_style` (full/compact) + `strip_prefix` GUI toggles in Export section

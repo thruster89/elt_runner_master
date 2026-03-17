@@ -45,9 +45,18 @@ elt_runner_master/
 │       └── sqlite_target.py     # SQLite3 load (type inference)
 │
 ├── gui/                         # Tkinter GUI package
+│   ├── __init__.py              # BatchRunnerGUI re-export
+│   ├── constants.py             # THEMES, C, FONTS, TOOLTIPS, STAGE_CONFIG
+│   ├── utils.py                 # load_jobs, load_env_hosts, scan_sql_params
+│   ├── widgets.py               # SqlSelectorDialog, CollapsibleSection, Tooltip
+│   ├── app.py                   # BatchRunnerGUI (Mixin assembly + __init__)
+│   └── mixins/                  # Mixin modules (UI, state, run, dialogs, log, search)
+│
 ├── config/env.sample.yml        # Environment config template
-├── jobs/*.yml                   # Job definitions
-├── sql/                         # SQL templates (export/transform/report)
+├── jobs/                        # Job definitions (two layouts supported)
+│   ├── *.yml                    # Global layout (legacy)
+│   └── {name}/{name}.yml        # Job-centric layout (recommended)
+├── sql/                         # Shared SQL templates (optional)
 └── VERSION                      # Single source of truth for version
 ```
 
@@ -275,6 +284,23 @@ transform:
 - `@{tgt}TABLE_NAME` → `TGTSCHEMA.TABLE_NAME` (with param `tgt=TGTSCHEMA`)
 - Empty value → prefix removed entirely
 
+### Transfer (DB→DB)
+
+Transfer mode ATTACHes a destination DB to the source DB during Transform,
+allowing SQL to write to a different database:
+
+```yaml
+transform:
+  transfer:
+    dest:
+      type: duckdb           # duckdb | sqlite3
+      db_path: other.duckdb
+```
+
+- SQL can reference `dest.schema.table` to write to the attached DB
+- Only DuckDB↔DuckDB and SQLite↔SQLite combinations supported (ATTACH mechanism)
+- Configurable via GUI checkbox in the Transform section
+
 ---
 
 ## 6. Report Stage (`stages/report_stage.py`)
@@ -370,8 +396,9 @@ based on `target.type` in job config.
 ## 10. CLI Usage (`runner.py`)
 
 ```bash
-# Basic run
-python runner.py --job jobs/job_duckdb.yml --env config/env.yml
+# Basic run (job-centric or global path both work)
+python runner.py --job jobs/job_duckdb/job_duckdb.yml --env config/env.yml
+python runner.py --job jobs/job_duckdb.yml --env config/env.yml  # also works
 
 # Plan mode (dry run)
 python runner.py --job jobs/job_duckdb.yml --mode plan
@@ -401,6 +428,10 @@ python runner.py --job jobs/job_duckdb.yml --debug
 
 ## 11. Job YAML Structure
 
+Job-centric layout (`jobs/{name}/{name}.yml`). Path fields can be omitted
+when using job-centric conventions — defaults are resolved automatically
+based on `jobs/{job_name}/` folder existence.
+
 ```yaml
 job_name: my_job
 
@@ -412,8 +443,9 @@ source:
   host: local               # key from env.yml
 
 export:
-  sql_dir: sql/export
-  out_dir: data/export
+  # sql_dir / out_dir omitted → job-centric defaults:
+  #   sql_dir: jobs/my_job/sql/export
+  #   out_dir: jobs/my_job/data/export
   overwrite: true
   parallel_workers: 4
   compression: gzip         # gzip | none
@@ -426,13 +458,17 @@ load:
 
 target:
   type: duckdb              # duckdb | sqlite3 | oracle
-  db_path: data/local/result.duckdb
+  # db_path omitted → jobs/my_job/data/my_job.duckdb
   schema: MY_SCHEMA         # optional
 
 transform:
-  sql_dir: sql/transform/duckdb
+  # sql_dir omitted → jobs/my_job/sql/transform
   on_error: stop            # stop | continue
   schema: MY_SCHEMA         # optional (overrides target.schema)
+  # transfer:               # optional DB→DB transfer
+  #   dest:
+  #     type: duckdb
+  #     db_path: other.duckdb
 
 report:
   source: target            # target | oracle | vertica
@@ -440,15 +476,19 @@ report:
   csv_union_dir: data/export
   export_csv:
     enabled: true
-    sql_dir: sql/report
-    out_dir: data/report
+    # sql_dir / out_dir omitted → job-centric defaults
   excel:
     enabled: true
-    out_dir: data/report
     max_files: 10
 
 params:
   clsYymm: "202301:202312"
+```
+
+### Path resolution priority
+
+```
+yml explicit path  >  job-centric convention  >  global defaults
 ```
 
 ---

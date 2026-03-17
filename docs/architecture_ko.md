@@ -45,9 +45,18 @@ elt_runner_master/
 │       └── sqlite_target.py     # SQLite3 로드 (타입 추론)
 │
 ├── gui/                         # Tkinter GUI 패키지
+│   ├── __init__.py              # BatchRunnerGUI re-export
+│   ├── constants.py             # THEMES, C, FONTS, TOOLTIPS, STAGE_CONFIG
+│   ├── utils.py                 # load_jobs, load_env_hosts, scan_sql_params
+│   ├── widgets.py               # SqlSelectorDialog, CollapsibleSection, Tooltip
+│   ├── app.py                   # BatchRunnerGUI (Mixin 조립 + __init__)
+│   └── mixins/                  # Mixin 모듈 (UI, 상태, 실행, 다이얼로그, 로그, 검색)
+│
 ├── config/env.sample.yml        # 환경 설정 템플릿
-├── jobs/*.yml                   # Job 정의 파일
-├── sql/                         # SQL 템플릿 (export/transform/report)
+├── jobs/                        # Job 정의 파일 (두 가지 레이아웃 지원)
+│   ├── *.yml                    # 글로벌 레이아웃 (레거시)
+│   └── {name}/{name}.yml        # Job-centric 레이아웃 (권장)
+├── sql/                         # 공유 SQL 템플릿 (선택사항)
 └── VERSION                      # 버전 (단일 진실 공급원)
 ```
 
@@ -277,6 +286,23 @@ transform:
 - `@{tgt}TABLE_NAME` → `TGTSCHEMA.TABLE_NAME` (param `tgt=TGTSCHEMA`)
 - 값이 비어있으면 접두사 제거
 
+### Transfer (DB→DB 전송)
+
+Transfer 모드는 Transform 실행 시 대상 DB를 소스 DB에 ATTACH하여
+SQL에서 다른 데이터베이스에 쓸 수 있게 합니다:
+
+```yaml
+transform:
+  transfer:
+    dest:
+      type: duckdb           # duckdb | sqlite3
+      db_path: other.duckdb
+```
+
+- SQL에서 `dest.schema.table`로 참조하여 ATTACH된 DB에 쓰기 가능
+- DuckDB↔DuckDB, SQLite↔SQLite 조합만 지원 (ATTACH 메커니즘)
+- GUI의 Transform 섹션에서 체크박스로 설정 가능
+
 ---
 
 ## 6. Report 스테이지 (`stages/report_stage.py`)
@@ -374,8 +400,9 @@ conn, conn_type, label = connect_target(ctx, target_cfg)
 ## 10. CLI 사용법 (`runner.py`)
 
 ```bash
-# 기본 실행
-python runner.py --job jobs/job_duckdb.yml --env config/env.yml
+# 기본 실행 (job-centric, 글로벌 경로 모두 가능)
+python runner.py --job jobs/job_duckdb/job_duckdb.yml --env config/env.yml
+python runner.py --job jobs/job_duckdb.yml --env config/env.yml  # 레거시도 지원
 
 # Plan 모드 (사전 확인, 실제 실행 없음)
 python runner.py --job jobs/job_duckdb.yml --mode plan
@@ -405,6 +432,9 @@ python runner.py --job jobs/job_duckdb.yml --debug
 
 ## 11. Job YAML 구조
 
+Job-centric 레이아웃 (`jobs/{name}/{name}.yml`). 경로 필드를 생략하면
+`jobs/{job_name}/` 폴더 존재 여부에 따라 자동으로 기본값이 결정됩니다.
+
 ```yaml
 job_name: my_job
 
@@ -416,8 +446,9 @@ source:
   host: local               # env.yml의 호스트 키
 
 export:
-  sql_dir: sql/export       # Export SQL 디렉토리
-  out_dir: data/export      # CSV 출력 디렉토리
+  # sql_dir / out_dir 생략 → job-centric 기본값:
+  #   sql_dir: jobs/my_job/sql/export
+  #   out_dir: jobs/my_job/data/export
   overwrite: true           # 기존 파일 덮어쓰기
   parallel_workers: 4       # 병렬 스레드 수
   compression: gzip         # gzip | none
@@ -430,13 +461,17 @@ load:
 
 target:
   type: duckdb              # duckdb | sqlite3 | oracle
-  db_path: data/local/result.duckdb
+  # db_path 생략 → jobs/my_job/data/my_job.duckdb
   schema: MY_SCHEMA         # 선택사항
 
 transform:
-  sql_dir: sql/transform/duckdb
+  # sql_dir 생략 → jobs/my_job/sql/transform
   on_error: stop            # stop | continue
   schema: MY_SCHEMA         # 선택사항 (target.schema 오버라이드)
+  # transfer:               # 선택사항: DB→DB 전송
+  #   dest:
+  #     type: duckdb
+  #     db_path: other.duckdb
 
 report:
   source: target            # target | oracle | vertica
@@ -444,15 +479,19 @@ report:
   csv_union_dir: data/export
   export_csv:
     enabled: true
-    sql_dir: sql/report
-    out_dir: data/report
+    # sql_dir / out_dir 생략 → job-centric 기본값
   excel:
     enabled: true
-    out_dir: data/report
     max_files: 10           # Excel 파일당 최대 시트 수
 
 params:
   clsYymm: "202301:202312"  # 범위, 리스트, 단일값 모두 가능
+```
+
+### 경로 결정 우선순위
+
+```
+yml 명시 경로  >  job-centric convention  >  글로벌 기본값
 ```
 
 ---

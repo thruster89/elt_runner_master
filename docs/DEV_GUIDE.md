@@ -25,8 +25,12 @@ elt_runner_master/
 │       ├── log_panel.py         # 로그 쓰기/필터/컨텍스트메뉴
 │       └── search.py            # Ctrl+F 검색
 ├── stages/                      # 파이프라인 스테이지 (export, load, transform, report)
+├── engine/                      # 핵심 엔진 (context, path_utils, sql_utils 등)
+├── adapters/                    # Source/Target DB 어댑터
 ├── config/                      # env.yml 등 설정
-├── jobs/                        # Job YAML 파일들
+├── jobs/                        # Job YAML 파일 (글로벌 또는 job-centric)
+│   ├── *.yml                    # 글로벌 (레거시)
+│   └── {name}/{name}.yml        # Job-centric (권장)
 └── docs/                        # 문서
 ```
 
@@ -595,7 +599,37 @@ ELT_GUI_THEME="Nord" python batch_runner_gui.py
 
 ---
 
-## 10. 파일별 수정 빈도 가이드
+## 10. Job-centric 관련 주요 코드 포인트
+
+### 10.1 Job 파일 탐색
+
+`gui/utils.py`의 `load_jobs()`가 `jobs/*.yml`과 `jobs/{name}/{name}.yml` 모두 탐색합니다.
+동일 이름이면 job-centric(폴더 내) 파일이 우선합니다.
+
+`runner.py`도 `--job` 미지정 시 양쪽 모두 탐색하며, `--job qpv.yml` 지정 시
+`jobs/qpv.yml` → `jobs/qpv/qpv.yml` 순서로 fallback합니다.
+
+### 10.2 Job 저장 경로
+
+`state_job.py`의 `_on_save_yml()`은 `jobs/{name}/` 폴더가 존재하면
+`jobs/{name}/{name}.yml`에, 없으면 `jobs/{name}.yml`에 저장합니다.
+
+### 10.3 Dir Setup
+
+`dialogs.py`의 `_setup_standard_dirs()`는:
+1. Job-centric 폴더 구조 강제 생성
+2. `jobs/{name}.yml` → `jobs/{name}/{name}.yml` 자동 이동
+3. yml 내 하드코딩된 경로 제거 (defaults에 위임)
+4. GUI 경로 필드 업데이트
+
+### 10.4 경로 기본값 결정
+
+`engine/path_utils.py`의 `get_job_defaults()`가 `jobs/{name}/` 폴더 존재 여부에 따라
+job-centric 또는 글로벌 기본값을 반환합니다.
+
+---
+
+## 11. 파일별 수정 빈도 가이드
 
 | 수정 목적 | 주 수정 파일 | 보조 수정 파일 |
 |-----------|-------------|---------------|
@@ -610,7 +644,7 @@ ELT_GUI_THEME="Nord" python batch_runner_gui.py
 
 ---
 
-## 11. 주의사항 (실수 방지)
+## 12. 주의사항 (실수 방지)
 
 1. **C dict를 재할당하지 마세요**: `C = {...}` 대신 `C.update({...})`
 2. **순환 import 금지**: Mixin → `constants`/`widgets`/`utils`만 import 가능. Mixin끼리 직접 import 하지 않음

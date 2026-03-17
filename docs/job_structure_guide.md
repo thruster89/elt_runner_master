@@ -4,14 +4,46 @@
 
 ELT Runner는 두 가지 폴더 구조를 지원합니다:
 
-1. **글로벌 구조** (기존) — SQL, 데이터, DB 파일이 기능별 폴더에 분산
-2. **Job-centric 구조** (v1.98+) — 한 job의 모든 파일이 `jobs/{job_name}/` 아래에 집중
+1. **Job-centric 구조** (권장, v1.98+) — 한 job의 모든 파일이 `jobs/{job_name}/` 아래에 집중
+2. **글로벌 구조** (레거시) — SQL, 데이터, DB 파일이 기능별 폴더에 분산
 
 두 구조는 **동시에 공존** 가능하며, yml에 경로가 명시되어 있으면 항상 그 경로를 우선합니다.
 
+> **권장**: GUI의 **Dir Setup** 버튼을 사용하면 Job-centric 구조 생성 + yml 이동 + 경로 정리를 한번에 처리합니다.
+
 ---
 
-## 1. 글로벌 구조 (기존 방식)
+## 1. Job-centric 구조 (권장)
+
+```
+project/
+├── config/
+│   └── env.yml
+├── jobs/
+│   ├── _default.yml              ← 기본 Job 설정
+│   ├── my_job/
+│   │   ├── my_job.yml            ← Job 설정 (폴더 안에 위치)
+│   │   ├── sql/
+│   │   │   ├── export/           ← Export SQL
+│   │   │   ├── transform/        ← Transform SQL (DB 엔진 구분 불필요)
+│   │   │   └── report/           ← Report SQL
+│   │   └── data/
+│   │       ├── export/           ← CSV 출력 (stage가 자동 생성)
+│   │       ├── report/           ← 리포트 출력
+│   │       ├── transform/        ← Transform 트래킹
+│   │       ├── report_tracking/  ← Report 트래킹
+│   │       └── my_job.duckdb     ← DB 파일
+│   └── other_job/
+│       ├── other_job.yml
+│       └── ...
+└── logs/
+```
+
+**특징**: `jobs/my_job/` 한 폴더만 보면 해당 job의 설정, SQL, 데이터를 모두 확인 가능.
+
+---
+
+## 2. 글로벌 구조 (레거시)
 
 ```
 project/
@@ -36,32 +68,6 @@ project/
 ```
 
 **특징**: job 하나를 작업하려면 여러 폴더를 돌아다녀야 함.
-
----
-
-## 2. Job-centric 구조 (권장)
-
-```
-project/
-├── jobs/
-│   ├── my_job.yml              ← job 설정 (yml은 기존 위치 유지)
-│   └── my_job/                 ← yml과 동명 폴더 ← 핵심!
-│       ├── sql/
-│       │   ├── export/         ← export SQL
-│       │   ├── transform/      ← transform SQL (DB 엔진 구분 불필요)
-│       │   └── report/         ← report SQL
-│       └── data/
-│           ├── export/my_job/  ← CSV 출력 (stage가 자동 생성)
-│           ├── report/         ← 리포트 출력
-│           └── my_job.duckdb   ← DB 파일
-├── config/
-│   └── env.yml
-└── sql/                        ← 공유 SQL (여러 job이 참조 가능)
-    ├── ddl/
-    └── setup/
-```
-
-**특징**: `jobs/my_job/` 한 폴더만 보면 해당 job의 모든 것을 확인 가능.
 
 ---
 
@@ -92,18 +98,30 @@ yml에 명시된 경로  >  job 폴더 convention  >  글로벌 기본값
 
 ## 4. 새 Job-centric job 만들기
 
-### 방법 1: 폴더 먼저 생성
+### 방법 1: GUI Dir Setup 사용 (권장)
+
+1. GUI에서 Job을 선택 (또는 새로 생성)
+2. 상단 바의 **Dir Setup** 버튼 클릭
+3. 확인 다이얼로그에서 생성될 폴더 구조 검토 → **Create**
+
+**Dir Setup이 자동으로 수행하는 작업:**
+- `jobs/{name}/sql/export`, `jobs/{name}/data/export` 등 전체 디렉토리 트리 생성
+- `jobs/{name}.yml` → `jobs/{name}/{name}.yml`로 yml 파일 이동
+- yml 내 하드코딩된 글로벌 경로(`sql_dir`, `out_dir`, `db_path`) 제거 → convention defaults에 위임
+- GUI 경로 필드를 job-centric 경로로 자동 업데이트
+- `config/env.sample.yml` 자동 생성 (최초 1회)
+
+### 방법 2: 수동 생성
 
 ```bash
 # 1. job 폴더 구조 생성
-mkdir -p jobs/my_project/sql/{export,transform,report}
-mkdir -p jobs/my_project/data
+mkdir -p jobs/my_project/{sql/{export,transform,report},data}
 
 # 2. SQL 파일 배치
 cp my_queries/*.sql jobs/my_project/sql/export/
 
 # 3. yml 생성 (경로 생략 = convention 자동 적용)
-cat > jobs/my_project.yml << 'EOF'
+cat > jobs/my_project/my_project.yml << 'EOF'
 job_name: my_project
 pipeline:
   stages: [export, load_local, transform, report]
@@ -117,31 +135,44 @@ EOF
 
 경로를 전혀 안 적어도 `jobs/my_project/` 폴더가 있으면 자동으로 찾습니다.
 
-### 방법 2: GUI에서 자동 완성
+### yml 파일 위치
 
-1. GUI에서 새 job 생성
-2. `jobs/{job_name}/` 폴더가 존재하면 경로 필드가 자동으로 채워짐
-3. 필요 시 수동 override 가능
+Job-centric 구조에서 yml 파일은 **폴더 안에** 위치합니다:
+
+```
+jobs/my_job/my_job.yml    ← Job-centric (권장)
+jobs/my_job.yml           ← 글로벌 (레거시, 여전히 지원)
+```
+
+GUI와 CLI(`runner.py`) 모두 두 위치를 자동으로 탐색합니다. 동일 이름이 양쪽에 존재하면 job-centric(폴더 내) 파일이 우선합니다.
 
 ---
 
 ## 5. 기존 Job 마이그레이션
 
-기존 글로벌 구조 → job-centric으로 전환:
+### 방법 1: GUI Dir Setup 사용 (권장)
+
+1. GUI에서 마이그레이션할 Job 선택
+2. **Dir Setup** 클릭
+3. 자동으로: 폴더 생성 + yml 이동 + 경로 정리
+
+### 방법 2: 수동 마이그레이션
 
 ```bash
 # 예: test_insurance job 마이그레이션
 
 # 1. job 폴더 생성
-mkdir -p jobs/test_insurance/sql/{export,transform,report}
-mkdir -p jobs/test_insurance/data
+mkdir -p jobs/test_insurance/{sql/{export,transform,report},data}
 
 # 2. SQL 이동
-mv sql/export/test/*         jobs/test_insurance/sql/export/
+mv sql/export/test/*           jobs/test_insurance/sql/export/
 mv sql/transform/duckdb/test/* jobs/test_insurance/sql/transform/
-mv sql/report/test/*          jobs/test_insurance/sql/report/
+mv sql/report/test/*           jobs/test_insurance/sql/report/
 
-# 3. yml에서 경로 제거 (convention이 대신 처리)
+# 3. yml 이동
+mv jobs/test_insurance.yml     jobs/test_insurance/test_insurance.yml
+
+# 4. yml에서 경로 제거 (convention이 대신 처리)
 # 변경 전:
 #   export:
 #     sql_dir: sql/export/test
@@ -176,7 +207,7 @@ Load 입력:   {export.out_dir}/{job_name}/  ← CSV 읽기
 여러 job이 같은 SQL을 재사용해야 하면, yml에 경로를 명시합니다:
 
 ```yaml
-# jobs/job_a.yml — job-centric 폴더의 SQL 대신 공유 SQL 사용
+# jobs/job_a/job_a.yml — job-centric 폴더의 SQL 대신 공유 SQL 사용
 export:
   sql_dir: sql/shared/common_exports
 ```
