@@ -528,7 +528,7 @@ def load_failed_tasks(ctx, export_cfg) -> set:
     """이전 run의 failed/pending task_key 반환. task_tracking 모듈 위임."""
     export_base = resolve_path(ctx, export_cfg.get("out_dir", ctx.get_default("export_out_dir")))
     return _load_failed_tasks_shared(
-        export_base, ctx.run_id, stage="export"
+        export_base / ctx.job_name, ctx.run_id, stage="export"
     )
 
 
@@ -612,7 +612,7 @@ def run(ctx: RunContext):
 
     # run_info.json 경로 (task 상태 기록용)
     export_base = resolve_path(ctx, export_cfg.get("out_dir", ctx.get_default("export_out_dir")))
-    run_info_dir = export_base / ctx.run_id
+    run_info_dir = export_base / ctx.job_name / ctx.run_id
     run_info_dir.mkdir(parents=True, exist_ok=True)
     run_info_path = run_info_dir / "run_info.json"
     init_run_info(run_info_path, job_name=ctx.job_name, run_id=ctx.run_id,
