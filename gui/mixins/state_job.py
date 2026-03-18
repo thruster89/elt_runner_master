@@ -581,6 +581,106 @@ class StateJobMixin:
         suggest = fname.replace(".yml", "") if fname else "new_job"
         self._save_yml_dialog(suggest, "Save as yml")
 
+    def _on_new_job(self: "BatchRunnerGUI"):
+        """새 Job 생성: 이름 입력 → _default.yml 기반 yml 생성 + job-centric 디렉토리 자동 구성"""
+        from gui.constants import C, FONTS
+
+        dlg = tk.Toplevel(self)
+        dlg.title("New Job")
+        dlg.configure(bg=C["base"])
+        dlg.geometry("380x130")
+        dlg.transient(self)
+        dlg.grab_set()
+        dlg.resizable(False, False)
+        tk.Label(dlg, text="Job name", font=FONTS["mono"],
+                 bg=C["base"], fg=C["text"]).pack(pady=(18, 6))
+        name_var = tk.StringVar()
+        entry = tk.Entry(dlg, textvariable=name_var, font=FONTS["mono"],
+                         bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
+                         relief="flat", width=30)
+        entry.pack()
+        entry.focus_set()
+
+        def do_create(*_):
+            raw = name_var.get().strip()
+            if not raw:
+                return
+            # .yml 확장자 제거하여 순수 이름 추출
+            job_name = raw.replace(".yml", "").replace(".yaml", "")
+            if not job_name or job_name in ("default", "_default"):
+                messagebox.showwarning("Invalid", "사용할 수 없는 이름입니다.", parent=dlg)
+                return
+            fname = f"{job_name}.yml"
+            jobs_dir = self._jobs_dir()
+
+            # 이미 존재하면 경고
+            jc_path = jobs_dir / job_name / fname
+            flat_path = jobs_dir / fname
+            if jc_path.exists() or flat_path.exists():
+                messagebox.showwarning("Exists", f"'{fname}'이 이미 존재합니다.", parent=dlg)
+                return
+
+            # _default.yml 기반으로 새 config 생성
+            default_cfg = self._jobs.get("_default.yml") or {}
+            new_cfg = dict(default_cfg)
+            new_cfg["job_name"] = job_name
+
+            # job-centric 경로로 하드코딩 제거 (defaults에 위임)
+            for section in ("export", "transform", "target"):
+                sec = new_cfg.get(section, {})
+                for k in ("sql_dir", "out_dir", "db_path"):
+                    sec.pop(k, None)
+            rep = new_cfg.get("report", {})
+            for sub_key in ("export_csv", "excel"):
+                sub = rep.get(sub_key, {})
+                for k in ("sql_dir", "out_dir"):
+                    sub.pop(k, None)
+            rep.pop("csv_union_dir", None)
+
+            # job-centric 디렉토리 생성
+            wd = Path(self._work_dir.get())
+            tgt_type = new_cfg.get("target", {}).get("type", "duckdb")
+            db_ext = "duckdb" if tgt_type == "duckdb" else "sqlite"
+            base = f"jobs/{job_name}"
+            dir_list = [
+                f"{base}/sql/export",
+                f"{base}/sql/transform",
+                f"{base}/sql/report",
+                f"{base}/data/export",
+                f"{base}/data/report",
+                f"{base}/data/transform",
+                f"{base}/data/report_tracking",
+            ]
+            # db 파일 부모 디렉토리
+            db_parent = str(Path(f"{base}/data/{job_name}.{db_ext}").parent)
+            if db_parent not in dir_list:
+                dir_list.append(db_parent)
+
+            for d in dir_list:
+                (wd / d).mkdir(parents=True, exist_ok=True)
+
+            # yml 저장 (job-centric 위치)
+            jc_path.parent.mkdir(parents=True, exist_ok=True)
+            jc_path.write_text(
+                yaml.dump(new_cfg, allow_unicode=True, default_flow_style=False,
+                          sort_keys=False),
+                encoding="utf-8"
+            )
+
+            self._log_sys(f"[New Job] '{job_name}' 생성 완료 (job-centric)")
+            dlg.destroy()
+
+            # reload & 선택
+            self._reload_project()
+            self.job_var.set(fname)
+            self._on_job_change()
+
+        entry.bind("<Return>", do_create)
+        tk.Button(dlg, text="Create", font=FONTS["body_bold"],
+                  bg=C["green"], fg=C["crust"], relief="flat", padx=16, pady=4,
+                  activebackground=C["teal"],
+                  command=do_create).pack(pady=10)
+
     def _on_job_duplicate(self: "BatchRunnerGUI"):
         """현재 선택된 job을 복제하여 _copy.yml로 저장"""
         fname = self.job_var.get()

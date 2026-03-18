@@ -223,6 +223,10 @@ class UiBuildMixin:
                 self._on_job_change()
         bar2 = tk.Frame(grid, bg=C["crust"])
         bar2.grid(row=1, column=2, sticky="w", padx=(3, 0), pady=(2, 0))
+        tk.Button(bar2, text="new", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["green"], relief="flat", padx=6,
+                  activebackground=C["surface1"],
+                  command=self._on_new_job).pack(side="left", padx=(0, 2))
         tk.Button(bar2, text="save", font=FONTS["mono_small"],
                   bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
                   activebackground=C["surface1"],
