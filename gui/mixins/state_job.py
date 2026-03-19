@@ -759,7 +759,11 @@ class StateJobMixin:
                 if not messagebox.askyesno("Overwrite", f"{raw} already exists. Overwrite?",
                                            parent=dlg):
                     return
+            # Save As: job_name을 새 파일명 기준으로 갱신
+            prev_job = self.job_var.get()
+            self.job_var.set(raw)
             new_cfg = self._build_gui_config()
+            self.job_var.set(prev_job)  # combo 표시 복원 (reload에서 재설정)
             out_path.write_text(
                 yaml.dump(new_cfg, allow_unicode=True, default_flow_style=False,
                           sort_keys=False),

@@ -275,7 +275,13 @@ class RunControlMixin:
         jobs_dir = wd / "jobs"
         jobs_dir.mkdir(parents=True, exist_ok=True)
         job_name = self.job_var.get() or "_gui_temp.yml"
-        temp_path = jobs_dir / job_name
+        # job-centric 경로 우선 (jobs/{stem}/{stem}.yml)
+        stem = Path(job_name).stem
+        jc_dir = jobs_dir / stem
+        if jc_dir.is_dir():
+            temp_path = jc_dir / job_name
+        else:
+            temp_path = jobs_dir / job_name
         temp_path.write_text(
             yaml.dump(cfg, allow_unicode=True, default_flow_style=False, sort_keys=False),
             encoding="utf-8"
