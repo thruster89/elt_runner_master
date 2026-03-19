@@ -1217,20 +1217,36 @@ class StateJobMixin:
         if stage not in self._stage_param_entries:
             self._stage_param_entries[stage] = []
         self._stage_param_entries[stage].append((k_var, v_var))
-        k_var.trace_add("write", lambda *_: self._refresh_preview())
-        v_var.trace_add("write", lambda *_: self._refresh_preview())
 
         row = tk.Frame(frame, bg=C["mantle"])
         row.pack(fill="x", pady=1)
+
+        v_entry = tk.Entry(row, textvariable=v_var, bg=C["surface0"], fg=C["text"],
+                           insertbackground=C["text"], relief="flat", font=FONTS["mono"],
+                           width=8)
+        skip_lbl = tk.Label(row, text="", bg=C["mantle"], fg=C["yellow"],
+                            font=FONTS["shortcut"], width=4)
+
+        def _update_skip_hint(*_):
+            has_key = bool(k_var.get().strip())
+            empty_val = not v_var.get().strip()
+            if has_key and empty_val:
+                skip_lbl.config(text="skip")
+                v_entry.config(fg=C["overlay0"])
+            else:
+                skip_lbl.config(text="")
+                v_entry.config(fg=C["text"])
+            self._refresh_preview()
+
+        k_var.trace_add("write", _update_skip_hint)
+        v_var.trace_add("write", _update_skip_hint)
 
         tk.Entry(row, textvariable=k_var, bg=C["surface0"], fg=C["text"],
                  insertbackground=C["text"], relief="flat", font=FONTS["mono"],
                  width=15).pack(side="left", padx=(0, 2), ipady=2)
         tk.Label(row, text="=", bg=C["mantle"], fg=C["subtext"],
                  font=FONTS["mono"]).pack(side="left")
-        tk.Entry(row, textvariable=v_var, bg=C["surface0"], fg=C["text"],
-                 insertbackground=C["text"], relief="flat", font=FONTS["mono"],
-                 width=8).pack(side="left", padx=(2, 0), fill="x", expand=True, ipady=2)
+        v_entry.pack(side="left", padx=(2, 0), fill="x", expand=True, ipady=2)
 
         def remove(r=row, pair=(k_var, v_var), s=stage):
             r.destroy()
@@ -1240,6 +1256,8 @@ class StateJobMixin:
         tk.Button(row, text="X", font=FONTS["shortcut"], bg=C["mantle"],
                   fg=C["subtext"], relief="flat", padx=4,
                   command=remove).pack(side="right")
+        skip_lbl.pack(side="right")
+        _update_skip_hint()
 
     # ── Stage 토글 버튼 ──────────────────────────────────────
     def _toggle_stage(self: "BatchRunnerGUI", stage_key):
