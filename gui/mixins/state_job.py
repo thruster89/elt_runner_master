@@ -506,10 +506,11 @@ class StateJobMixin:
             self._refresh_param_rows(list(params.items()))
         self.after(50, self._scan_and_suggest_params)
 
-        # SQL 선택 초기화
-        self._selected_sqls = set()
-        self._selected_transform_sqls = set()
-        self._selected_report_sqls = set()
+        # SQL 선택 초기화 — Refresh(같은 job 재로드) 시에는 유지
+        if not self._restoring_job:
+            self._selected_sqls = set()
+            self._selected_transform_sqls = set()
+            self._selected_report_sqls = set()
         self._update_sql_preview()
         self._update_transform_sql_preview()
         self._update_report_sql_preview()
