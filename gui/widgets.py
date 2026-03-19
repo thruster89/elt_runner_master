@@ -259,6 +259,163 @@ class SqlSelectorDialog(tk.Toplevel):
         self.destroy()
 
 
+class CsvSelectorDialog(tk.Toplevel):
+    """CSV 파일 체크박스 선택 다이얼로그 (Report CSV→Excel 필터용)"""
+
+    def __init__(self, parent, csv_dir: Path, pre_selected: set = None):
+        super().__init__(parent)
+        self.title("CSV File Select")
+        self.configure(bg=C["base"])
+        self.resizable(True, True)
+        self.geometry("520x480")
+        self.transient(parent)
+        self.grab_set()
+
+        self.csv_dir = csv_dir
+        self.selected: set[str] = set(pre_selected or [])
+        self._check_vars: dict[str, tk.BooleanVar] = {}
+        self._all_rows: list[tuple[tk.Frame, str]] = []
+
+        self._build()
+        self._center(parent)
+
+    def _center(self, parent):
+        self.update_idletasks()
+        px, py = parent.winfo_rootx(), parent.winfo_rooty()
+        pw, ph = parent.winfo_width(), parent.winfo_height()
+        w, h = self.winfo_width(), self.winfo_height()
+        self.geometry(f"+{px + pw // 2 - w // 2}+{py + ph // 2 - h // 2}")
+
+    def _build(self):
+        hdr = tk.Frame(self, bg=C["mantle"], pady=8)
+        hdr.pack(fill="x")
+        tk.Label(hdr, text="CSV File Select", font=FONTS["h2"],
+                 bg=C["mantle"], fg=C["text"]).pack(side="left", padx=14)
+        tk.Label(hdr, text=str(self.csv_dir), font=FONTS["shortcut"],
+                 bg=C["mantle"], fg=C["subtext"]).pack(side="left", padx=6)
+
+        ctrl = tk.Frame(self, bg=C["base"], pady=4)
+        ctrl.pack(fill="x", padx=10)
+        tk.Button(ctrl, text="Select All", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=8,
+                  activebackground=C["surface1"],
+                  command=self._select_all).pack(side="left", padx=(0, 4))
+        tk.Button(ctrl, text="Deselect All", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=8,
+                  activebackground=C["surface1"],
+                  command=self._deselect_all).pack(side="left")
+
+        search_frame = tk.Frame(self, bg=C["base"])
+        search_frame.pack(fill="x", padx=10, pady=(2, 0))
+        self._search_var = tk.StringVar()
+        tk.Entry(search_frame, textvariable=self._search_var,
+                 bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
+                 relief="flat", font=FONTS["mono"], width=30
+                 ).pack(side="left", fill="x", expand=True, padx=4, ipady=2)
+        self._search_var.trace_add("write", lambda *_: self._apply_filter())
+
+        outer = tk.Frame(self, bg=C["base"])
+        outer.pack(fill="both", expand=True, padx=10, pady=6)
+        canvas = tk.Canvas(outer, bg=C["crust"], highlightthickness=0)
+        vsb = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=vsb.set)
+        vsb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        self._scroll_frame = tk.Frame(canvas, bg=C["crust"])
+        canvas_win = canvas.create_window((0, 0), window=self._scroll_frame, anchor="nw")
+
+        def _on_resize(e):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            canvas.itemconfig(canvas_win, width=canvas.winfo_width())
+        self._scroll_frame.bind("<Configure>", _on_resize)
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(canvas_win, width=e.width))
+
+        # CSV 파일 수집 (*.csv, *.csv.gz)
+        csv_files = sorted(
+            f for f in self.csv_dir.iterdir()
+            if f.is_file() and (f.suffix == ".csv" or f.name.endswith(".csv.gz"))
+        ) if self.csv_dir.exists() else []
+
+        for f in csv_files:
+            name = f.name
+            var = tk.BooleanVar(value=(name in self.selected))
+            self._check_vars[name] = var
+            var.trace_add("write", lambda *_, n=name: self._on_check(n))
+            row = tk.Frame(self._scroll_frame, bg=C["crust"])
+            row.pack(fill="x")
+            tk.Checkbutton(
+                row, text=f"  {name}", variable=var,
+                bg=C["crust"], fg=C["text"], selectcolor=C["surface0"],
+                activebackground=C["crust"], activeforeground=C["text"],
+                font=FONTS["mono_small"], anchor="w"
+            ).pack(fill="x", side="left")
+            self._all_rows.append((row, name))
+
+        if not csv_files:
+            tk.Label(self._scroll_frame, text="(no CSV files found)",
+                     font=FONTS["mono_small"], bg=C["crust"], fg=C["subtext"]
+                     ).pack(pady=20)
+
+        btn_bar = tk.Frame(self, bg=C["mantle"], pady=8)
+        btn_bar.pack(fill="x")
+        self._count_label = tk.Label(btn_bar, text="", font=FONTS["mono_small"],
+                                     bg=C["mantle"], fg=C["subtext"])
+        self._count_label.pack(side="left", padx=14)
+        self._update_count()
+        tk.Button(btn_bar, text="Cancel", font=FONTS["mono"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=14, pady=4,
+                  activebackground=C["surface1"],
+                  command=self.destroy).pack(side="right", padx=8)
+        tk.Button(btn_bar, text="OK", font=FONTS["body_bold"],
+                  bg=C["green"], fg=C["crust"], relief="flat", padx=14, pady=4,
+                  activebackground=C["teal"],
+                  command=self._confirm).pack(side="right", padx=(0, 4))
+
+    def _on_check(self, name):
+        if getattr(self, "_batch_update", False):
+            return
+        var = self._check_vars.get(name)
+        if var:
+            if var.get():
+                self.selected.add(name)
+            else:
+                self.selected.discard(name)
+        self._update_count()
+
+    def _update_count(self):
+        count = sum(1 for v in self._check_vars.values() if v.get())
+        total = len(self._check_vars)
+        self._count_label.config(text=f"{count} / {total} selected")
+
+    def _select_all(self):
+        self._batch_update = True
+        for v in self._check_vars.values():
+            v.set(True)
+        self._batch_update = False
+        self.selected = set(self._check_vars.keys())
+        self._update_count()
+
+    def _deselect_all(self):
+        self._batch_update = True
+        for v in self._check_vars.values():
+            v.set(False)
+        self._batch_update = False
+        self.selected = set()
+        self._update_count()
+
+    def _apply_filter(self):
+        query = self._search_var.get().strip().lower()
+        for row, name in self._all_rows:
+            if not query or query in name.lower():
+                row.pack(fill="x")
+            else:
+                row.pack_forget()
+
+    def _confirm(self):
+        self.selected = {n for n, v in self._check_vars.items() if v.get()}
+        self.destroy()
+
+
 class CollapsibleSection(tk.Frame):
     """클릭으로 접기/펼치기 가능한 섹션 위젯"""
 

@@ -1184,6 +1184,51 @@ class StateJobMixin:
     def _update_report_sql_preview(self: "BatchRunnerGUI"):
         self._update_sql_preview_for("report")
 
+    # ── CSV File Selector (CSV→Excel 필터) ───────────────────
+
+    def _open_csv_selector(self: "BatchRunnerGUI"):
+        """CSV 파일 선택 다이얼로그 (Report CSV→Excel)"""
+        from gui.widgets import CsvSelectorDialog
+        wd = Path(self._work_dir.get())
+
+        # CSV 소스 디렉토리 결정: union_dir 우선, 없으면 report_out_dir
+        union_dir = self._ov_union_dir.get().strip()
+        if union_dir:
+            csv_dir = Path(union_dir) if Path(union_dir).is_absolute() else wd / union_dir
+        else:
+            out_dir = self._report_out_dir.get().strip()
+            csv_dir = Path(out_dir) if Path(out_dir).is_absolute() else wd / out_dir
+
+        pre = set()
+        # csv_filter 텍스트에서 기존 선택 파싱 (파일명이면 그대로 사용)
+        cur_filter = self._ov_csv_filter.get().strip()
+        if cur_filter:
+            # 파일명 목록인지 키워드인지 판별: .csv 포함 여부
+            parts = [p.strip() for p in cur_filter.split(",") if p.strip()]
+            if any(".csv" in p for p in parts):
+                pre = set(parts)
+
+        dlg = CsvSelectorDialog(self, csv_dir, pre_selected=pre)
+        self.wait_window(dlg)
+
+        if dlg.selected:
+            self._ov_csv_filter.set(", ".join(sorted(dlg.selected)))
+        elif not dlg.selected and hasattr(dlg, '_check_vars') and dlg._check_vars:
+            # 전부 해제 = 필터 없음 (전체 포함)
+            self._ov_csv_filter.set("")
+        self._update_csv_filter_count()
+
+    def _update_csv_filter_count(self: "BatchRunnerGUI"):
+        """CSV 필터 선택 개수 표시"""
+        if not hasattr(self, "_csv_filter_count"):
+            return
+        cur = self._ov_csv_filter.get().strip()
+        if not cur:
+            self._csv_filter_count.config(text="(all)", fg=C["subtext"])
+        else:
+            count = len([p for p in cur.split(",") if p.strip()])
+            self._csv_filter_count.config(text=f"({count})", fg=C["green"])
+
     # ── Param 행 관리 ────────────────────────────────────────
 
     def _refresh_param_rows(self: "BatchRunnerGUI", pairs: list):
