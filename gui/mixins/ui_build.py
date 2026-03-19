@@ -590,7 +590,8 @@ class UiBuildMixin:
                 initialdir=self._work_dir.get(),
                 defaultextension=".duckdb",
                 filetypes=[("DuckDB", "*.duckdb *.vdb"), ("SQLite", "*.db *.sqlite *.sqlite3"), ("All", "*.*")],
-                title="Select DB file")
+                title="Select DB file",
+                confirmoverwrite=False)
             if d:
                 try:
                     rel = Path(d).relative_to(Path(self._work_dir.get()))
@@ -806,7 +807,8 @@ class UiBuildMixin:
                 initialdir=self._work_dir.get(),
                 defaultextension=".duckdb",
                 filetypes=[("DuckDB", "*.duckdb *.vdb"), ("SQLite", "*.db *.sqlite *.sqlite3"), ("All", "*.*")],
-                title="Select Transform DB file")
+                title="Select Transform DB file",
+                confirmoverwrite=False)
             if d:
                 try:
                     rel = Path(d).relative_to(Path(self._work_dir.get()))
@@ -865,7 +867,8 @@ class UiBuildMixin:
                 initialdir=self._work_dir.get(),
                 defaultextension=".duckdb",
                 filetypes=[("DuckDB", "*.duckdb *.vdb"), ("SQLite", "*.db *.sqlite *.sqlite3"), ("All", "*.*")],
-                title="Select Transfer Dest DB file")
+                title="Select Transfer Dest DB file",
+                confirmoverwrite=False)
             if d:
                 try:
                     rel = Path(d).relative_to(Path(self._work_dir.get()))
