@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from gui.constants import C, FONTS, FONT_FAMILY, FONT_MONO, THEMES, TOOLTIPS, STAGE_CONFIG, SCHEDULE_PLACEHOLDER
-from gui.widgets import CollapsibleSection, Tooltip
+from gui.widgets import CollapsibleSection, CsvSelectorDialog, Tooltip
 
 if TYPE_CHECKING:
     from gui.app import BatchRunnerGUI
@@ -355,6 +355,7 @@ class UiBuildMixin:
             self._transform_sql_dir.trace_add("write", lambda *_: self.after(300, self._scan_and_suggest_params))
             self._report_sql_dir.trace_add("write", lambda *_: self.after(300, self._scan_and_suggest_params))
             self._target_type_var.trace_add("write", lambda *_: self._refresh_preview())
+            self._ov_csv_filter.trace_add("write", lambda *_: self._update_csv_filter_count())
             # Stage BooleanVar → 가시성 연동
             for stage_var in (self._stage_export, self._stage_load_local,
                               self._stage_transform, self._stage_report):
@@ -1058,8 +1059,15 @@ class UiBuildMixin:
             tk.Entry(r, textvariable=self._ov_csv_filter,
                      bg=C["surface0"], fg=C["text"], insertbackground=C["text"],
                      relief="flat", font=FONTS["mono"], width=16).pack(side="left", fill="x", expand=True, ipady=2)
+            self._csv_filter_count = tk.Label(r, text="", font=FONTS["mono_small"],
+                                              bg=C["mantle"], fg=C["subtext"])
+            self._csv_filter_count.pack(side="left", padx=(4, 0))
+            tk.Button(r, text="pick", font=FONTS["mono_small"],
+                      bg=C["surface0"], fg=C["text"], relief="flat", padx=6,
+                      activebackground=C["surface1"],
+                      command=self._open_csv_selector).pack(side="left", padx=(2, 0))
         self._ov_row(body, "csv_filter", _w_csv_filter,
-                     tooltip="Excel 병합 시 파일명 LIKE 필터\n예: contract → 파일명에 'contract' 포함된 CSV만\n쉼표 구분으로 여러 키워드 가능: contract,order")
+                     tooltip="Excel 병합 시 CSV 파일 필터\n텍스트: 파일명 LIKE 필터 (쉼표 구분)\npick: 파일 직접 선택")
 
         def _w_sheet_mode(r):
             ttk.Combobox(r, textvariable=self._ov_sheet_mode,

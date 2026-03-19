@@ -366,7 +366,10 @@ def build_log_prefix(sql_file: Path, params: dict, sql_dir: Path | None = None) 
 
     short = []
     for k in sorted(params.keys()):
-        short.append(f"{k}={params[k]}")
+        v = str(params[k])
+        if len(v) > 30:
+            v = v[:27] + "..."
+        short.append(f"{k}={v}")
 
     return f"[{label}|{' '.join(short)}]"
 
