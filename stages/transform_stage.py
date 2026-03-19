@@ -196,8 +196,10 @@ def _run_sql_loop(ctx, conn, conn_type, sql_files, on_error, *,
             if run_info_path:
                 update_task_status(run_info_path, task_key, "running")
 
-            logger.info("%s %s %s", label, sql_file.name,
-                        " ".join(f"{k}={v}" for k, v in param_set.items()) if param_set else "")
+            param_str = " ".join(
+                f"{k}={v if len(str(v)) <= 30 else str(v)[:27] + '...'}"
+                for k, v in param_set.items()) if param_set else ""
+            logger.info("%s %s %s", label, sql_file.name, param_str)
             start = time.time()
             try:
                 _execute(conn, conn_type, rendered)
