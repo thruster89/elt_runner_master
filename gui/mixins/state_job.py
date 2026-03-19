@@ -240,7 +240,7 @@ class StateJobMixin:
                 "format": "csv",
                 **({"params": {k.get().strip(): v.get().strip()
                     for k, v in self._stage_param_entries.get("export", [])
-                    if k.get().strip() and v.get().strip()}}
+                    if k.get().strip()}}
                    if any(k.get().strip() for k, _ in self._stage_param_entries.get("export", [])) else {}),
                 "param_mode": self._param_mode_var.get(),
             },
@@ -259,7 +259,7 @@ class StateJobMixin:
                    if self._transform_schema.get().strip() else {}),
                 **({"params": {k.get().strip(): v.get().strip()
                     for k, v in self._stage_param_entries.get("transform", [])
-                    if k.get().strip() and v.get().strip()}}
+                    if k.get().strip()}}
                    if any(k.get().strip() for k, _ in self._stage_param_entries.get("transform", [])) else {}),
                 "param_mode": self._transform_param_mode_var.get(),
             },
@@ -281,7 +281,7 @@ class StateJobMixin:
                 },
                 **({"params": {k.get().strip(): v.get().strip()
                     for k, v in self._stage_param_entries.get("report", [])
-                    if k.get().strip() and v.get().strip()}}
+                    if k.get().strip()}}
                    if any(k.get().strip() for k, _ in self._stage_param_entries.get("report", [])) else {}),
                 "param_mode": self._report_param_mode_var.get(),
             },
