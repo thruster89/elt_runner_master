@@ -154,6 +154,11 @@ def _scan_params_from_files(files: list) -> list[str]:
 _sql_tree_cache: dict[str, tuple[float, dict]] = {}  # path → (mtime, tree)
 
 
+def clear_sql_tree_cache():
+    """SQL tree 캐시 초기화 (Refresh 시 호출)."""
+    _sql_tree_cache.clear()
+
+
 def collect_sql_tree(sql_dir: Path) -> dict:
     """
     sql_dir 하위 폴더/파일 트리 반환 (디렉토리 mtime 캐시).
