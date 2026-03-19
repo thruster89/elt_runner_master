@@ -1145,8 +1145,10 @@ class StateJobMixin:
             tip_text = "전체 SQL 실행 (필터 없음)"
         else:
             sorted_names = sorted(selected)
-            # 라벨: 파일 수 + 첫 번째 파일명 힌트
+            # 라벨: 파일 수 + 첫 번째 파일명 힌트 (길면 잘라서 표시)
             first = sorted_names[0].replace(".sql", "")
+            if len(first) > 18:
+                first = first[:15] + "…"
             if count == 1:
                 getattr(self, label_attr).config(text=f"(1: {first})", fg=C["green"])
             else:
