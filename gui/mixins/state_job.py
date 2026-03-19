@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 import yaml
 
 from gui.constants import C, FONTS, THEMES, APP_VERSION, _CONF_PATH, STAGE_CONFIG
-from gui.utils import load_jobs, load_env_hosts, _scan_params_from_files
+from gui.utils import load_jobs, load_env_hosts, _scan_params_from_files, clear_sql_tree_cache
 from gui.utils import collect_sql_tree as _collect_sql_tree
 from gui.utils import flatten_sql_tree as _flatten_sql_tree
 from gui.widgets import SqlSelectorDialog
@@ -780,6 +780,7 @@ class StateJobMixin:
     def _reload_project(self: "BatchRunnerGUI"):
         wd = Path(self._work_dir.get())
         self._add_recent_dir(str(wd))
+        clear_sql_tree_cache()
         self._jobs = load_jobs(wd)
         self._env_hosts = load_env_hosts(wd, self._env_path_var.get()
                                          if hasattr(self, "_env_path_var") else "config/env.yml")
