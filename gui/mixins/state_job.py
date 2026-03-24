@@ -921,6 +921,7 @@ class StateJobMixin:
         """
         if not hasattr(self, "_transfer_frame"):
             return
+        self._dirty_cached = None  # transfer 변경 → dirty 캐시 무효화
 
         # transfer 프레임 자체는 transform 섹션에 항상 표시
         self._transfer_frame.pack(fill="x", before=self._transform_sql_dir_row)
