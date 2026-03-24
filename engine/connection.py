@@ -40,11 +40,42 @@ def set_session_schema(conn, conn_type: str, schema: str, logger=None):
 
 
 def _default_memory_limit() -> str:
-    """시스템 RAM의 75%를 GB 단위로 반환한다."""
-    import os
+    """시스템 RAM의 75%를 GB 단위로 반환한다 (Windows/Linux 모두 지원)."""
     try:
-        total = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
-    except (ValueError, OSError):
+        import shutil
+        total = shutil.disk_usage("/").total  # fallback용, 아래에서 덮어씀
+        import psutil
+        total = psutil.virtual_memory().total
+    except ImportError:
+        # psutil 없으면 OS별 분기
+        import sys, os
+        if sys.platform == "win32":
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            mem = ctypes.c_ulonglong(0)
+            kernel32.GetPhysicallyInstalledSystemMemory(ctypes.byref(mem))
+            total = mem.value * 1024  # KB → bytes
+            if total == 0:
+                # fallback: GlobalMemoryStatusEx
+                class MEMORYSTATUSEX(ctypes.Structure):
+                    _fields_ = [("dwLength", ctypes.c_ulong),
+                                ("dwMemoryLoad", ctypes.c_ulong),
+                                ("ullTotalPhys", ctypes.c_ulonglong),
+                                ("ullAvailPhys", ctypes.c_ulonglong),
+                                ("ullTotalPageFile", ctypes.c_ulonglong),
+                                ("ullAvailPageFile", ctypes.c_ulonglong),
+                                ("ullTotalVirtual", ctypes.c_ulonglong),
+                                ("ullAvailVirtual", ctypes.c_ulonglong),
+                                ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+                stat = MEMORYSTATUSEX(dwLength=ctypes.sizeof(MEMORYSTATUSEX))
+                ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
+                total = stat.ullTotalPhys
+        else:
+            try:
+                total = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+            except (ValueError, OSError, AttributeError):
+                return "4GB"
+    except Exception:
         return "4GB"
     gb = max(1, int(total * 0.75 / (1024 ** 3)))
     return f"{gb}GB"
