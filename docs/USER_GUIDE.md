@@ -149,6 +149,10 @@ Export → Load → Transform → Report
 | **Type** | `duckdb` (기본), `sqlite3`, `oracle` |
 | **DB Path** | DuckDB/SQLite 파일 경로 |
 | **Schema** | DuckDB 스키마명 |
+| **memory_limit** | DuckDB 메모리 한도 (예: `8GB`). 미지정 시 **시스템 RAM의 75%** 자동 적용 |
+| **threads** | DuckDB 병렬 스레드 수 (예: `4`). 미지정 시 **논리 CPU 수 / 2** 자동 적용 |
+
+> **DuckDB 성능 튜닝**: `memory_limit`와 `threads`를 Job YAML의 `target` 섹션에 직접 지정할 수 있습니다. 값을 생략하면 시스템 사양에 맞는 기본값이 자동 적용되므로 대부분의 경우 별도 설정이 불필요합니다.
 
 ### 4.5 Stage 토글
 

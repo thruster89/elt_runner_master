@@ -83,6 +83,8 @@ project/
 | `report.export_csv.sql_dir` | `jobs/{name}/sql/report` | `sql/report` |
 | `report.export_csv.out_dir` | `jobs/{name}/data/report` | `data/report` |
 | `target.db_path` | `jobs/{name}/data/{name}.duckdb` | `data/local/result.duckdb` |
+| `target.memory_limit` | (미지정 시 시스템 RAM × 75%) | (동일) |
+| `target.threads` | (미지정 시 논리 CPU ÷ 2) | (동일) |
 
 ### 우선순위
 
@@ -130,6 +132,8 @@ source:
   host: prod
 target:
   type: duckdb
+  memory_limit: 12GB   # 미지정 시 시스템 RAM의 75%
+  threads: 4            # 미지정 시 논리 CPU / 2
 EOF
 ```
 

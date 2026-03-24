@@ -396,6 +396,21 @@ conn, conn_type, label = connect_target(ctx, target_cfg)
 
 `target.type` 설정에 따라 적절한 어댑터의 `connect()` 함수로 분기합니다.
 
+### DuckDB 성능 설정 자동 적용
+
+DuckDB 연결 시 `_apply_duckdb_settings()`가 `memory_limit`와 `threads`를 자동 설정합니다:
+
+| 설정 | YAML 키 | 미지정 시 기본값 | 예시 |
+|------|---------|-----------------|------|
+| 메모리 한도 | `target.memory_limit` | 시스템 RAM × 75% | `12GB` |
+| 스레드 수 | `target.threads` | 논리 CPU ÷ 2 | `4` |
+
+기본값 감지 순서 (크로스플랫폼):
+1. `psutil` (설치된 경우)
+2. Windows: `ctypes` Win32 API (`GetPhysicallyInstalledSystemMemory`)
+3. Linux/macOS: `os.sysconf`
+4. 모두 실패 시: `memory_limit=4GB`, `threads=1`
+
 ---
 
 ## 10. CLI 사용법 (`runner.py`)
@@ -464,6 +479,8 @@ target:
   type: duckdb              # duckdb | sqlite3 | oracle
   # db_path 생략 → jobs/my_job/data/my_job.duckdb
   schema: MY_SCHEMA         # 선택사항
+  memory_limit: 12GB        # 선택사항 (미지정 → RAM 75%)
+  threads: 4                # 선택사항 (미지정 → CPU/2)
 
 transform:
   # sql_dir 생략 → jobs/my_job/sql/transform

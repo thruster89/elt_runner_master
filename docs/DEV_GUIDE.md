@@ -508,13 +508,24 @@ def _bind_shortcuts(self: "BatchRunnerGUI"):
     self.bind("<Control-n>", lambda e: self._my_shortcut())  # ← 추가
 ```
 
-### 7.5 OS 탐색기에서 폴더/파일 열기
+### 7.5 파일을 편집기로 열기
+
+`dialogs.py`의 `_open_file_in_editor()` 사용:
+
+```python
+self._open_file_in_editor(str(some_path))
+# Windows: os.startfile(), macOS: open, Linux: xdg-open
+# → 확장자에 연결된 기본 프로그램(편집기)으로 파일 열기
+```
+
+### 7.6 OS 탐색기에서 폴더/파일 열기
 
 `dialogs.py`의 `_open_in_explorer()` 사용:
 
 ```python
 self._open_in_explorer(str(some_path))
-# Windows: explorer, macOS: open, Linux: xdg-open
+# Windows: explorer /select, (탐색기에서 파일 선택 상태로 열기)
+# macOS: open -R, Linux: xdg-open
 ```
 
 ---
@@ -626,6 +637,16 @@ ELT_GUI_THEME="Nord" python batch_runner_gui.py
 
 `engine/path_utils.py`의 `get_job_defaults()`가 `jobs/{name}/` 폴더 존재 여부에 따라
 job-centric 또는 글로벌 기본값을 반환합니다.
+
+### 10.5 DuckDB 성능 기본값
+
+`engine/connection.py`의 `_apply_duckdb_settings()`는 YAML에 `memory_limit`/`threads`가 미지정이면
+시스템 사양 기반 기본값을 자동 적용합니다:
+
+- `_default_memory_limit()` → 시스템 RAM × 75% (크로스플랫폼: psutil → Win32 ctypes → os.sysconf → 4GB fallback)
+- `_default_threads()` → `os.cpu_count() // 2` (최소 1)
+
+로그에 항상 적용된 값이 출력됩니다: `DuckDB SET memory_limit = '12GB', threads = 4`
 
 ---
 
