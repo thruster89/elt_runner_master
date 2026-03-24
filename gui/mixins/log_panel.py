@@ -96,7 +96,7 @@ class LogPanelMixin:
     # 모든 로그 tag 목록 (elide 토글 대상)
     _LOG_ALL_TAGS = ("INFO", "DEBUG", "WARN", "ERROR", "SYS",
                      "JOB_INFO", "STAGE_HEADER", "STAGE_DONE",
-                     "SUMMARY", "SUCCESS", "TIME")
+                     "SUMMARY", "SUCCESS", "DONE", "TIME")
 
     def _apply_log_filter_elide(self: "BatchRunnerGUI"):
         """필터 변경 시 tag elide 토글로 숨김/표시 (delete+re-insert 없이)"""

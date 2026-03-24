@@ -380,9 +380,12 @@ class RunControlMixin:
         # 경고
         if any(k in low for k in ("warn", "warning")):
             return "WARN"
-        # 성공
-        if any(k in low for k in ("done", "success", "completed")):
+        # 최종 결과 성공
+        if any(k in low for k in ("success", "completed")):
             return "SUCCESS"
+        # 개별 태스크 done
+        if "done" in low:
+            return "DONE"
         return "INFO"
 
     def _animate_run_btn(self: "BatchRunnerGUI"):
