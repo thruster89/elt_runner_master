@@ -39,6 +39,23 @@ def set_session_schema(conn, conn_type: str, schema: str, logger=None):
     log.info("Session schema = '%s'", schema)
 
 
+def _default_memory_limit() -> str:
+    """시스템 RAM의 75%를 GB 단위로 반환한다."""
+    import os
+    try:
+        total = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    except (ValueError, OSError):
+        return "4GB"
+    gb = max(1, int(total * 0.75 / (1024 ** 3)))
+    return f"{gb}GB"
+
+
+def _default_threads() -> int:
+    """논리 CPU 수의 절반 (최소 1)."""
+    import os
+    return max(1, (os.cpu_count() or 2) // 2)
+
+
 def _apply_duckdb_settings(conn, target_cfg: dict):
     """DuckDB 연결에 memory_limit, threads 등 SET 옵션을 적용한다."""
     memory_limit = (target_cfg.get("memory_limit") or "").strip()
@@ -48,12 +65,14 @@ def _apply_duckdb_settings(conn, target_cfg: dict):
     else:
         threads = threads.strip()
 
-    if memory_limit:
-        conn.execute(f"SET memory_limit = '{memory_limit}'")
-        _log.info("DuckDB SET memory_limit = '%s'", memory_limit)
-    if threads:
-        conn.execute(f"SET threads = {int(threads)}")
-        _log.info("DuckDB SET threads = %s", threads)
+    if not memory_limit:
+        memory_limit = _default_memory_limit()
+    if not threads:
+        threads = str(_default_threads())
+
+    conn.execute(f"SET memory_limit = '{memory_limit}'")
+    conn.execute(f"SET threads = {int(threads)}")
+    _log.info("DuckDB SET memory_limit = '%s', threads = %s", memory_limit, threads)
 
 
 def connect_target(ctx, target_cfg: dict) -> tuple:
