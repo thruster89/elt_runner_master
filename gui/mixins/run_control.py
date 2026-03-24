@@ -282,10 +282,15 @@ class RunControlMixin:
             temp_path = jc_dir / job_name
         else:
             temp_path = jobs_dir / job_name
-        temp_path.write_text(
-            yaml.dump(cfg, allow_unicode=True, default_flow_style=False, sort_keys=False),
-            encoding="utf-8"
-        )
+        yml_text = yaml.dump(cfg, allow_unicode=True, default_flow_style=False, sort_keys=False)
+        temp_path.write_text(yml_text, encoding="utf-8")
+        self._log_sys(f"[yml] written to {temp_path.name}")
+        # transform 섹션 디버그 출력
+        tfm = cfg.get("transform", {})
+        self._log_sys(f"[yml] transform.sql_dir = {tfm.get('sql_dir', '(missing)')}")
+        if tfm.get("transfer"):
+            self._log_sys(f"[yml] transform.transfer = {tfm['transfer']}")
+        self._log_sys(f"[yml] pipeline.stages = {cfg.get('pipeline', {}).get('stages', [])}")
         return self._build_command_args()
 
     def _build_command_args(self: "BatchRunnerGUI") -> list[str]:
