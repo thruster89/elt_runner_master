@@ -392,6 +392,21 @@ conn, conn_type, label = connect_target(ctx, target_cfg)
 Dispatches to the appropriate adapter's `connect()` function
 based on `target.type` in job config.
 
+### DuckDB Performance Settings (Auto-applied)
+
+When connecting to DuckDB, `_apply_duckdb_settings()` automatically configures `memory_limit` and `threads`:
+
+| Setting | YAML Key | Default (when omitted) | Example |
+|---------|----------|----------------------|---------|
+| Memory limit | `target.memory_limit` | System RAM × 75% | `12GB` |
+| Thread count | `target.threads` | Logical CPUs ÷ 2 | `4` |
+
+Cross-platform detection order:
+1. `psutil` (if installed)
+2. Windows: `ctypes` Win32 API (`GetPhysicallyInstalledSystemMemory`)
+3. Linux/macOS: `os.sysconf`
+4. Fallback: `memory_limit=4GB`, `threads=1`
+
 ---
 
 ## 10. CLI Usage (`runner.py`)
@@ -461,6 +476,8 @@ target:
   type: duckdb              # duckdb | sqlite3 | oracle
   # db_path omitted → jobs/my_job/data/my_job.duckdb
   schema: MY_SCHEMA         # optional
+  memory_limit: 12GB        # optional (default: 75% of system RAM)
+  threads: 4                # optional (default: logical CPUs / 2)
 
 transform:
   # sql_dir omitted → jobs/my_job/sql/transform

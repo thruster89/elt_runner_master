@@ -1,5 +1,17 @@
 # ELT Runner Changelog
 
+## v1.99.6 (2026-03-24)
+
+- **feat**: DuckDB `memory_limit` / `threads` 자동 기본값 적용
+  - `memory_limit`: 미지정 시 시스템 RAM의 75% (크로스플랫폼: psutil → Win32 ctypes → os.sysconf)
+  - `threads`: 미지정 시 논리 CPU 수 / 2
+  - Job YAML `target` 섹션에서 오버라이드 가능
+- **fix**: Windows에서 `os.sysconf` AttributeError — 크로스플랫폼 메모리 감지로 수정
+- **fix**: Edit 버튼이 탐색기(explorer /select,)만 여는 문제 → `os.startfile()`로 편집기 직접 열기
+- **docs**: 전체 문서 현행화 (USER_GUIDE, job_structure_guide, architecture, architecture_ko, DEV_GUIDE)
+  - Target 섹션에 `memory_limit` / `threads` 설명 및 기본값 안내 추가
+  - `_open_file_in_editor()` 메서드 가이드 추가
+
 ## v1.99.5 (2026-03-17)
 
 - **feat**: Dir Setup을 실제 job-centric 구조로 전환
