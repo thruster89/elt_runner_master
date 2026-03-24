@@ -823,6 +823,11 @@ class UiBuildMixin:
                   bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
                   activebackground=C["surface1"],
                   command=_browse_tfm_db).pack(side="left", padx=(2, 0))
+        tk.Button(self._tfm_db_row, text="\U0001f4c2", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
+                  activebackground=C["surface1"],
+                  command=lambda: self._open_in_explorer(
+                      self._transform_db_path.get())).pack(side="left", padx=(2, 0))
 
         ttk.Separator(tf, orient="horizontal").pack(fill="x", padx=12, pady=4)
 
@@ -883,6 +888,11 @@ class UiBuildMixin:
                   bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
                   activebackground=C["surface1"],
                   command=_browse_transfer_dest).pack(side="left", padx=(2, 0))
+        tk.Button(self._transfer_dest_db_row, text="\U0001f4c2", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["text"], relief="flat", padx=4,
+                  activebackground=C["surface1"],
+                  command=lambda: self._open_in_explorer(
+                      self._transfer_dest_db_path.get())).pack(side="left", padx=(2, 0))
 
         self._transfer_sep = ttk.Separator(xfr, orient="horizontal")
 
