@@ -1095,17 +1095,17 @@ class StateJobMixin:
 
         # 스테이지별 (key, value) 리스트 구성 — 중복 제거 없이 각 스테이지 독립
         grouped: list[tuple[str, list[tuple[str, str]]]] = []
-        for stage in ("export", "transform", "report"):
-            params = stage_params.get(stage, set())
-            if params:
-                grouped.append((stage, [(p, _val(p, stage)) for p in sorted(params)]))
-
-        # 사용자가 직접 추가한 값 (자동감지 아닌 것) 보존
         prev_detected = getattr(self, "_last_detected_params", set())
-        custom_pairs = [(k, v) for k, v in current_flat.items()
-                        if k not in all_detected and k not in prev_detected]
-        if custom_pairs:
-            grouped.append(("custom", custom_pairs))
+        for stage in ("export", "transform", "report"):
+            detected = stage_params.get(stage, set())
+            pairs = [(p, _val(p, stage)) for p in sorted(detected)]
+            # 사용자가 이 스테이지에 직접 추가한 값 (자동감지 아닌 것) 보존
+            user_cur = current_by_stage.get(stage, {})
+            for k, v in user_cur.items():
+                if k and k not in detected and k not in prev_detected:
+                    pairs.append((k, v))
+            if pairs:
+                grouped.append((stage, pairs))
 
         self._refresh_param_rows_grouped(grouped)
         if all_detected != getattr(self, "_last_detected_params", set()):

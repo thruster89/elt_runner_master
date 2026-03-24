@@ -291,7 +291,7 @@ def build_csv_name(sqlname: str, host: str, params: dict, ext: str,
         parts.append(host)
 
     for k in sorted(params.keys()):
-        v = str(params[k]).replace(" ", "_")
+        v = re.sub(r"['\"\\/:<>|?*]", "", str(params[k])).replace(" ", "_")
         if len(v) > _MAX_VALUE_LEN:
             short_hash = hashlib.sha1(v.encode()).hexdigest()[:8]
             v = v[:20] + "_h" + short_hash

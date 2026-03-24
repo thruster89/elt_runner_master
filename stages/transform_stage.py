@@ -81,11 +81,15 @@ def run(ctx: RunContext):
         return
 
     # target 결정: transform.target 우선, 없으면 글로벌 target fallback
+    # transform 전용 target에 memory_limit/threads/temp_directory가 없으면 글로벌 값 상속
+    global_target_cfg = ctx.job_config.get("target", {})
     transform_target_cfg = transform_cfg.get("target")
     if transform_target_cfg and transform_target_cfg.get("type", "").strip():
-        target_cfg = transform_target_cfg
+        merged = dict(global_target_cfg)
+        merged.update({k: v for k, v in transform_target_cfg.items() if v})
+        target_cfg = merged
     else:
-        target_cfg = ctx.job_config.get("target", {})
+        target_cfg = global_target_cfg
     tgt_type   = (target_cfg.get("type") or "").strip().lower()
 
     if not tgt_type:
