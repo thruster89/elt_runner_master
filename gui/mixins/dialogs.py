@@ -617,7 +617,11 @@ class DialogsMixin:
         if not job:
             messagebox.showinfo("Info", "No job selected.")
             return
-        p = self._jobs_dir() / job
+        jobs_dir = self._jobs_dir()
+        stem = job.replace(".yml", "").replace(".yaml", "")
+        # Job-centric 우선: jobs/{name}/{name}.yml → 글로벌: jobs/{name}.yml
+        jc = jobs_dir / stem / job
+        p = jc if jc.exists() else jobs_dir / job
         if not p.exists():
             messagebox.showwarning("Not Found", f"File not found:\n{p}")
             return
