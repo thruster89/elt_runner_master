@@ -39,6 +39,42 @@ def set_session_schema(conn, conn_type: str, schema: str, logger=None):
     log.info("Session schema = '%s'", schema)
 
 
+def _default_memory_limit() -> str:
+    """시스템 RAM의 75%를 GB 단위로 반환한다."""
+    import os
+    try:
+        total = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    except (ValueError, OSError):
+        return "4GB"
+    gb = max(1, int(total * 0.75 / (1024 ** 3)))
+    return f"{gb}GB"
+
+
+def _default_threads() -> int:
+    """논리 CPU 수의 절반 (최소 1)."""
+    import os
+    return max(1, (os.cpu_count() or 2) // 2)
+
+
+def _apply_duckdb_settings(conn, target_cfg: dict):
+    """DuckDB 연결에 memory_limit, threads 등 SET 옵션을 적용한다."""
+    memory_limit = (target_cfg.get("memory_limit") or "").strip()
+    threads = (target_cfg.get("threads") or "")
+    if isinstance(threads, int):
+        threads = str(threads)
+    else:
+        threads = threads.strip()
+
+    if not memory_limit:
+        memory_limit = _default_memory_limit()
+    if not threads:
+        threads = str(_default_threads())
+
+    conn.execute(f"SET memory_limit = '{memory_limit}'")
+    conn.execute(f"SET threads = {int(threads)}")
+    _log.info("DuckDB SET memory_limit = '%s', threads = %s", memory_limit, threads)
+
+
 def connect_target(ctx, target_cfg: dict) -> tuple:
     """
     target_cfg 설정에 따라 DB 연결을 생성한다.
@@ -55,8 +91,11 @@ def connect_target(ctx, target_cfg: dict) -> tuple:
         from adapters.targets.duckdb_target import connect
         db_path = resolve_path(ctx, target_cfg.get("db_path", ctx.get_default("target_db_path")))
         db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = connect(db_path)
+        # DuckDB SET 옵션 적용 (memory_limit, threads 등)
+        _apply_duckdb_settings(conn, target_cfg)
         label = f"duckdb ({db_path.resolve()})"
-        return connect(db_path), "duckdb", label
+        return conn, "duckdb", label
 
     elif tgt_type == "sqlite3":
         from adapters.targets.sqlite_target import connect

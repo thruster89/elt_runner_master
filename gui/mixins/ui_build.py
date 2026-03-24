@@ -1215,6 +1215,7 @@ class UiBuildMixin:
         self._log.pack(side="left", fill="both", expand=True)
 
         for tag, fg in [("INFO", C["text"]), ("SUCCESS", C["green"]),
+                        ("DONE",  C["teal"]),
                         ("WARN",  C["yellow"]), ("ERROR", C["red"]),
                         ("SYS",   C["overlay1"]),  ("TIME",  C["overlay1"]),
                         ("DIM",   C["overlay0"]), ("JOB_INFO", C["text"])]:

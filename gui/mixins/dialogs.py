@@ -624,7 +624,7 @@ class DialogsMixin:
         self._open_in_explorer(str(p))
 
     def _open_in_explorer(self: "BatchRunnerGUI", path_str):
-        """OS 파일 탐색기에서 경로를 연다"""
+        """OS 파일 탐색기에서 경로를 연다 (파일이면 상위 폴더를 열고 파일 선택)"""
         import subprocess as sp
         p = Path(path_str)
         if not p.is_absolute():
@@ -635,13 +635,20 @@ class DialogsMixin:
         if not p.exists():
             messagebox.showwarning("Path Not Found", f"Cannot find path:\n{path_str}")
             return
-        target = str(p)
         try:
             if sys.platform == "win32":
-                os.startfile(target)
+                if p.is_file():
+                    # 파일이면 탐색기에서 해당 파일을 선택한 상태로 열기
+                    sp.Popen(["explorer", "/select,", str(p)])
+                else:
+                    os.startfile(str(p))
             elif sys.platform == "darwin":
-                sp.Popen(["open", target])
+                if p.is_file():
+                    sp.Popen(["open", "-R", str(p)])
+                else:
+                    sp.Popen(["open", str(p)])
             else:
+                target = str(p.parent) if p.is_file() else str(p)
                 sp.Popen(["xdg-open", target])
         except Exception as e:
             messagebox.showerror("Error", str(e))
