@@ -86,7 +86,7 @@ class DialogsMixin:
         mode_label = {"run": "Run", "retry": "Retry"}.get(mode, mode)
         selected_stages = [s for s in ("export", "load_local", "transform", "report")
                            if getattr(self, f"_stage_{s}").get()]
-        stages_str = " → ".join(selected_stages) if selected_stages else "(all)"
+        stages_str = " → ".join(selected_stages) if selected_stages else "(none)"
         params = {}
         for stage in ("export", "transform", "report"):
             if getattr(self, f"_stage_{stage}").get():

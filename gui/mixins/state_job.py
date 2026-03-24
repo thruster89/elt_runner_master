@@ -867,12 +867,17 @@ class StateJobMixin:
         tfm_type = self._transform_target_type.get()
         effective_type = tgt if (not tfm_type or tfm_type == "(global)") else tfm_type
         cur = self._transform_sql_dir.get()
+        # 자동 sql_dir 갱신: 비어있거나, 이전 자동 설정값(sql/transform/{db_type})일 때만
+        # 사용자가 직접 커스텀 경로를 입력한 경우에는 덮어쓰지 않음
+        auto_patterns = {f"sql/transform/{t}" for t in ("duckdb", "sqlite3", "oracle", "vertica", "mysql", "postgresql")}
+        is_auto_value = not cur or cur in auto_patterns
         if defaults["job_dir_exists"]:
-            # job-centric: convention 폴더 → DB 엔진별 분리 불필요
-            if not cur or re.match(r"^(sql/transform/\w+|jobs/\w+/sql/transform)$", cur):
+            job_convention_patterns = {defaults["transform_sql_dir"]}
+            # job-centric convention 패턴도 자동값으로 인정
+            if is_auto_value or cur in job_convention_patterns or re.match(r"^jobs/\w+/sql/transform$", cur or ""):
                 self._transform_sql_dir.set(defaults["transform_sql_dir"])
         else:
-            if not cur or re.match(r"^sql/transform/\w+$", cur):
+            if is_auto_value:
                 self._transform_sql_dir.set(f"sql/transform/{effective_type}")
         self._update_target_visibility()
         self._update_transform_target_visibility()
