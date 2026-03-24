@@ -222,7 +222,10 @@ def _run_csv_export(ctx, report_cfg, cfg, *,
 
                 # 파라미터가 여러 세트면 파일명에 파라미터값 포함
                 if len(param_sets) > 1:
-                    suffix = "_".join(str(v) for v in param_set.values())
+                    suffix = "_".join(
+                        re.sub(r"['\"\\/:<>|?*]", "", str(v)).replace(" ", "_")
+                        for v in param_set.values()
+                    )
                     out_file = out_dir / f"{sql_file.stem}_{suffix}{ext}"
                 else:
                     out_file = out_dir / (sql_file.stem + ext)
