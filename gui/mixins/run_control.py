@@ -530,13 +530,20 @@ class RunControlMixin:
         self.after(500, self._flash_title, count - 1)
 
     def _set_left_panel_state(self: "BatchRunnerGUI", enabled: bool):
+        # 실행 중에도 활성 유지할 버튼 텍스트
+        _KEEP_ACTIVE = {"\U0001f4c2"}
         def _recurse(widget):
             for child in widget.winfo_children():
                 try:
                     if isinstance(child, ttk.Combobox):
                         child.config(state="readonly" if enabled else "disabled")
+                    elif isinstance(child, tk.Button):
+                        if not enabled and child.cget("text") in _KEEP_ACTIVE:
+                            pass  # 폴더 탐색기 버튼은 항상 활성
+                        else:
+                            child.config(state="normal" if enabled else "disabled")
                     elif isinstance(child, (tk.Entry, tk.Spinbox, tk.Checkbutton,
-                                           tk.Radiobutton, tk.Button, tk.Listbox)):
+                                           tk.Radiobutton, tk.Listbox)):
                         child.config(state="normal" if enabled else "disabled")
                 except Exception:
                     pass
