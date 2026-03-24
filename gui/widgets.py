@@ -604,53 +604,67 @@ class RunHistoryDialog(tk.Toplevel):
     _MAX_RUNS_PER_STAGE = 50  # 스테이지당 최대 로딩 수
 
     def _load_history(self):
-        """data/ 하위에서 run_info.json을 수집 (스테이지당 최대 50건)"""
-        stage_dirs = {
-            "export": self._work_dir / "data" / "export",
-            "transform": self._work_dir / "data" / "transform",
-            "report": self._work_dir / "data" / "report_tracking",
+        """data/ 및 jobs/{name}/data/ 하위에서 run_info.json을 수집 (스테이지당 최대 50건)"""
+        stage_subdirs = {
+            "export":    "data/export",
+            "transform": "data/transform",
+            "report":    "data/report_tracking",
         }
-        for stage, base in stage_dirs.items():
-            job_dir = base / self._job_name
-            if not job_dir.is_dir():
-                continue
-            loaded = 0
-            for d in sorted(job_dir.iterdir(), reverse=True):
-                if loaded >= self._MAX_RUNS_PER_STAGE:
-                    break
-                ri = d / "run_info.json"
-                if not ri.exists():
-                    continue
-                try:
-                    info = json.loads(ri.read_text(encoding="utf-8"))
-                    tasks = info.get("tasks", {})
-                    s = sum(1 for v in tasks.values() if v.get("status") == "success")
-                    f = sum(1 for v in tasks.values() if v.get("status") == "failed")
-                    sk = sum(1 for v in tasks.values() if v.get("status") == "skipped")
-                    # 최대 elapsed 계산
-                    elapsed_vals = [v.get("elapsed", 0) for v in tasks.values()
-                                    if isinstance(v.get("elapsed"), (int, float))]
-                    total_elapsed = sum(elapsed_vals)
-                    if total_elapsed < 60:
-                        el_str = f"{total_elapsed:.0f}s"
-                    else:
-                        m, sec = divmod(int(total_elapsed), 60)
-                        el_str = f"{m}m{sec:02d}s"
 
-                    run = {
-                        "run_id": info.get("run_id", d.name),
-                        "stage": info.get("stage", stage),
-                        "start": info.get("start_time", ""),
-                        "mode": info.get("mode", ""),
-                        "success": s, "failed": f, "skipped": sk,
-                        "elapsed": el_str,
-                        "tasks": tasks,
-                        "path": str(ri),
-                    }
-                    self._runs.append(run)
-                    loaded += 1
-                except Exception:
+        # 글로벌 + Job-centric 양쪽 모두 탐색
+        search_bases = [self._work_dir]
+        jc_dir = self._work_dir / "jobs" / self._job_name
+        if jc_dir.is_dir():
+            search_bases.insert(0, jc_dir)
+
+        seen_run_ids = set()  # 중복 방지
+        for stage, sub in stage_subdirs.items():
+            loaded = 0
+            for base in search_bases:
+                job_dir = base / sub / self._job_name
+                if not job_dir.is_dir():
                     continue
+                for d in sorted(job_dir.iterdir(), reverse=True):
+                    if loaded >= self._MAX_RUNS_PER_STAGE:
+                        break
+                    ri = d / "run_info.json"
+                    if not ri.exists():
+                        continue
+                    # 중복 방지 (같은 run_id가 양쪽에 있을 수 있음)
+                    dedup_key = f"{stage}:{d.name}"
+                    if dedup_key in seen_run_ids:
+                        continue
+                    seen_run_ids.add(dedup_key)
+                    try:
+                        info = json.loads(ri.read_text(encoding="utf-8"))
+                        tasks = info.get("tasks", {})
+                        s = sum(1 for v in tasks.values() if v.get("status") == "success")
+                        f = sum(1 for v in tasks.values() if v.get("status") == "failed")
+                        sk = sum(1 for v in tasks.values() if v.get("status") == "skipped")
+                        # 최대 elapsed 계산
+                        elapsed_vals = [v.get("elapsed", 0) for v in tasks.values()
+                                        if isinstance(v.get("elapsed"), (int, float))]
+                        total_elapsed = sum(elapsed_vals)
+                        if total_elapsed < 60:
+                            el_str = f"{total_elapsed:.0f}s"
+                        else:
+                            m, sec = divmod(int(total_elapsed), 60)
+                            el_str = f"{m}m{sec:02d}s"
+
+                        run = {
+                            "run_id": info.get("run_id", d.name),
+                            "stage": info.get("stage", stage),
+                            "start": info.get("start_time", ""),
+                            "mode": info.get("mode", ""),
+                            "success": s, "failed": f, "skipped": sk,
+                            "elapsed": el_str,
+                            "tasks": tasks,
+                            "path": str(ri),
+                        }
+                        self._runs.append(run)
+                        loaded += 1
+                    except Exception:
+                        continue
 
         # 시작 시간 역순 정렬
         self._runs.sort(key=lambda r: r.get("start", ""), reverse=True)
