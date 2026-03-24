@@ -621,7 +621,24 @@ class DialogsMixin:
         if not p.exists():
             messagebox.showwarning("Not Found", f"File not found:\n{p}")
             return
-        self._open_in_explorer(str(p))
+        self._open_file_in_editor(str(p))
+
+    def _open_file_in_editor(self: "BatchRunnerGUI", path_str):
+        """파일을 OS 기본 연결 프로그램(편집기)으로 연다"""
+        import subprocess as sp
+        p = Path(path_str)
+        if not p.exists():
+            messagebox.showwarning("Not Found", f"File not found:\n{path_str}")
+            return
+        try:
+            if sys.platform == "win32":
+                os.startfile(str(p))
+            elif sys.platform == "darwin":
+                sp.Popen(["open", str(p)])
+            else:
+                sp.Popen(["xdg-open", str(p)])
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
 
     def _open_in_explorer(self: "BatchRunnerGUI", path_str):
         """OS 파일 탐색기에서 경로를 연다 (파일이면 상위 폴더를 열고 파일 선택)"""
