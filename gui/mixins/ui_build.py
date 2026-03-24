@@ -344,8 +344,11 @@ class UiBuildMixin:
                            self._export_sql_dir, self._export_out_dir,
                            self._load_csv_dir,
                            self._target_db_path, self._target_schema,
-                           self._transform_sql_dir, self._report_sql_dir,
-                           self._report_out_dir, self._source_host_var):
+                           self._transform_sql_dir, self._transform_db_path,
+                           self._transform_schema, self._report_sql_dir,
+                           self._report_out_dir, self._report_schema,
+                           self._source_host_var,
+                           self._transfer_dest_db_path, self._transfer_dest_type):
                 ov_var.trace_add("write", lambda *_: self._refresh_preview())
             for var in (self.job_var, self.mode_var, self._env_path_var, self._debug_var):
                 var.trace_add("write", lambda *_: self._refresh_preview())
@@ -355,11 +358,11 @@ class UiBuildMixin:
             self._transform_sql_dir.trace_add("write", lambda *_: self.after(300, self._scan_and_suggest_params))
             self._report_sql_dir.trace_add("write", lambda *_: self.after(300, self._scan_and_suggest_params))
             self._target_type_var.trace_add("write", lambda *_: self._refresh_preview())
-            self._ov_csv_filter.trace_add("write", lambda *_: self._update_csv_filter_count())
-            # Stage BooleanVar → 가시성 연동
+            self._ov_csv_filter.trace_add("write", lambda *_: (self._update_csv_filter_count(), self._refresh_preview()))
+            # Stage BooleanVar → 가시성 연동 + dirty 캐시 무효화
             for stage_var in (self._stage_export, self._stage_load_local,
                               self._stage_transform, self._stage_report):
-                stage_var.trace_add("write", lambda *_: self._update_section_visibility())
+                stage_var.trace_add("write", lambda *_: (self._update_section_visibility(), self._refresh_preview()))
             self._traces_registered = True
 
         # 초기 가시성 설정
@@ -794,7 +797,7 @@ class UiBuildMixin:
         self._tfm_type_combo.pack(fill="x", pady=(2, 0))
         if not self._transform_target_type.get():
             self._transform_target_type.set("(global)")
-        self._transform_target_type.trace_add("write", lambda *_: self._update_transform_target_visibility())
+        self._transform_target_type.trace_add("write", lambda *_: (self._update_transform_target_visibility(), self._refresh_preview()))
 
         self._tfm_db_row = tk.Frame(tf, bg=C["mantle"])
         self._tfm_db_row.pack(fill="x", padx=12, pady=2)
