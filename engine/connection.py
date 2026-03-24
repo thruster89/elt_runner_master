@@ -87,8 +87,8 @@ def _default_threads() -> int:
     return max(1, (os.cpu_count() or 2) // 2)
 
 
-def _apply_duckdb_settings(conn, target_cfg: dict):
-    """DuckDB 연결에 memory_limit, threads 등 SET 옵션을 적용한다."""
+def _apply_duckdb_settings(conn, target_cfg: dict, db_path=None):
+    """DuckDB 연결에 memory_limit, threads, temp_directory 등 SET 옵션을 적용한다."""
     memory_limit = (target_cfg.get("memory_limit") or "").strip()
     threads = (target_cfg.get("threads") or "")
     if isinstance(threads, int):
@@ -103,7 +103,27 @@ def _apply_duckdb_settings(conn, target_cfg: dict):
 
     conn.execute(f"SET memory_limit = '{memory_limit}'")
     conn.execute(f"SET threads = {int(threads)}")
-    _log.info("DuckDB SET memory_limit = '%s', threads = %s", memory_limit, threads)
+
+    # temp_directory 설정: YAML 지정값 > db파일.tmp > 시스템 임시 폴더
+    temp_dir = (target_cfg.get("temp_directory") or "").strip()
+    if not temp_dir and db_path is not None:
+        from pathlib import Path
+        default_tmp = Path(str(db_path) + ".tmp")
+        try:
+            default_tmp.mkdir(parents=True, exist_ok=True)
+            temp_dir = str(default_tmp.resolve())
+        except OSError:
+            # 기본 경로 생성 실패 시 시스템 임시 폴더 사용
+            import tempfile
+            temp_dir = tempfile.mkdtemp(prefix="duckdb_")
+            _log.warning("기본 temp 경로 생성 실패, 시스템 임시 폴더 사용: %s", temp_dir)
+    if temp_dir:
+        from pathlib import Path
+        Path(temp_dir).mkdir(parents=True, exist_ok=True)
+        conn.execute(f"SET temp_directory = '{temp_dir}'")
+
+    _log.info("DuckDB SET memory_limit = '%s', threads = %s, temp_directory = '%s'",
+              memory_limit, threads, temp_dir or "(default)")
 
 
 def connect_target(ctx, target_cfg: dict) -> tuple:
@@ -123,8 +143,8 @@ def connect_target(ctx, target_cfg: dict) -> tuple:
         db_path = resolve_path(ctx, target_cfg.get("db_path", ctx.get_default("target_db_path")))
         db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = connect(db_path)
-        # DuckDB SET 옵션 적용 (memory_limit, threads 등)
-        _apply_duckdb_settings(conn, target_cfg)
+        # DuckDB SET 옵션 적용 (memory_limit, threads, temp_directory 등)
+        _apply_duckdb_settings(conn, target_cfg, db_path=db_path)
         label = f"duckdb ({db_path.resolve()})"
         return conn, "duckdb", label
 
