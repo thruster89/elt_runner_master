@@ -204,15 +204,60 @@ def _resolve_encoding(encoding: str | None, file_path: Path) -> str | None:
     return encoding
 
 
-def _build_read_csv_opts(delimiter: str = None, encoding: str = None) -> str:
-    """read_csv_auto 옵션 문자열 생성. delimiter/encoding이 지정되면 옵션 추가."""
+def _convert_to_utf8(file_path: Path, src_encoding: str) -> Path:
+    """비UTF-8 파일을 UTF-8 임시 파일로 변환. 변환된 임시 파일 경로를 반환."""
+    import tempfile
+
+    suffix = "".join(file_path.suffixes)  # .csv, .dat 등 (.gz 제외)
+    is_gz = file_path.name.endswith(".gz")
+
+    # 읽기
+    if is_gz:
+        import gzip
+        with gzip.open(file_path, "rb") as f:
+            raw = f.read()
+        # 변환 후 파일도 .gz 없이 저장 (DuckDB가 직접 읽도록)
+        suffix = suffix.replace(".gz", "")
+    else:
+        raw = file_path.read_bytes()
+
+    # BOM 제거
+    if raw[:3] == b'\xef\xbb\xbf':
+        raw = raw[3:]
+    elif raw[:2] in (b'\xff\xfe', b'\xfe\xff'):
+        raw = raw[2:]
+
+    text = raw.decode(src_encoding)
+
+    # 임시 파일 생성 (같은 디렉토리에 — DuckDB 접근 보장)
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=suffix or ".csv", dir=file_path.parent,
+                                         prefix=f".{file_path.stem}_utf8_")
+    try:
+        with open(tmp_fd, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+    except Exception:
+        Path(tmp_path).unlink(missing_ok=True)
+        raise
+
+    logger.info("LOAD encoding convert: %s → UTF-8 (%s)", src_encoding, Path(tmp_path).name)
+    return Path(tmp_path)
+
+
+def _ensure_utf8(file_path: Path, encoding: str | None) -> tuple[Path, bool]:
+    """필요 시 UTF-8로 변환. (실제경로, 임시파일여부) 반환."""
+    resolved = _resolve_encoding(encoding, file_path)
+    if not resolved:
+        return file_path, False
+    converted = _convert_to_utf8(file_path, resolved)
+    return converted, True
+
+
+def _build_read_csv_opts(delimiter: str = None) -> str:
+    """read_csv_auto 옵션 문자열 생성. delimiter가 지정되면 delim 옵션 추가."""
     opts = "header=True"
     if delimiter:
         escaped = delimiter.replace("'", "''")
         opts += f", delim='{escaped}'"
-    if encoding:
-        escaped_enc = encoding.replace("'", "''")
-        opts += f", encoding='{escaped_enc}'"
     return opts
 
 
@@ -303,34 +348,40 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
     if load_mode == "delete" and _table_exists(conn, schema, table_name):
         _delete_by_params(conn, schema, table_name, params or {})
 
-    resolved_enc = _resolve_encoding(encoding, csv_path)
-    csv_opts = _build_read_csv_opts(delimiter, resolved_enc)
+    # 비UTF-8이면 UTF-8로 변환 후 로드
+    actual_path, is_tmp = _ensure_utf8(csv_path, encoding)
+    csv_opts = _build_read_csv_opts(delimiter)
 
-    if not _table_exists(conn, schema, table_name):
-        logger.info("Table not found, creating: %s", tbl)
-        meta_file = _find_meta_file(csv_path)
-        if meta_file:
-            meta = json.loads(meta_file.read_text(encoding="utf-8"))
-            columns = meta["columns"] if isinstance(meta, dict) and "columns" in meta else meta
-            _create_table_from_meta(conn, schema, table_name, columns)
+    try:
+        if not _table_exists(conn, schema, table_name):
+            logger.info("Table not found, creating: %s", tbl)
+            meta_file = _find_meta_file(csv_path)
+            if meta_file:
+                meta = json.loads(meta_file.read_text(encoding="utf-8"))
+                columns = meta["columns"] if isinstance(meta, dict) and "columns" in meta else meta
+                _create_table_from_meta(conn, schema, table_name, columns)
+                conn.execute(
+                    f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, {csv_opts}, all_varchar=true)",
+                    [str(actual_path)],
+                )
+            else:
+                conn.execute(
+                    f"CREATE TABLE {tbl} AS SELECT * FROM read_csv_auto(?, {csv_opts})",
+                    [str(actual_path)],
+                )
+            row_count = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
+        else:
+            logger.debug("Table exists: %s", tbl)
+            before = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
             conn.execute(
                 f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, {csv_opts}, all_varchar=true)",
-                [str(csv_path)],
+                [str(actual_path)],
             )
-        else:
-            conn.execute(
-                f"CREATE TABLE {tbl} AS SELECT * FROM read_csv_auto(?, {csv_opts})",
-                [str(csv_path)],
-            )
-        row_count = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
-    else:
-        logger.debug("Table exists: %s", tbl)
-        before = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
-        conn.execute(
-            f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, {csv_opts}, all_varchar=true)",
-            [str(csv_path)],
-        )
-        row_count = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0] - before
+            row_count = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0] - before
+    finally:
+        if is_tmp:
+            actual_path.unlink(missing_ok=True)
+
     _insert_history(conn, schema, job_name, full_table, str(csv_path), file_hash, file_size, mtime)
 
     elapsed = time.time() - start
@@ -371,30 +422,41 @@ def load_csv_batch(conn, job_name: str, table_name: str, csv_paths: list[Path],
         logger.info("LOAD mode=truncate → DELETE FROM %s", tbl)
         conn.execute(f"DELETE FROM {tbl}")
 
-    # 2) CREATE or INSERT (read_csv_auto에 리스트 전달)
-    resolved_enc = _resolve_encoding(encoding, csv_paths[0])
-    csv_opts = _build_read_csv_opts(delimiter, resolved_enc)
+    # 2) 비UTF-8이면 UTF-8로 변환
+    converted = []
+    tmp_paths = []
+    for p in csv_paths:
+        actual, is_tmp = _ensure_utf8(p, encoding)
+        converted.append(str(actual))
+        if is_tmp:
+            tmp_paths.append(actual)
 
-    if not _table_exists(conn, schema, table_name):
-        meta_file = _find_meta_file(csv_paths[0])
-        if meta_file:
-            meta = json.loads(meta_file.read_text(encoding="utf-8"))
-            columns = meta["columns"] if isinstance(meta, dict) and "columns" in meta else meta
-            _create_table_from_meta(conn, schema, table_name, columns)
-            conn.execute(
-                f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, {csv_opts}, all_varchar=true)",
-                [path_strs],
-            )
+    csv_opts = _build_read_csv_opts(delimiter)
+
+    try:
+        if not _table_exists(conn, schema, table_name):
+            meta_file = _find_meta_file(csv_paths[0])
+            if meta_file:
+                meta = json.loads(meta_file.read_text(encoding="utf-8"))
+                columns = meta["columns"] if isinstance(meta, dict) and "columns" in meta else meta
+                _create_table_from_meta(conn, schema, table_name, columns)
+                conn.execute(
+                    f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, {csv_opts}, all_varchar=true)",
+                    [converted],
+                )
+            else:
+                conn.execute(
+                    f"CREATE TABLE {tbl} AS SELECT * FROM read_csv_auto(?, {csv_opts})",
+                    [converted],
+                )
         else:
             conn.execute(
-                f"CREATE TABLE {tbl} AS SELECT * FROM read_csv_auto(?, {csv_opts})",
-                [path_strs],
+                f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, {csv_opts}, all_varchar=true)",
+                [converted],
             )
-    else:
-        conn.execute(
-            f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, {csv_opts}, all_varchar=true)",
-            [path_strs],
-        )
+    finally:
+        for tp in tmp_paths:
+            tp.unlink(missing_ok=True)
 
     row_count = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
 
