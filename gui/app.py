@@ -97,7 +97,7 @@ class BatchRunnerGUI(
         self._ov_compression  = tk.StringVar(value="gzip")
         self._ov_load_mode    = tk.StringVar(value="replace")
         self._ov_delimiter    = tk.StringVar(value="auto")
-        self._ov_encoding     = tk.StringVar(value="utf-8")
+        self._ov_encoding     = tk.StringVar(value="auto")
         self._ov_on_error     = tk.StringVar(value="stop")
         self._ov_excel        = tk.BooleanVar(value=True)
         self._ov_csv          = tk.BooleanVar(value=True)

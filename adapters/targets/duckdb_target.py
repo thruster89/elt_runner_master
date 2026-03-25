@@ -113,6 +113,59 @@ def _find_meta_file(csv_path: Path) -> Path | None:
     return meta if meta.exists() else None
 
 
+def _detect_encoding(file_path: Path, sample_size: int = 64 * 1024) -> str | None:
+    """파일 앞부분을 읽어 인코딩을 자동 감지. UTF-8이면 None 반환 (DuckDB 기본값 사용)."""
+    try:
+        import chardet
+    except ImportError:
+        try:
+            import charset_normalizer
+            raw = file_path.read_bytes()[:sample_size]
+            result = charset_normalizer.from_bytes(raw).best()
+            if result is None:
+                return None
+            enc = str(result.encoding).lower()
+            return None if enc in ("utf-8", "ascii") else enc
+        except ImportError:
+            return None
+
+    # .gz 파일은 압축 해제 후 읽기
+    if file_path.name.endswith(".gz"):
+        import gzip
+        with gzip.open(file_path, "rb") as f:
+            raw = f.read(sample_size)
+    else:
+        with open(file_path, "rb") as f:
+            raw = f.read(sample_size)
+
+    det = chardet.detect(raw)
+    enc = (det.get("encoding") or "utf-8").lower()
+    confidence = det.get("confidence", 0)
+
+    # UTF-8/ASCII는 DuckDB 기본값이므로 None
+    if enc in ("utf-8", "ascii"):
+        return None
+    # 신뢰도 낮으면 무시
+    if confidence < 0.7:
+        return None
+    # EUC-KR 계열 통합 (DuckDB는 euc-kr 지원 안 함, cp949 사용)
+    if enc in ("euc-kr", "euc_kr", "iso-2022-kr"):
+        return "euc-kr"
+    return enc
+
+
+def _resolve_encoding(encoding: str | None, file_path: Path) -> str | None:
+    """encoding 값을 최종 결정. 'auto'이면 자동 감지, 'utf-8'/None이면 기본값."""
+    if not encoding or encoding == "utf-8":
+        return None
+    if encoding == "auto":
+        detected = _detect_encoding(file_path)
+        if detected:
+            logger.info("LOAD encoding auto-detected: %s (%s)", detected, file_path.name)
+        return detected
+    return encoding
+
+
 def _build_read_csv_opts(delimiter: str = None, encoding: str = None) -> str:
     """read_csv_auto 옵션 문자열 생성. delimiter/encoding이 지정되면 옵션 추가."""
     opts = "header=True"
@@ -212,7 +265,8 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
     if load_mode == "delete" and _table_exists(conn, schema, table_name):
         _delete_by_params(conn, schema, table_name, params or {})
 
-    csv_opts = _build_read_csv_opts(delimiter, encoding)
+    resolved_enc = _resolve_encoding(encoding, csv_path)
+    csv_opts = _build_read_csv_opts(delimiter, resolved_enc)
 
     if not _table_exists(conn, schema, table_name):
         logger.info("Table not found, creating: %s", tbl)
@@ -280,7 +334,8 @@ def load_csv_batch(conn, job_name: str, table_name: str, csv_paths: list[Path],
         conn.execute(f"DELETE FROM {tbl}")
 
     # 2) CREATE or INSERT (read_csv_auto에 리스트 전달)
-    csv_opts = _build_read_csv_opts(delimiter, encoding)
+    resolved_enc = _resolve_encoding(encoding, csv_paths[0])
+    csv_opts = _build_read_csv_opts(delimiter, resolved_enc)
 
     if not _table_exists(conn, schema, table_name):
         meta_file = _find_meta_file(csv_paths[0])

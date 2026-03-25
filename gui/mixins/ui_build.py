@@ -602,7 +602,7 @@ class UiBuildMixin:
         Tooltip(_enc_lbl, TOOLTIPS["encoding"])
         self._encoding_combo = ttk.Combobox(
             col_enc, textvariable=self._ov_encoding,
-            values=["utf-8", "euc-kr", "cp949", "utf-16", "latin1"],
+            values=["auto", "utf-8", "euc-kr", "cp949", "utf-16", "latin1"],
             font=FONTS["mono"], width=7)
         self._encoding_combo.pack(fill="x", pady=(2, 0))
 

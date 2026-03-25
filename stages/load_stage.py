@@ -155,9 +155,9 @@ def run(ctx: RunContext):
         delimiter = delimiter.replace("\\t", "\t")
         logger.info("LOAD delimiter = %r", delimiter)
 
-    # encoding: 비워두면 DuckDB 기본(UTF-8). euc-kr, cp949 등 지정 가능
-    encoding = (load_cfg.get("encoding") or "").strip() or None
-    if encoding:
+    # encoding: auto(기본)이면 파일별 자동 감지, utf-8이면 강제 UTF-8
+    encoding = (load_cfg.get("encoding") or "").strip() or "auto"
+    if encoding != "auto":
         logger.info("LOAD encoding = %s", encoding)
 
     # ── PLAN 모드: 사전 확인 리포트 ──

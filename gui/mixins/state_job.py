@@ -148,7 +148,7 @@ class StateJobMixin:
         self._ov_compression.set(ov.get("compression", "gzip"))
         self._ov_load_mode.set(ov.get("load_mode", "replace"))
         self._ov_delimiter.set(ov.get("delimiter", "auto"))
-        self._ov_encoding.set(ov.get("encoding", "utf-8"))
+        self._ov_encoding.set(ov.get("encoding", "auto"))
         self._ov_on_error.set(ov.get("on_error", "stop"))
         self._ov_excel.set(ov.get("excel", True))
         self._ov_csv.set(ov.get("csv", True))
@@ -255,7 +255,7 @@ class StateJobMixin:
                    and self._ov_delimiter.get().strip() != "auto" else {}),
                 **({"encoding": self._ov_encoding.get().strip()}
                    if self._ov_encoding.get().strip()
-                   and self._ov_encoding.get().strip() != "utf-8" else {}),
+                   and self._ov_encoding.get().strip() not in ("auto", "utf-8") else {}),
                 **({"csv_dir": self._load_csv_dir.get().strip()}
                    if self._load_csv_dir.get().strip() else {}),
             },
@@ -479,7 +479,7 @@ class StateJobMixin:
         self._ov_timeout.set(str(exp.get("timeout_seconds", "1800")))
         self._ov_load_mode.set(str(cfg.get("load", {}).get("mode", "replace")))
         self._ov_delimiter.set(str(cfg.get("load", {}).get("delimiter", "auto")) or "auto")
-        self._ov_encoding.set(str(cfg.get("load", {}).get("encoding", "utf-8")) or "utf-8")
+        self._ov_encoding.set(str(cfg.get("load", {}).get("encoding", "auto")) or "auto")
         self._ov_on_error.set(str(tfm.get("on_error", "stop")))
         self._ov_excel.set(bool(rep.get("excel", {}).get("enabled", True)))
         csv_enabled = bool(rep_csv.get("enabled", True))
