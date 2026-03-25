@@ -113,45 +113,83 @@ def _find_meta_file(csv_path: Path) -> Path | None:
     return meta if meta.exists() else None
 
 
-def _detect_encoding(file_path: Path, sample_size: int = 64 * 1024) -> str | None:
-    """파일 앞부분을 읽어 인코딩을 자동 감지. UTF-8이면 None 반환 (DuckDB 기본값 사용)."""
-    try:
-        import chardet
-    except ImportError:
-        try:
-            import charset_normalizer
-            raw = file_path.read_bytes()[:sample_size]
-            result = charset_normalizer.from_bytes(raw).best()
-            if result is None:
-                return None
-            enc = str(result.encoding).lower()
-            return None if enc in ("utf-8", "ascii") else enc
-        except ImportError:
-            return None
-
-    # .gz 파일은 압축 해제 후 읽기
+def _read_raw_sample(file_path: Path, sample_size: int = 64 * 1024) -> bytes:
+    """파일 앞부분 raw bytes 읽기 (.gz 자동 처리)."""
     if file_path.name.endswith(".gz"):
         import gzip
         with gzip.open(file_path, "rb") as f:
-            raw = f.read(sample_size)
-    else:
-        with open(file_path, "rb") as f:
-            raw = f.read(sample_size)
+            return f.read(sample_size)
+    with open(file_path, "rb") as f:
+        return f.read(sample_size)
 
-    det = chardet.detect(raw)
-    enc = (det.get("encoding") or "utf-8").lower()
-    confidence = det.get("confidence", 0)
 
-    # UTF-8/ASCII는 DuckDB 기본값이므로 None
-    if enc in ("utf-8", "ascii"):
-        return None
-    # 신뢰도 낮으면 무시
-    if confidence < 0.7:
-        return None
-    # EUC-KR 계열 통합 (DuckDB는 euc-kr 지원 안 함, cp949 사용)
-    if enc in ("euc-kr", "euc_kr", "iso-2022-kr"):
+def _detect_encoding_fallback(raw: bytes, file_path: Path = None) -> str | None:
+    """chardet/charset_normalizer 없을 때 간이 인코딩 감지.
+
+    1) BOM 체크
+    2) UTF-8 디코딩 시도
+    3) 실패하면 cp949(한글 레거시) 시도
+    """
+    # BOM 체크
+    if raw[:3] == b'\xef\xbb\xbf':
+        return None  # UTF-8 BOM
+    if raw[:2] in (b'\xff\xfe', b'\xfe\xff'):
+        return "utf-16"
+
+    # UTF-8 디코딩 시도
+    try:
+        raw.decode("utf-8")
+        return None  # UTF-8 성공
+    except UnicodeDecodeError:
+        pass
+
+    # CP949(EUC-KR 상위호환) 시도
+    try:
+        raw.decode("cp949")
         return "euc-kr"
-    return enc
+    except UnicodeDecodeError:
+        pass
+
+    # 판별 불가
+    logger.warning("인코딩 자동 감지 실패 (chardet 미설치). pip install chardet 권장: %s",
+                   file_path or "")
+    return None
+
+
+def _detect_encoding(file_path: Path, sample_size: int = 64 * 1024) -> str | None:
+    """파일 앞부분을 읽어 인코딩을 자동 감지. UTF-8이면 None 반환 (DuckDB 기본값 사용)."""
+    raw = _read_raw_sample(file_path, sample_size)
+
+    # chardet 시도
+    try:
+        import chardet
+        det = chardet.detect(raw)
+        enc = (det.get("encoding") or "utf-8").lower()
+        confidence = det.get("confidence", 0)
+
+        if enc in ("utf-8", "ascii"):
+            return None
+        if confidence < 0.7:
+            return None
+        if enc in ("euc-kr", "euc_kr", "iso-2022-kr"):
+            return "euc-kr"
+        return enc
+    except ImportError:
+        pass
+
+    # charset_normalizer 시도
+    try:
+        import charset_normalizer
+        result = charset_normalizer.from_bytes(raw).best()
+        if result is None:
+            return _detect_encoding_fallback(raw, file_path)
+        enc = str(result.encoding).lower()
+        return None if enc in ("utf-8", "ascii") else enc
+    except ImportError:
+        pass
+
+    # 둘 다 없으면 간이 감지
+    return _detect_encoding_fallback(raw, file_path)
 
 
 def _resolve_encoding(encoding: str | None, file_path: Path) -> str | None:
