@@ -113,12 +113,15 @@ def _find_meta_file(csv_path: Path) -> Path | None:
     return meta if meta.exists() else None
 
 
-def _build_read_csv_opts(delimiter: str = None) -> str:
-    """read_csv_auto 옵션 문자열 생성. delimiter가 지정되면 delim 옵션 추가."""
+def _build_read_csv_opts(delimiter: str = None, encoding: str = None) -> str:
+    """read_csv_auto 옵션 문자열 생성. delimiter/encoding이 지정되면 옵션 추가."""
     opts = "header=True"
     if delimiter:
         escaped = delimiter.replace("'", "''")
         opts += f", delim='{escaped}'"
+    if encoding:
+        escaped_enc = encoding.replace("'", "''")
+        opts += f", encoding='{escaped_enc}'"
     return opts
 
 
@@ -171,12 +174,13 @@ def _create_table_from_meta(conn, schema: str, table_name: str, meta: list[dict]
 def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
              file_hash: str, mode: str, schema: str = None,
              load_mode: str = "replace", params: dict = None,
-             delimiter: str = None) -> int:
+             delimiter: str = None, encoding: str = None) -> int:
     """
     CSV/DAT/TSV를 DuckDB 테이블에 적재.
     schema 지정 시 해당 스키마에 생성/INSERT.
     load_mode: replace(DROP+CREATE) | truncate(DELETE ALL) | delete(params WHERE) | append(INSERT)
     delimiter: 필드 구분자 (None이면 auto-detect)
+    encoding: 파일 인코딩 (None이면 UTF-8 기본, 예: euc-kr, cp949)
     반환값: 적재된 row 수 (-1이면 skip)
     """
     file_size = csv_path.stat().st_size
@@ -208,7 +212,7 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
     if load_mode == "delete" and _table_exists(conn, schema, table_name):
         _delete_by_params(conn, schema, table_name, params or {})
 
-    csv_opts = _build_read_csv_opts(delimiter)
+    csv_opts = _build_read_csv_opts(delimiter, encoding)
 
     if not _table_exists(conn, schema, table_name):
         logger.info("Table not found, creating: %s", tbl)
@@ -249,7 +253,8 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
 
 def load_csv_batch(conn, job_name: str, table_name: str, csv_paths: list[Path],
                    file_hashes: list[str], mode: str, schema: str = None,
-                   load_mode: str = "replace", delimiter: str = None) -> int:
+                   load_mode: str = "replace", delimiter: str = None,
+                   encoding: str = None) -> int:
     """
     동일 테이블에 여러 CSV/DAT/TSV를 한번에 적재 (replace/truncate 전용).
     read_csv_auto([파일목록]) 으로 단일 INSERT 수행.
@@ -275,7 +280,7 @@ def load_csv_batch(conn, job_name: str, table_name: str, csv_paths: list[Path],
         conn.execute(f"DELETE FROM {tbl}")
 
     # 2) CREATE or INSERT (read_csv_auto에 리스트 전달)
-    csv_opts = _build_read_csv_opts(delimiter)
+    csv_opts = _build_read_csv_opts(delimiter, encoding)
 
     if not _table_exists(conn, schema, table_name):
         meta_file = _find_meta_file(csv_paths[0])

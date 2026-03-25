@@ -340,7 +340,7 @@ class UiBuildMixin:
         # 변경 감지 trace — 최초 1회만 등록 (테마 전환 시 중복 방지)
         if not getattr(self, "_traces_registered", False):
             for ov_var in (self._ov_compression, self._ov_on_error,
-                           self._ov_load_mode, self._ov_delimiter,
+                           self._ov_load_mode, self._ov_delimiter, self._ov_encoding,
                            self._ov_union_dir, self._ov_timeout,
                            self._export_sql_dir, self._export_out_dir,
                            self._load_csv_dir,
@@ -593,6 +593,18 @@ class UiBuildMixin:
             values=["auto", ",", "\\t", "|", ";"],
             font=FONTS["mono"], width=6)
         self._delimiter_combo.pack(fill="x", pady=(2, 0))
+
+        col_enc = tk.Frame(top_row, bg=C["mantle"])
+        col_enc.pack(side="left", fill="x", expand=True, padx=(8, 0))
+        _enc_lbl = tk.Label(col_enc, text="Encoding", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["subtext"])
+        _enc_lbl.pack(anchor="w")
+        Tooltip(_enc_lbl, TOOLTIPS["encoding"])
+        self._encoding_combo = ttk.Combobox(
+            col_enc, textvariable=self._ov_encoding,
+            values=["utf-8", "euc-kr", "cp949", "utf-16", "latin1"],
+            font=FONTS["mono"], width=7)
+        self._encoding_combo.pack(fill="x", pady=(2, 0))
 
         # DB Path (duckdb/sqlite3)
         self._db_path_row = tk.Frame(body, bg=C["mantle"])

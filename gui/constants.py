@@ -187,6 +187,9 @@ TOOLTIPS = {
     "delimiter":    "파일 필드 구분자\nauto: DuckDB 자동 판별\n"
                     "comma(,) / tab(\\t) / pipe(|) / semicolon(;)\n"
                     ".dat, .tsv 파일도 지원",
+    "encoding":     "파일 인코딩\nutf-8: 기본값\n"
+                    "euc-kr / cp949: 한글 레거시\n"
+                    "utf-16 / latin1 등 지원",
     "csv_dir":      "Load 대상 CSV 디렉토리\n비워두면 Export Output Dir 사용\n"
                     "Export 없이 Load만 실행 시 별도 지정",
     # Transform

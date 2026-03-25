@@ -155,6 +155,11 @@ def run(ctx: RunContext):
         delimiter = delimiter.replace("\\t", "\t")
         logger.info("LOAD delimiter = %r", delimiter)
 
+    # encoding: 비워두면 DuckDB 기본(UTF-8). euc-kr, cp949 등 지정 가능
+    encoding = (load_cfg.get("encoding") or "").strip() or None
+    if encoding:
+        logger.info("LOAD encoding = %s", encoding)
+
     # ── PLAN 모드: 사전 확인 리포트 ──
     if ctx.mode == "plan":
         _run_load_plan(ctx, logger, csv_files, sql_map, tgt_type, schema, load_mode)
@@ -186,14 +191,14 @@ def run(ctx: RunContext):
                 batch_fn = lambda table, csv_paths, file_hashes: \
                     load_csv_batch(conn, ctx.job_name, table, csv_paths, file_hashes,
                                    ctx.mode, schema, load_mode=load_mode,
-                                   delimiter=delimiter)
+                                   delimiter=delimiter, encoding=encoding)
 
             _run_load_loop(ctx, logger, csv_files, sql_map, conn_type,
                            load_fn=lambda table, csv_path, file_hash, lm=None:
                                load_csv(conn, ctx.job_name, table, csv_path, file_hash,
                                         ctx.mode, schema, load_mode=lm or load_mode,
                                         params=_extract_params(csv_path),
-                                        delimiter=delimiter),
+                                        delimiter=delimiter, encoding=encoding),
                            batch_fn=batch_fn)
 
         elif conn_type == "sqlite3":
