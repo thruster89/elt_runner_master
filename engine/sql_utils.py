@@ -85,15 +85,18 @@ def extract_sqlname_from_csv(csv_path: Path) -> str:
     """
     name = csv_path.name  # ex) 01_a1__local__clsYymm_202003.csv.gz
 
-    # .csv.gz / .csv 둘 다 처리
-    if name.endswith(".csv.gz"):
-        stem = name[: -len(".csv.gz")]
-    elif name.endswith(".csv"):
-        stem = name[: -len(".csv")]
-    else:
-        stem = csv_path.stem
+    # 지원 확장자: .csv(.gz), .dat(.gz), .tsv(.gz)
+    stem = _strip_data_ext(name)
 
     return stem.split("__", 1)[0]
+
+
+def _strip_data_ext(name: str) -> str:
+    """데이터 파일 확장자 제거하여 stem 반환."""
+    for ext in (".csv.gz", ".csv", ".dat.gz", ".dat", ".tsv.gz", ".tsv"):
+        if name.endswith(ext):
+            return name[: -len(ext)]
+    return Path(name).stem
 
 
 def extract_params_from_csv(csv_path: Path) -> dict:
@@ -104,12 +107,7 @@ def extract_params_from_csv(csv_path: Path) -> dict:
     → {"clsYymm": "202003", "productCode": "LA0001", "rateCode": "0000"}
     """
     name = csv_path.name
-    if name.endswith(".csv.gz"):
-        stem = name[: -len(".csv.gz")]
-    elif name.endswith(".csv"):
-        stem = name[: -len(".csv")]
-    else:
-        stem = csv_path.stem
+    stem = _strip_data_ext(name)
 
     parts = stem.split("__")
     # parts[0] = sqlname, parts[1] = host, parts[2:] = param_value pairs

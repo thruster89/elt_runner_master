@@ -102,9 +102,24 @@ def _delete_by_params(conn, schema: str, table_name: str, params: dict):
 def _find_meta_file(csv_path: Path) -> Path | None:
     """CSV와 같은 디렉토리에서 대응하는 .meta.json 탐색."""
     name = csv_path.name
-    stem = name[:-len(".csv.gz")] if name.endswith(".csv.gz") else name[:-len(".csv")]
+    # 지원 확장자: .csv, .csv.gz, .dat, .dat.gz, .tsv, .tsv.gz
+    for ext in (".csv.gz", ".csv", ".dat.gz", ".dat", ".tsv.gz", ".tsv"):
+        if name.endswith(ext):
+            stem = name[:-len(ext)]
+            break
+    else:
+        stem = Path(name).stem
     meta = csv_path.parent / (stem + ".meta.json")
     return meta if meta.exists() else None
+
+
+def _build_read_csv_opts(delimiter: str = None) -> str:
+    """read_csv_auto 옵션 문자열 생성. delimiter가 지정되면 delim 옵션 추가."""
+    opts = "header=True"
+    if delimiter:
+        escaped = delimiter.replace("'", "''")
+        opts += f", delim='{escaped}'"
+    return opts
 
 
 def _meta_type_to_duckdb(col: dict) -> str:
@@ -155,11 +170,13 @@ def _create_table_from_meta(conn, schema: str, table_name: str, meta: list[dict]
 
 def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
              file_hash: str, mode: str, schema: str = None,
-             load_mode: str = "replace", params: dict = None) -> int:
+             load_mode: str = "replace", params: dict = None,
+             delimiter: str = None) -> int:
     """
-    CSV를 DuckDB 테이블에 적재.
+    CSV/DAT/TSV를 DuckDB 테이블에 적재.
     schema 지정 시 해당 스키마에 생성/INSERT.
     load_mode: replace(DROP+CREATE) | truncate(DELETE ALL) | delete(params WHERE) | append(INSERT)
+    delimiter: 필드 구분자 (None이면 auto-detect)
     반환값: 적재된 row 수 (-1이면 skip)
     """
     file_size = csv_path.stat().st_size
@@ -191,6 +208,8 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
     if load_mode == "delete" and _table_exists(conn, schema, table_name):
         _delete_by_params(conn, schema, table_name, params or {})
 
+    csv_opts = _build_read_csv_opts(delimiter)
+
     if not _table_exists(conn, schema, table_name):
         logger.info("Table not found, creating: %s", tbl)
         meta_file = _find_meta_file(csv_path)
@@ -199,12 +218,12 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
             columns = meta["columns"] if isinstance(meta, dict) and "columns" in meta else meta
             _create_table_from_meta(conn, schema, table_name, columns)
             conn.execute(
-                f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, header=True, all_varchar=true)",
+                f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, {csv_opts}, all_varchar=true)",
                 [str(csv_path)],
             )
         else:
             conn.execute(
-                f"CREATE TABLE {tbl} AS SELECT * FROM read_csv_auto(?, header=True)",
+                f"CREATE TABLE {tbl} AS SELECT * FROM read_csv_auto(?, {csv_opts})",
                 [str(csv_path)],
             )
         row_count = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
@@ -212,7 +231,7 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
         logger.debug("Table exists: %s", tbl)
         before = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
         conn.execute(
-            f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, header=True, all_varchar=true)",
+            f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, {csv_opts}, all_varchar=true)",
             [str(csv_path)],
         )
         row_count = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0] - before
@@ -230,9 +249,9 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
 
 def load_csv_batch(conn, job_name: str, table_name: str, csv_paths: list[Path],
                    file_hashes: list[str], mode: str, schema: str = None,
-                   load_mode: str = "replace") -> int:
+                   load_mode: str = "replace", delimiter: str = None) -> int:
     """
-    동일 테이블에 여러 CSV를 한번에 적재 (replace/truncate 전용).
+    동일 테이블에 여러 CSV/DAT/TSV를 한번에 적재 (replace/truncate 전용).
     read_csv_auto([파일목록]) 으로 단일 INSERT 수행.
     반환값: 적재된 총 row 수.
     """
@@ -256,6 +275,8 @@ def load_csv_batch(conn, job_name: str, table_name: str, csv_paths: list[Path],
         conn.execute(f"DELETE FROM {tbl}")
 
     # 2) CREATE or INSERT (read_csv_auto에 리스트 전달)
+    csv_opts = _build_read_csv_opts(delimiter)
+
     if not _table_exists(conn, schema, table_name):
         meta_file = _find_meta_file(csv_paths[0])
         if meta_file:
@@ -263,17 +284,17 @@ def load_csv_batch(conn, job_name: str, table_name: str, csv_paths: list[Path],
             columns = meta["columns"] if isinstance(meta, dict) and "columns" in meta else meta
             _create_table_from_meta(conn, schema, table_name, columns)
             conn.execute(
-                f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, header=True, all_varchar=true)",
+                f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, {csv_opts}, all_varchar=true)",
                 [path_strs],
             )
         else:
             conn.execute(
-                f"CREATE TABLE {tbl} AS SELECT * FROM read_csv_auto(?, header=True)",
+                f"CREATE TABLE {tbl} AS SELECT * FROM read_csv_auto(?, {csv_opts})",
                 [path_strs],
             )
     else:
         conn.execute(
-            f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, header=True, all_varchar=true)",
+            f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, {csv_opts}, all_varchar=true)",
             [path_strs],
         )
 
