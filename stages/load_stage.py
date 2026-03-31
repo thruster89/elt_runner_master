@@ -8,13 +8,16 @@ from pathlib import Path
 from engine.connection import connect_target
 from engine.context import RunContext
 from engine.path_utils import resolve_path
-from engine.sql_utils import sort_sql_files, resolve_table_name, extract_sqlname_from_csv, extract_params_from_csv, strip_sql_prefix
+from engine.sql_utils import sort_sql_files, resolve_table_name, extract_sqlname_from_csv, extract_params_from_csv, strip_sql_prefix, _strip_data_ext
+
+
+_LOAD_EXTENSIONS = (".csv", ".csv.gz", ".dat", ".dat.gz", ".tsv", ".tsv.gz")
 
 
 def _extract_params(csv_path: Path) -> dict:
     """meta.json에서 params 읽기, 없으면 파일명 파싱 fallback."""
     name = csv_path.name
-    stem = name[:-len(".csv.gz")] if name.endswith(".csv.gz") else name[:-len(".csv")]
+    stem = _strip_data_ext(name)
     meta_file = csv_path.parent / (stem + ".meta.json")
     if meta_file.exists():
         meta = json.loads(meta_file.read_text(encoding="utf-8"))
@@ -100,13 +103,13 @@ def run(ctx: RunContext):
     else:
         csv_files = sorted([
             p for p in export_dir.iterdir()
-            if p.is_file() and p.name.endswith((".csv", ".csv.gz"))
+            if p.is_file() and p.name.endswith(_LOAD_EXTENSIONS)
         ])
     if not csv_files:
         if ctx.mode == "plan":
             logger.info("LOAD [PLAN] CSV 파일 없음 — export 실행 후 확인 가능 (%s)", export_dir)
         else:
-            logger.warning("No CSV/CSV.GZ files found in %s", export_dir)
+            logger.warning("No data files (csv/dat/tsv) found in %s", export_dir)
         return
 
     sql_dir = resolve_path(ctx, export_cfg.get("sql_dir", ctx.get_default("export_sql_dir")))
@@ -137,13 +140,25 @@ def run(ctx: RunContext):
     tgt_type = (target_cfg.get("type") or "").strip().lower()
     schema = (target_cfg.get("schema") or "").strip() or None  # None이면 스키마 없음
 
-    # ── load.mode 결정 ──
+    # ── load.mode / load.delimiter 결정 ──
     load_cfg = job_cfg.get("load", {})
     default_mode = "delete" if tgt_type == "oracle" else "replace"
     load_mode = load_cfg.get("mode", default_mode)
     if load_mode not in ("replace", "truncate", "append", "delete"):
         logger.warning("Unknown load.mode=%s, using replace", load_mode)
         load_mode = "replace"
+
+    # delimiter: auto(None)이면 DuckDB read_csv_auto가 자동 판별
+    delimiter = (load_cfg.get("delimiter") or "").strip() or None
+    if delimiter:
+        # 이스케이프 문자열 처리: \t → 탭
+        delimiter = delimiter.replace("\\t", "\t")
+        logger.info("LOAD delimiter = %r", delimiter)
+
+    # encoding: auto(기본)이면 파일별 자동 감지, utf-8이면 강제 UTF-8
+    encoding = (load_cfg.get("encoding") or "").strip() or "auto"
+    if encoding != "auto":
+        logger.info("LOAD encoding = %s", encoding)
 
     # ── PLAN 모드: 사전 확인 리포트 ──
     if ctx.mode == "plan":
@@ -175,13 +190,15 @@ def run(ctx: RunContext):
             if load_mode in ("replace", "truncate"):
                 batch_fn = lambda table, csv_paths, file_hashes: \
                     load_csv_batch(conn, ctx.job_name, table, csv_paths, file_hashes,
-                                   ctx.mode, schema, load_mode=load_mode)
+                                   ctx.mode, schema, load_mode=load_mode,
+                                   delimiter=delimiter, encoding=encoding)
 
             _run_load_loop(ctx, logger, csv_files, sql_map, conn_type,
                            load_fn=lambda table, csv_path, file_hash, lm=None:
                                load_csv(conn, ctx.job_name, table, csv_path, file_hash,
                                         ctx.mode, schema, load_mode=lm or load_mode,
-                                        params=_extract_params(csv_path)),
+                                        params=_extract_params(csv_path),
+                                        delimiter=delimiter, encoding=encoding),
                            batch_fn=batch_fn)
 
         elif conn_type == "sqlite3":

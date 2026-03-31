@@ -184,6 +184,12 @@ TOOLTIPS = {
     # Load
     "load_mode":    "replace: DROP + CREATE\ntruncate: TRUNCATE + INSERT\n"
                     "delete: param WHERE 조건 DELETE + INSERT\nappend: INSERT만 (이미 있으면 건너뜀)",
+    "delimiter":    "파일 필드 구분자\nauto: DuckDB 자동 판별\n"
+                    "comma(,) / tab(\\t) / pipe(|) / semicolon(;)\n"
+                    ".dat, .tsv 파일도 지원",
+    "encoding":     "파일 인코딩\nauto: 자동 감지 (기본값, 권장)\n"
+                    "utf-8 / euc-kr / cp949: 직접 지정\n"
+                    "auto로 두면 파일 앞부분을 분석하여 자동 판별",
     "csv_dir":      "Load 대상 CSV 디렉토리\n비워두면 Export Output Dir 사용\n"
                     "Export 없이 Load만 실행 시 별도 지정",
     # Transform

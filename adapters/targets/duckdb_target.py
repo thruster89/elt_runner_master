@@ -102,9 +102,163 @@ def _delete_by_params(conn, schema: str, table_name: str, params: dict):
 def _find_meta_file(csv_path: Path) -> Path | None:
     """CSV와 같은 디렉토리에서 대응하는 .meta.json 탐색."""
     name = csv_path.name
-    stem = name[:-len(".csv.gz")] if name.endswith(".csv.gz") else name[:-len(".csv")]
+    # 지원 확장자: .csv, .csv.gz, .dat, .dat.gz, .tsv, .tsv.gz
+    for ext in (".csv.gz", ".csv", ".dat.gz", ".dat", ".tsv.gz", ".tsv"):
+        if name.endswith(ext):
+            stem = name[:-len(ext)]
+            break
+    else:
+        stem = Path(name).stem
     meta = csv_path.parent / (stem + ".meta.json")
     return meta if meta.exists() else None
+
+
+def _read_raw_sample(file_path: Path, sample_size: int = 64 * 1024) -> bytes:
+    """파일 앞부분 raw bytes 읽기 (.gz 자동 처리)."""
+    if file_path.name.endswith(".gz"):
+        import gzip
+        with gzip.open(file_path, "rb") as f:
+            return f.read(sample_size)
+    with open(file_path, "rb") as f:
+        return f.read(sample_size)
+
+
+def _detect_encoding_fallback(raw: bytes, file_path: Path = None) -> str | None:
+    """chardet/charset_normalizer 없을 때 간이 인코딩 감지.
+
+    1) BOM 체크
+    2) UTF-8 디코딩 시도
+    3) 실패하면 cp949(한글 레거시) 시도
+    """
+    # BOM 체크
+    if raw[:3] == b'\xef\xbb\xbf':
+        return None  # UTF-8 BOM
+    if raw[:2] in (b'\xff\xfe', b'\xfe\xff'):
+        return "utf-16"
+
+    # UTF-8 디코딩 시도
+    try:
+        raw.decode("utf-8")
+        return None  # UTF-8 성공
+    except UnicodeDecodeError:
+        pass
+
+    # CP949(EUC-KR 상위호환) 시도
+    try:
+        raw.decode("cp949")
+        return "euc-kr"
+    except UnicodeDecodeError:
+        pass
+
+    # 판별 불가
+    logger.warning("인코딩 자동 감지 실패 (chardet 미설치). pip install chardet 권장: %s",
+                   file_path or "")
+    return None
+
+
+def _detect_encoding(file_path: Path, sample_size: int = 64 * 1024) -> str | None:
+    """파일 앞부분을 읽어 인코딩을 자동 감지. UTF-8이면 None 반환 (DuckDB 기본값 사용)."""
+    raw = _read_raw_sample(file_path, sample_size)
+
+    # chardet 시도
+    try:
+        import chardet
+        det = chardet.detect(raw)
+        enc = (det.get("encoding") or "utf-8").lower()
+        confidence = det.get("confidence", 0)
+
+        if enc in ("utf-8", "ascii"):
+            return None
+        if confidence < 0.7:
+            return None
+        if enc in ("euc-kr", "euc_kr", "iso-2022-kr"):
+            return "euc-kr"
+        return enc
+    except ImportError:
+        pass
+
+    # charset_normalizer 시도
+    try:
+        import charset_normalizer
+        result = charset_normalizer.from_bytes(raw).best()
+        if result is None:
+            return _detect_encoding_fallback(raw, file_path)
+        enc = str(result.encoding).lower()
+        return None if enc in ("utf-8", "ascii") else enc
+    except ImportError:
+        pass
+
+    # 둘 다 없으면 간이 감지
+    return _detect_encoding_fallback(raw, file_path)
+
+
+def _resolve_encoding(encoding: str | None, file_path: Path) -> str | None:
+    """encoding 값을 최종 결정. 'auto'이면 자동 감지, 'utf-8'/None이면 기본값."""
+    if not encoding or encoding == "utf-8":
+        return None
+    if encoding == "auto":
+        detected = _detect_encoding(file_path)
+        if detected:
+            logger.info("LOAD encoding auto-detected: %s (%s)", detected, file_path.name)
+        return detected
+    return encoding
+
+
+def _convert_to_utf8(file_path: Path, src_encoding: str) -> Path:
+    """비UTF-8 파일을 UTF-8 임시 파일로 변환. 변환된 임시 파일 경로를 반환."""
+    import tempfile
+
+    suffix = "".join(file_path.suffixes)  # .csv, .dat 등 (.gz 제외)
+    is_gz = file_path.name.endswith(".gz")
+
+    # 읽기
+    if is_gz:
+        import gzip
+        with gzip.open(file_path, "rb") as f:
+            raw = f.read()
+        # 변환 후 파일도 .gz 없이 저장 (DuckDB가 직접 읽도록)
+        suffix = suffix.replace(".gz", "")
+    else:
+        raw = file_path.read_bytes()
+
+    # BOM 제거
+    if raw[:3] == b'\xef\xbb\xbf':
+        raw = raw[3:]
+    elif raw[:2] in (b'\xff\xfe', b'\xfe\xff'):
+        raw = raw[2:]
+
+    text = raw.decode(src_encoding)
+
+    # 임시 파일 생성 (같은 디렉토리에 — DuckDB 접근 보장)
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=suffix or ".csv", dir=file_path.parent,
+                                         prefix=f".{file_path.stem}_utf8_")
+    try:
+        with open(tmp_fd, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+    except Exception:
+        Path(tmp_path).unlink(missing_ok=True)
+        raise
+
+    logger.info("LOAD encoding convert: %s → UTF-8 (%s)", src_encoding, Path(tmp_path).name)
+    return Path(tmp_path)
+
+
+def _ensure_utf8(file_path: Path, encoding: str | None) -> tuple[Path, bool]:
+    """필요 시 UTF-8로 변환. (실제경로, 임시파일여부) 반환."""
+    resolved = _resolve_encoding(encoding, file_path)
+    if not resolved:
+        return file_path, False
+    converted = _convert_to_utf8(file_path, resolved)
+    return converted, True
+
+
+def _build_read_csv_opts(delimiter: str = None) -> str:
+    """read_csv_auto 옵션 문자열 생성. delimiter가 지정되면 delim 옵션 추가."""
+    opts = "header=True"
+    if delimiter:
+        escaped = delimiter.replace("'", "''")
+        opts += f", delim='{escaped}'"
+    return opts
 
 
 def _meta_type_to_duckdb(col: dict) -> str:
@@ -155,11 +309,14 @@ def _create_table_from_meta(conn, schema: str, table_name: str, meta: list[dict]
 
 def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
              file_hash: str, mode: str, schema: str = None,
-             load_mode: str = "replace", params: dict = None) -> int:
+             load_mode: str = "replace", params: dict = None,
+             delimiter: str = None, encoding: str = None) -> int:
     """
-    CSV를 DuckDB 테이블에 적재.
+    CSV/DAT/TSV를 DuckDB 테이블에 적재.
     schema 지정 시 해당 스키마에 생성/INSERT.
     load_mode: replace(DROP+CREATE) | truncate(DELETE ALL) | delete(params WHERE) | append(INSERT)
+    delimiter: 필드 구분자 (None이면 auto-detect)
+    encoding: 파일 인코딩 (None이면 UTF-8 기본, 예: euc-kr, cp949)
     반환값: 적재된 row 수 (-1이면 skip)
     """
     file_size = csv_path.stat().st_size
@@ -191,31 +348,40 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
     if load_mode == "delete" and _table_exists(conn, schema, table_name):
         _delete_by_params(conn, schema, table_name, params or {})
 
-    if not _table_exists(conn, schema, table_name):
-        logger.info("Table not found, creating: %s", tbl)
-        meta_file = _find_meta_file(csv_path)
-        if meta_file:
-            meta = json.loads(meta_file.read_text(encoding="utf-8"))
-            columns = meta["columns"] if isinstance(meta, dict) and "columns" in meta else meta
-            _create_table_from_meta(conn, schema, table_name, columns)
-            conn.execute(
-                f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, header=True, all_varchar=true)",
-                [str(csv_path)],
-            )
+    # 비UTF-8이면 UTF-8로 변환 후 로드
+    actual_path, is_tmp = _ensure_utf8(csv_path, encoding)
+    csv_opts = _build_read_csv_opts(delimiter)
+
+    try:
+        if not _table_exists(conn, schema, table_name):
+            logger.info("Table not found, creating: %s", tbl)
+            meta_file = _find_meta_file(csv_path)
+            if meta_file:
+                meta = json.loads(meta_file.read_text(encoding="utf-8"))
+                columns = meta["columns"] if isinstance(meta, dict) and "columns" in meta else meta
+                _create_table_from_meta(conn, schema, table_name, columns)
+                conn.execute(
+                    f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, {csv_opts}, all_varchar=true)",
+                    [str(actual_path)],
+                )
+            else:
+                conn.execute(
+                    f"CREATE TABLE {tbl} AS SELECT * FROM read_csv_auto(?, {csv_opts})",
+                    [str(actual_path)],
+                )
+            row_count = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
         else:
+            logger.debug("Table exists: %s", tbl)
+            before = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
             conn.execute(
-                f"CREATE TABLE {tbl} AS SELECT * FROM read_csv_auto(?, header=True)",
-                [str(csv_path)],
+                f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, {csv_opts}, all_varchar=true)",
+                [str(actual_path)],
             )
-        row_count = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
-    else:
-        logger.debug("Table exists: %s", tbl)
-        before = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
-        conn.execute(
-            f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, header=True, all_varchar=true)",
-            [str(csv_path)],
-        )
-        row_count = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0] - before
+            row_count = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0] - before
+    finally:
+        if is_tmp:
+            actual_path.unlink(missing_ok=True)
+
     _insert_history(conn, schema, job_name, full_table, str(csv_path), file_hash, file_size, mtime)
 
     elapsed = time.time() - start
@@ -230,9 +396,10 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
 
 def load_csv_batch(conn, job_name: str, table_name: str, csv_paths: list[Path],
                    file_hashes: list[str], mode: str, schema: str = None,
-                   load_mode: str = "replace") -> int:
+                   load_mode: str = "replace", delimiter: str = None,
+                   encoding: str = None) -> int:
     """
-    동일 테이블에 여러 CSV를 한번에 적재 (replace/truncate 전용).
+    동일 테이블에 여러 CSV/DAT/TSV를 한번에 적재 (replace/truncate 전용).
     read_csv_auto([파일목록]) 으로 단일 INSERT 수행.
     반환값: 적재된 총 row 수.
     """
@@ -255,27 +422,41 @@ def load_csv_batch(conn, job_name: str, table_name: str, csv_paths: list[Path],
         logger.info("LOAD mode=truncate → DELETE FROM %s", tbl)
         conn.execute(f"DELETE FROM {tbl}")
 
-    # 2) CREATE or INSERT (read_csv_auto에 리스트 전달)
-    if not _table_exists(conn, schema, table_name):
-        meta_file = _find_meta_file(csv_paths[0])
-        if meta_file:
-            meta = json.loads(meta_file.read_text(encoding="utf-8"))
-            columns = meta["columns"] if isinstance(meta, dict) and "columns" in meta else meta
-            _create_table_from_meta(conn, schema, table_name, columns)
-            conn.execute(
-                f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, header=True, all_varchar=true)",
-                [path_strs],
-            )
+    # 2) 비UTF-8이면 UTF-8로 변환
+    converted = []
+    tmp_paths = []
+    for p in csv_paths:
+        actual, is_tmp = _ensure_utf8(p, encoding)
+        converted.append(str(actual))
+        if is_tmp:
+            tmp_paths.append(actual)
+
+    csv_opts = _build_read_csv_opts(delimiter)
+
+    try:
+        if not _table_exists(conn, schema, table_name):
+            meta_file = _find_meta_file(csv_paths[0])
+            if meta_file:
+                meta = json.loads(meta_file.read_text(encoding="utf-8"))
+                columns = meta["columns"] if isinstance(meta, dict) and "columns" in meta else meta
+                _create_table_from_meta(conn, schema, table_name, columns)
+                conn.execute(
+                    f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, {csv_opts}, all_varchar=true)",
+                    [converted],
+                )
+            else:
+                conn.execute(
+                    f"CREATE TABLE {tbl} AS SELECT * FROM read_csv_auto(?, {csv_opts})",
+                    [converted],
+                )
         else:
             conn.execute(
-                f"CREATE TABLE {tbl} AS SELECT * FROM read_csv_auto(?, header=True)",
-                [path_strs],
+                f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, {csv_opts}, all_varchar=true)",
+                [converted],
             )
-    else:
-        conn.execute(
-            f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, header=True, all_varchar=true)",
-            [path_strs],
-        )
+    finally:
+        for tp in tmp_paths:
+            tp.unlink(missing_ok=True)
 
     row_count = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
 

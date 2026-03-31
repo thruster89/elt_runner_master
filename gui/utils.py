@@ -100,10 +100,11 @@ def _non_literal_chunks(text):
 def _extract_params(text: str) -> set[str]:
     """단일 SQL 텍스트에서 파라미터 추출"""
     found: set[str] = set()
+    # ${param}, {#param}, @{param} — 명시적 표기이므로 _EXCLUDE 적용 안 함
     for pat in (_PAT_DOLLAR, _PAT_HASH, _PAT_AT):
         for m in pat.finditer(text):
-            if m.group(1) not in _EXCLUDE:
-                found.add(m.group(1))
+            found.add(m.group(1))
+    # :param — Oracle 날짜 포맷 키워드와 겹칠 수 있으므로 _EXCLUDE 적용
     for chunk in _non_literal_chunks(text):
         for m in _PAT_COLON.finditer(chunk):
             if m.group(1) not in _EXCLUDE:
