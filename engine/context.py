@@ -35,12 +35,21 @@ class RunContext:
         }
 
     def get_stage_params(self, stage_name: str) -> dict:
-        """스테이지별 params 반환. 스테이지 section에 params가 있으면 그것만 사용, 없으면 글로벌 params."""
+        """스테이지별 params 반환.
+        우선순위: stage section params → 글로벌 params → export params (fallback).
+        transform/report에서 params를 따로 안 넣었으면 글로벌 → export 순으로 참조.
+        """
         stage_cfg = self.job_config.get(stage_name, {})
         stage_params = stage_cfg.get("params")
         if stage_params is not None:
             return dict(stage_params)
-        return dict(self.params)
+        if self.params:
+            return dict(self.params)
+        # 글로벌도 없으면 export params fallback
+        export_params = self.job_config.get("export", {}).get("params")
+        if export_params is not None:
+            return dict(export_params)
+        return {}
 
     def get_stage_param_mode(self, stage_name: str) -> str:
         """스테이지별 param_mode 반환. 스테이지 section 우선, 없으면 글로벌."""
