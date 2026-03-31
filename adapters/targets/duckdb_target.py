@@ -356,9 +356,15 @@ def load_csv(conn, job_name: str, table_name: str, csv_path: Path,
         if not _table_exists(conn, schema, table_name):
             logger.info("Table not found, creating: %s", tbl)
             meta_file = _find_meta_file(csv_path)
+            columns = None
             if meta_file:
                 meta = json.loads(meta_file.read_text(encoding="utf-8"))
-                columns = meta["columns"] if isinstance(meta, dict) and "columns" in meta else meta
+                if isinstance(meta, dict) and "columns" in meta:
+                    columns = meta["columns"]
+                elif isinstance(meta, list) and meta and isinstance(meta[0], dict):
+                    columns = meta
+
+            if columns:
                 _create_table_from_meta(conn, schema, table_name, columns)
                 conn.execute(
                     f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, {csv_opts}, all_varchar=true)",
@@ -436,9 +442,15 @@ def load_csv_batch(conn, job_name: str, table_name: str, csv_paths: list[Path],
     try:
         if not _table_exists(conn, schema, table_name):
             meta_file = _find_meta_file(csv_paths[0])
+            columns = None
             if meta_file:
                 meta = json.loads(meta_file.read_text(encoding="utf-8"))
-                columns = meta["columns"] if isinstance(meta, dict) and "columns" in meta else meta
+                if isinstance(meta, dict) and "columns" in meta:
+                    columns = meta["columns"]
+                elif isinstance(meta, list) and meta and isinstance(meta[0], dict):
+                    columns = meta
+
+            if columns:
                 _create_table_from_meta(conn, schema, table_name, columns)
                 conn.execute(
                     f"INSERT INTO {tbl} SELECT * FROM read_csv_auto(?, {csv_opts}, all_varchar=true)",
