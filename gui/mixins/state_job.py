@@ -296,6 +296,11 @@ class StateJobMixin:
                 "param_mode": self._report_param_mode_var.get(),
             },
         }
+        # export params를 글로벌 params로 승격 (transform/report에서 fallback 사용 가능)
+        export_params = cfg["export"].get("params", {})
+        if export_params:
+            cfg["params"] = dict(export_params)
+
         # target specifics
         tgt_type = self._target_type_var.get()
         if tgt_type in ("duckdb", "sqlite3") and self._target_db_path.get().strip():
