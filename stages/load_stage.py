@@ -14,16 +14,26 @@ from engine.sql_utils import sort_sql_files, resolve_table_name, extract_sqlname
 _LOAD_EXTENSIONS = (".csv", ".csv.gz", ".dat", ".dat.gz", ".tsv", ".tsv.gz")
 
 
-def _extract_params(csv_path: Path) -> dict:
-    """meta.json에서 params 읽기, 없으면 파일명 파싱 fallback."""
+def _read_meta(csv_path: Path) -> dict | None:
+    """CSV 파일에 대응하는 meta.json 읽기. 없으면 None."""
     name = csv_path.name
     stem = _strip_data_ext(name)
     meta_file = csv_path.parent / (stem + ".meta.json")
     if meta_file.exists():
-        meta = json.loads(meta_file.read_text(encoding="utf-8"))
-        if isinstance(meta, dict) and "params" in meta:
-            return meta["params"]
-    # fallback: 파일명 파싱 (기존 export 데이터 호환)
+        try:
+            meta = json.loads(meta_file.read_text(encoding="utf-8"))
+            if isinstance(meta, dict):
+                return meta
+        except Exception:
+            pass
+    return None
+
+
+def _extract_params(csv_path: Path) -> dict:
+    """meta.json에서 params 읽기, 없으면 파일명 파싱 fallback."""
+    meta = _read_meta(csv_path)
+    if meta and "params" in meta:
+        return meta["params"]
     return extract_params_from_csv(csv_path)
 
 
@@ -46,18 +56,27 @@ def _human_size(nbytes: int) -> str:
     return f"{nbytes:.1f}TB"
 
 
+def _resolve_table_from_meta_or_sql(csv_path, sql_map):
+    """meta.json table_name → SQL hint → 파일명 fallback 순으로 테이블명 결정."""
+    meta = _read_meta(csv_path)
+    if meta and meta.get("table_name"):
+        return meta["table_name"], True
+    sqlname = extract_sqlname_from_csv(csv_path)
+    sql_file = sql_map.get(sqlname)
+    table_name = resolve_table_name(sql_file) if sql_file else strip_sql_prefix(sqlname)
+    return table_name, sql_file is not None
+
+
 def _collect_csv_info(csv_files, sql_map):
     """CSV 파일 목록에 대해 테이블 매핑·크기 정보를 수집한다 (stat만 사용, 파일 내용 미읽음)."""
     items = []
     for csv_path in csv_files:
-        sqlname = extract_sqlname_from_csv(csv_path)
-        sql_file = sql_map.get(sqlname)
-        table_name = resolve_table_name(sql_file) if sql_file else strip_sql_prefix(sqlname)
+        table_name, sql_found = _resolve_table_from_meta_or_sql(csv_path, sql_map)
         size = csv_path.stat().st_size
         items.append({
             "csv_file": csv_path.name,
             "table": table_name,
-            "sql_found": sql_file is not None,
+            "sql_found": sql_found,
             "size": size,
             "size_h": _human_size(size),
         })
@@ -115,11 +134,16 @@ def run(ctx: RunContext):
     sql_dir = resolve_path(ctx, export_cfg.get("sql_dir", ctx.get_default("export_sql_dir")))
     sql_files = sort_sql_files(sql_dir)
     sql_map = {p.stem: p for p in sql_files}
-    # prefix 제거된 CSV도 매핑되도록 stripped key 추가 (csv_strip_prefix 호환)
     for p in sql_files:
+        # prefix 제거된 CSV도 매핑되도록 stripped key 추가 (csv_strip_prefix 호환)
         stripped = strip_sql_prefix(p.stem)
         if stripped != p.stem:
             sql_map.setdefault(stripped, p)
+        # 하위폴더 SQL: CSV 파일명에 폴더명이 접두사로 포함되므로 해당 키도 추가
+        rel = p.relative_to(sql_dir)
+        if rel.parent != Path("."):
+            folder_key = str(rel.parent).replace("/", "_").replace("\\", "_") + "_" + p.stem
+            sql_map.setdefault(folder_key, p)
 
     # ── --include 필터: export와 동일하게 CSV도 필터링 ──
     include_patterns = getattr(ctx, "include_patterns", []) or []
@@ -264,9 +288,9 @@ def _group_by_table(csv_files, sql_map):
     from collections import OrderedDict
     groups = OrderedDict()
     for csv_path in csv_files:
+        table_name, sql_found = _resolve_table_from_meta_or_sql(csv_path, sql_map)
         sqlname = extract_sqlname_from_csv(csv_path)
         sql_file = sql_map.get(sqlname)
-        table_name = resolve_table_name(sql_file) if sql_file else strip_sql_prefix(sqlname)
         groups.setdefault(table_name, []).append((csv_path, sql_file))
     return groups
 
