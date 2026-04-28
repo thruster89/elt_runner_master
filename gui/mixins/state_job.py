@@ -55,6 +55,7 @@ class StateJobMixin:
             "transfer_dest_db_path": self._transfer_dest_db_path.get(),
             "transform_schema":  self._transform_schema.get(),
             "transform_sql_dir": self._transform_sql_dir.get(),
+            "transform_out_dir": self._transform_out_dir.get(),
             "report_sql_dir":    self._report_sql_dir.get(),
             "report_out_dir":    self._report_out_dir.get(),
             "report_schema":     self._report_schema.get(),
@@ -114,6 +115,7 @@ class StateJobMixin:
         self._transfer_dest_db_path.set(snap.get("transfer_dest_db_path", ""))
         self._transform_schema.set(snap.get("transform_schema", ""))
         self._transform_sql_dir.set(snap.get("transform_sql_dir", "sql/transform"))
+        self._transform_out_dir.set(snap.get("transform_out_dir", ""))
         self._report_sql_dir.set(snap.get("report_sql_dir", "sql/report"))
         self._report_out_dir.set(snap.get("report_out_dir", "data/report"))
         self._report_schema.set(snap.get("report_schema", ""))
@@ -192,12 +194,20 @@ class StateJobMixin:
                 changed.append(key)
         return changed
 
-    def _update_title_dirty(self: "BatchRunnerGUI"):
-        """타이틀 바에 변경 표시(*) 업데이트 (이전과 동일하면 스킵)"""
+    def _base_title(self: "BatchRunnerGUI") -> str:
+        """현재 Job 기준 기본 타이틀 (큐/dirty 표시 제외)."""
         base = f"ELT Runner  v{APP_VERSION}"
         fname = self.job_var.get()
         if fname:
             base = f"{fname} - {base}"
+        return base
+
+    def _update_title_dirty(self: "BatchRunnerGUI"):
+        """타이틀 바에 변경 표시(*) 업데이트 (이전과 동일하면 스킵)"""
+        # Queue 실행 중에는 큐 타이틀이 우선 (덮어쓰지 않음)
+        if getattr(self, "_job_queue_total", 0) > 0 and getattr(self, "_job_queue", []):
+            return
+        base = self._base_title()
         dirty = self._is_dirty()
         new_title = f"* {base}" if dirty else base
         if getattr(self, "_cached_title", None) != new_title:
@@ -265,6 +275,8 @@ class StateJobMixin:
             "transform": {
                 "sql_dir": self._transform_sql_dir.get(),
                 "on_error": self._ov_on_error.get(),
+                **({"out_dir": self._transform_out_dir.get().strip()}
+                   if self._transform_out_dir.get().strip() else {}),
                 **({"schema": self._transform_schema.get().strip()}
                    if self._transform_schema.get().strip() else {}),
                 **({"params": {k.get().strip(): v.get().strip()
@@ -461,6 +473,7 @@ class StateJobMixin:
         else:
             transform_sql_default = f"sql/transform/{effective_type}"
         self._transform_sql_dir.set(tfm.get("sql_dir", transform_sql_default))
+        self._transform_out_dir.set(tfm.get("out_dir", ""))
         rep = cfg.get("report", {})
         rep_csv = rep.get("export_csv", {})
         self._report_sql_dir.set(rep_csv.get("sql_dir", defaults["report_sql_dir"]))

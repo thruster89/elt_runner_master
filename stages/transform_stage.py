@@ -38,6 +38,16 @@ def run(ctx: RunContext):
     stage_params = ctx.get_stage_params("transform")
     stage_param_mode = ctx.get_stage_param_mode("transform")
 
+    # ${out_dir} 자동 주입: COPY TO 등 파일 출력의 기본 경로 (절대경로 + 디렉토리 보장)
+    # 사용자가 직접 out_dir 파라미터를 정의하면 그 값이 우선됨
+    if "out_dir" not in stage_params:
+        out_dir_cfg = transform_cfg.get("out_dir") or ctx.get_default("transform_out_dir")
+        if out_dir_cfg:
+            out_dir_path = resolve_path(ctx, out_dir_cfg)
+            out_dir_path.mkdir(parents=True, exist_ok=True)
+            stage_params["out_dir"] = str(out_dir_path).replace("\\", "/")
+            logger.info("TRANSFORM ${out_dir} auto-injected: %s", stage_params["out_dir"])
+
     sql_dir_str = transform_cfg.get("sql_dir")
     on_error    = (transform_cfg.get("on_error") or "stop").strip().lower()
 

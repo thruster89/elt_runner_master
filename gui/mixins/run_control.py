@@ -228,14 +228,22 @@ class RunControlMixin:
                 skipped = ", ".join(j.replace(".yml", "") for j in q)
                 self._log_write(f"[Queue] 사용자 중지로 큐 중단 (미실행: {skipped})", "WARN")
                 q.clear()
+                self._job_queue_total = 0
+                self.title(self._base_title())
             elif ret != 0:
                 skipped = ", ".join(j.replace(".yml", "") for j in q)
                 self._log_write(
                     f"[Queue] {job_name} 실패(code={ret})로 큐 중단 "
                     f"(미실행 {len(q)}개: {skipped})", "WARN")
                 q.clear()
+                self._job_queue_total = 0
+                self.title(self._base_title())
             else:
                 self.after(2000, self._run_next_queued_job)
+        elif getattr(self, "_job_queue_total", 0) > 0:
+            # 마지막 큐 작업 완료 → 타이틀 복원
+            self._job_queue_total = 0
+            self.title(self._base_title())
 
     def _on_stop(self: "BatchRunnerGUI"):
         if not self._process or self._process.poll() is not None:

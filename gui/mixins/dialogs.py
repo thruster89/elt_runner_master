@@ -363,7 +363,14 @@ class DialogsMixin:
         src_type = self._source_type_var.get()
         src_host = self._source_host_var.get()
         if not src_type or not src_host:
-            self._log_write("[ConnTest] Source type 또는 host를 선택하세요.", "WARN")
+            missing = []
+            if not src_type:
+                missing.append("Source Type")
+            if not src_host:
+                missing.append("Host")
+            msg = f"{' / '.join(missing)}을(를) 먼저 선택하세요.\n\nconfig/env.yml에 sources.{src_type or '<type>'}.hosts 가 정의되어 있어야 합니다."
+            messagebox.showwarning("Connection Test", msg)
+            self._log_write(f"[ConnTest] {' / '.join(missing)} 미지정 — 테스트 취소", "WARN")
             return
 
         self._log_write(f"[ConnTest] {src_type}/{src_host} 접속 테스트 중...", "SYS")
@@ -482,6 +489,7 @@ class DialogsMixin:
         self.wait_window(dlg)
         if dlg.queue:
             self._job_queue = list(dlg.queue)
+            self._job_queue_total = len(self._job_queue)
             self._log_sys(f"[Queue] {len(self._job_queue)}개 Job 큐 등록: "
                           f"{', '.join(j.replace('.yml','') for j in self._job_queue)}")
             self._run_next_queued_job()
@@ -491,13 +499,22 @@ class DialogsMixin:
         q = getattr(self, "_job_queue", [])
         if not q:
             self._log_sys("[Queue] 모든 Job 실행 완료")
+            self._job_queue_total = 0
+            self.title(self._base_title())
             return
         next_job = q.pop(0)
+        total = getattr(self, "_job_queue_total", len(q) + 1)
+        current_idx = total - len(q)  # 1-based
         remaining = len(q)
         self._log_write("", "SYS")
         self._log_write(f"{'=' * 50}", "SYS")
-        self._log_sys(f"[Queue] {next_job} 시작 (남은 {remaining}개)")
+        self._log_sys(f"[Queue {current_idx}/{total}] {next_job} 시작 (남은 {remaining}개)")
         self._log_write(f"{'=' * 50}", "SYS")
+        # 타이틀에 큐 진행상황 표시
+        try:
+            self.title(f"[Queue {current_idx}/{total}] {next_job.replace('.yml','')} — {self._base_title()}")
+        except Exception:
+            pass
         # 큐 전환 시에는 미저장 경고 스킵 (_on_job_change 내부에서 리셋됨)
         self._restoring_job = True
         self.job_var.set(next_job)
