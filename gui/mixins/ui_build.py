@@ -489,17 +489,6 @@ class UiBuildMixin:
         return frame
 
     # ── 헬퍼 ─────────────────────────────────────────────────
-    def _entry_row(self: "BatchRunnerGUI", parent_frame, label, var, **kw):
-        row = tk.Frame(parent_frame, bg=C["mantle"])
-        row.pack(fill="x", padx=12, pady=2)
-        tk.Label(row, text=label, font=FONTS["label"],
-                 bg=C["mantle"], fg=C["subtext"], width=12, anchor="w").pack(side="left")
-        e = tk.Entry(row, textvariable=var, bg=C["surface0"], fg=C["text"],
-                     insertbackground=C["text"], relief="flat",
-                     font=FONTS["mono"], **kw)
-        e.pack(side="left", fill="x", expand=True, ipady=2)
-        return e
-
     def _ov_row(self: "BatchRunnerGUI", parent_frame, label, widget_fn, note="", tooltip=""):
         r = tk.Frame(parent_frame, bg=C["mantle"])
         r.pack(fill="x", padx=12, pady=2)
@@ -561,8 +550,10 @@ class UiBuildMixin:
 
         col_l = tk.Frame(top_row, bg=C["mantle"])
         col_l.pack(side="left", fill="x", expand=True)
-        tk.Label(col_l, text="Target Type", font=FONTS["label"],
-                 bg=C["mantle"], fg=C["subtext"]).pack(anchor="w")
+        _tt_lbl = tk.Label(col_l, text="Target Type", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["subtext"])
+        _tt_lbl.pack(anchor="w")
+        Tooltip(_tt_lbl, TOOLTIPS["target_type"])
         self._target_type_combo = ttk.Combobox(
             col_l, textvariable=self._target_type_var,
             values=["duckdb", "sqlite3", "oracle"],
@@ -639,7 +630,8 @@ class UiBuildMixin:
 
         # CSV Dir (load 단독 모드용 — export 스테이지 OFF 시만 표시)
         self._csv_dir_row = self._path_row(body, "csv_dir", self._load_csv_dir,
-                                           "Select CSV load directory")
+                                           "Select CSV load directory",
+                                           tooltip=TOOLTIPS["csv_dir"])
 
         # Schema (oracle)
         self._schema_row = tk.Frame(body, bg=C["mantle"])
@@ -665,8 +657,10 @@ class UiBuildMixin:
 
         col_l = tk.Frame(src_row, bg=C["mantle"])
         col_l.pack(side="left", fill="x", expand=True)
-        tk.Label(col_l, text="Source Type", font=FONTS["label"],
-                 bg=C["mantle"], fg=C["subtext"]).pack(anchor="w")
+        _st_lbl = tk.Label(col_l, text="Source Type", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["subtext"])
+        _st_lbl.pack(anchor="w")
+        Tooltip(_st_lbl, TOOLTIPS["source_type"])
         self._source_type_combo = ttk.Combobox(
             col_l, textvariable=self._source_type_var,
             state="readonly", font=FONTS["mono"])
@@ -677,8 +671,10 @@ class UiBuildMixin:
         col_r.pack(side="left", fill="x", expand=True, padx=(8, 0))
         host_hdr = tk.Frame(col_r, bg=C["mantle"])
         host_hdr.pack(fill="x")
-        tk.Label(host_hdr, text="Host", font=FONTS["label"],
-                 bg=C["mantle"], fg=C["subtext"]).pack(side="left")
+        _sh_lbl = tk.Label(host_hdr, text="Host", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["subtext"])
+        _sh_lbl.pack(side="left")
+        Tooltip(_sh_lbl, TOOLTIPS["source_host"])
         tk.Button(host_hdr, text="Test", font=FONTS["shortcut"],
                   bg=C["surface0"], fg=C["teal"], relief="flat", padx=6, pady=0,
                   activebackground=C["surface1"],
@@ -813,8 +809,10 @@ class UiBuildMixin:
         tf_top.pack(fill="x", padx=12, pady=(8, 4))
         col_l = tk.Frame(tf_top, bg=C["mantle"])
         col_l.pack(side="left", fill="x", expand=True)
-        tk.Label(col_l, text="Target Type", font=FONTS["label"],
-                 bg=C["mantle"], fg=C["subtext"]).pack(anchor="w")
+        _ttt_lbl = tk.Label(col_l, text="Target Type", font=FONTS["label"],
+                 bg=C["mantle"], fg=C["subtext"])
+        _ttt_lbl.pack(anchor="w")
+        Tooltip(_ttt_lbl, TOOLTIPS["transform_target_type"])
         self._tfm_type_combo = ttk.Combobox(
             col_l, textvariable=self._transform_target_type,
             values=["(global)", "duckdb", "sqlite3", "oracle"],
@@ -988,8 +986,10 @@ class UiBuildMixin:
         # ─── Step 1: SQL → CSV ───────────────────────────────
         hdr1 = tk.Frame(body, bg=C["mantle"])
         hdr1.pack(fill="x", padx=12, pady=(8, 2))
-        tk.Label(hdr1, text="SQL \u2192 CSV", font=FONTS["body_bold"],
-                 bg=C["mantle"], fg=C["peach"]).pack(side="left")
+        _csv_lbl = tk.Label(hdr1, text="SQL \u2192 CSV", font=FONTS["body_bold"],
+                 bg=C["mantle"], fg=C["peach"])
+        _csv_lbl.pack(side="left")
+        Tooltip(_csv_lbl, TOOLTIPS["csv"] + "\n\nOFF \uc2dc " + TOOLTIPS["skip_sql"])
         tk.Checkbutton(hdr1, variable=self._ov_csv, text="",
                        bg=C["mantle"], fg=C["text"], selectcolor=C["surface0"],
                        activebackground=C["mantle"],
@@ -1051,8 +1051,10 @@ class UiBuildMixin:
         ttk.Separator(body, orient="horizontal").pack(fill="x", padx=12, pady=4)
         hdr2 = tk.Frame(body, bg=C["mantle"])
         hdr2.pack(fill="x", padx=12, pady=(4, 2))
-        tk.Label(hdr2, text="CSV \u2192 Excel", font=FONTS["body_bold"],
-                 bg=C["mantle"], fg=C["peach"]).pack(side="left")
+        _excel_lbl = tk.Label(hdr2, text="CSV \u2192 Excel", font=FONTS["body_bold"],
+                 bg=C["mantle"], fg=C["peach"])
+        _excel_lbl.pack(side="left")
+        Tooltip(_excel_lbl, TOOLTIPS["excel"])
         tk.Checkbutton(hdr2, variable=self._ov_excel, text="",
                        bg=C["mantle"], fg=C["text"], selectcolor=C["surface0"],
                        activebackground=C["mantle"],

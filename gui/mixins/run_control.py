@@ -162,8 +162,8 @@ class RunControlMixin:
                 if now - last_flush >= flush_interval:
                     _flush()
                     last_flush = now
-        except Exception:
-            pass
+        except Exception as e:
+            self.after(0, self._log_write, f"[Stream Error] {e}", "WARN")
         _flush()  # 잔여 버퍼 flush
         try:
             ret = self._process.wait(timeout=300)
