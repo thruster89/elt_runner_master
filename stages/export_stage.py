@@ -14,7 +14,7 @@ from adapters.sources import oracle_client as _oc
 from adapters.sources.vertica_client import get_vertica_conn
 from engine.context import RunContext
 from engine.path_utils import resolve_path
-from engine.sql_utils import sort_sql_files, render_sql, detect_used_params, _strip_sql_comments, read_sql_file
+from engine.sql_utils import sort_sql_files, render_sql, detect_used_params, _strip_sql_comments, read_sql_file, resolve_table_name
 from engine.runtime_state import stop_event
 from stages.task_tracking import (
     init_run_info, make_task_key, update_task_status,
@@ -709,6 +709,27 @@ def run(ctx: RunContext):
                     "%s EXPORT done rows=%d size=%.2fMB elapsed=%.2fs",
                     prefix, rows, size_mb, elapsed
                 )
+
+            # meta.json에 table_name 힌트 보강 (--[tablename] or sql stem)
+            table_name = resolve_table_name(sql_file)
+            out_stem = out_file.name
+            for _ext in (".csv.gz", ".csv", ".dat.gz", ".dat", ".tsv.gz", ".tsv"):
+                if out_stem.endswith(_ext):
+                    out_stem = out_stem[:-len(_ext)]
+                    break
+            meta_path = out_file.parent / (out_stem + ".meta.json")
+            if meta_path.exists():
+                try:
+                    meta_data = json.loads(meta_path.read_text(encoding="utf-8"))
+                    meta_data["table_name"] = table_name
+                    meta_path.write_text(json.dumps(meta_data, ensure_ascii=False, indent=2),
+                                         encoding="utf-8")
+                except Exception:
+                    pass
+            else:
+                meta_path.write_text(
+                    json.dumps({"table_name": table_name}, ensure_ascii=False, indent=2),
+                    encoding="utf-8")
 
             # compression 전환 시 이전 확장자 orphan 제거 (.csv ↔ .csv.gz)
             _cleanup_alt_ext(out_file, out_dir / "_backup", backup_keep, logger)
