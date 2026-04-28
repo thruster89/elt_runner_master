@@ -176,6 +176,11 @@ _CONF_PATH = Path.home() / ".elt_runner_gui.conf"
 
 # 필드별 툴팁 텍스트
 TOOLTIPS = {
+    # Source / Target
+    "source_type":   "Source DB 타입 선택\noracle / vertica",
+    "source_host":   "Source 호스트 선택\nconfig/env.yml의 sources.{type}.hosts에서 정의",
+    "target_type":   "Target DB 타입 선택\nduckdb / sqlite3 / oracle",
+    "transform_target_type": "Transform 단독 Target\n(global): 글로벌 Target 사용\n그 외: 이 단계에서만 다른 DB 사용",
     # Export
     "overwrite":    "ON: 기존 출력 파일 덮어쓰기\nOFF: 이미 존재하면 건너뜀",
     "timeout":      "Export 최대 대기 시간 (초)",

@@ -102,20 +102,22 @@ def run(ctx: RunContext):
     transfer_cfg = transform_cfg.get("transfer", {})
     dest_cfg = transfer_cfg.get("dest", {})
     dest_attached = False
-    if dest_cfg.get("type", "").strip():
-        dest_type = dest_cfg["type"].strip().lower()
-        if dest_type != conn_type:
-            conn.close()
-            raise ValueError(
-                f"Transfer는 동일 DB 타입만 지원: source={conn_type}, dest={dest_type}")
-        if dest_type not in ("duckdb", "sqlite3"):
-            conn.close()
-            raise ValueError(
-                f"Transfer는 duckdb/sqlite3만 지원: {dest_type}")
-        dest_path = resolve_path(ctx, dest_cfg.get("db_path", ""))
-        dest_path.parent.mkdir(parents=True, exist_ok=True)
-        _attach_dest(conn, conn_type, str(dest_path), logger)
-        dest_attached = True
+    try:
+        if dest_cfg.get("type", "").strip():
+            dest_type = dest_cfg["type"].strip().lower()
+            if dest_type != conn_type:
+                raise ValueError(
+                    f"Transfer는 동일 DB 타입만 지원: source={conn_type}, dest={dest_type}")
+            if dest_type not in ("duckdb", "sqlite3"):
+                raise ValueError(
+                    f"Transfer는 duckdb/sqlite3만 지원: {dest_type}")
+            dest_path = resolve_path(ctx, dest_cfg.get("db_path", ""))
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+            _attach_dest(conn, conn_type, str(dest_path), logger)
+            dest_attached = True
+    except Exception:
+        conn.close()
+        raise
 
     # schema 결정: transform.schema 우선, 없으면 target.schema fallback
     schema = (transform_cfg.get("schema") or "").strip() \
