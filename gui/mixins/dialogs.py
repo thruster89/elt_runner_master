@@ -27,14 +27,18 @@ class DialogsMixin:
         dlg.title(title)
         dlg.resizable(False, False)
         dlg.configure(bg=C["base"])
-        dlg.grab_set()
         dlg.transient(self)
 
         result = [False]
 
         body = tk.Frame(dlg, bg=C["base"])
         body.pack(padx=4, pady=(12, 6))
-        body_builder(body)
+        try:
+            body_builder(body)
+        except Exception:
+            dlg.destroy()
+            return False
+        dlg.grab_set()
 
         tk.Frame(dlg, bg=C["surface1"], height=1).pack(fill="x", padx=12, pady=(4, 8))
 

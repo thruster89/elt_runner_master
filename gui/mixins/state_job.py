@@ -113,7 +113,7 @@ class StateJobMixin:
         self._transfer_dest_type.set(snap.get("transfer_dest_type", "duckdb"))
         self._transfer_dest_db_path.set(snap.get("transfer_dest_db_path", ""))
         self._transform_schema.set(snap.get("transform_schema", ""))
-        self._transform_sql_dir.set(snap.get("transform_sql_dir", "sql/transform/duckdb"))
+        self._transform_sql_dir.set(snap.get("transform_sql_dir", "sql/transform"))
         self._report_sql_dir.set(snap.get("report_sql_dir", "sql/report"))
         self._report_out_dir.set(snap.get("report_out_dir", "data/report"))
         self._report_schema.set(snap.get("report_schema", ""))
@@ -375,12 +375,12 @@ class StateJobMixin:
             if ans:  # Yes
                 self._on_save_yml()
         # 예약/타이머 정리 (destroy 후 TclError 방지)
-        if getattr(self, "_schedule_id", None):
-            self.after_cancel(self._schedule_id)
-            self._schedule_id = None
-        if getattr(self, "_clock_timer_id", None):
-            self.after_cancel(self._clock_timer_id)
-            self._clock_timer_id = None
+        for attr in ("_schedule_id", "_clock_timer_id",
+                      "_anim_id", "_elapsed_job_id", "_preview_debounce_id"):
+            tid = getattr(self, attr, None)
+            if tid:
+                self.after_cancel(tid)
+                setattr(self, attr, None)
         self._stop_idle_timer()
         self._save_geometry()
         self.destroy()
@@ -887,6 +887,7 @@ class StateJobMixin:
         # 자동 sql_dir 갱신: 비어있거나, 이전 자동 설정값(sql/transform/{db_type})일 때만
         # 사용자가 직접 커스텀 경로를 입력한 경우에는 덮어쓰지 않음
         auto_patterns = {f"sql/transform/{t}" for t in ("duckdb", "sqlite3", "oracle", "vertica", "mysql", "postgresql")}
+        auto_patterns.add("sql/transform")
         is_auto_value = not cur or cur in auto_patterns
         if defaults["job_dir_exists"]:
             job_convention_patterns = {defaults["transform_sql_dir"]}
@@ -1134,7 +1135,7 @@ class StateJobMixin:
         "export":    {"dir_var": "_export_sql_dir",    "default": "sql/export",
                       "selected": "_selected_sqls",
                       "label": "_sql_count_label",     "tip": "_sql_count_tip"},
-        "transform": {"dir_var": "_transform_sql_dir", "default": "sql/transform/duckdb",
+        "transform": {"dir_var": "_transform_sql_dir", "default": "sql/transform",
                       "selected": "_selected_transform_sqls",
                       "label": "_transform_sql_count_label", "tip": "_transform_sql_count_tip"},
         "report":    {"dir_var": "_report_sql_dir",    "default": "sql/report",

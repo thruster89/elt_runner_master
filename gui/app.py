@@ -79,7 +79,7 @@ class BatchRunnerGUI(
         self._transfer_dest_db_path = tk.StringVar(value="")
         # Transform / Report paths
         self._transform_schema  = tk.StringVar(value="")
-        self._transform_sql_dir = tk.StringVar(value="sql/transform/duckdb")
+        self._transform_sql_dir = tk.StringVar(value="sql/transform")
         self._report_sql_dir    = tk.StringVar(value="sql/report")
         self._report_out_dir    = tk.StringVar(value="data/report")
         self._report_schema     = tk.StringVar(value="")
