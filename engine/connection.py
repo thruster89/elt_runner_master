@@ -116,9 +116,11 @@ def _apply_duckdb_settings(conn, target_cfg: dict, db_path=None):
             default_tmp.mkdir(parents=True, exist_ok=True)
             temp_dir = str(default_tmp.resolve())
         except OSError:
-            # 기본 경로 생성 실패 시 시스템 임시 폴더 사용
+            # 기본 경로 생성 실패 시 시스템 임시 폴더의 고정 위치 재사용 (누적 방지)
             import tempfile
-            temp_dir = tempfile.mkdtemp(prefix="duckdb_")
+            stable_tmp = Path(tempfile.gettempdir()) / "duckdb_runner_tmp"
+            stable_tmp.mkdir(parents=True, exist_ok=True)
+            temp_dir = str(stable_tmp)
             _log.warning("기본 temp 경로 생성 실패, 시스템 임시 폴더 사용: %s", temp_dir)
     if temp_dir:
         from pathlib import Path

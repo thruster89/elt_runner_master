@@ -401,7 +401,6 @@ def _run_excel_export(ctx, report_cfg, cfg, csv_files: list):
 
     try:
         import pandas as pd
-        from pandas.api.types import is_integer_dtype, is_float_dtype
         from openpyxl.styles import Font, PatternFill
         from openpyxl.utils import get_column_letter
 
@@ -479,7 +478,6 @@ def _run_excel_export(ctx, report_cfg, cfg, csv_files: list):
 
             # SUMMARY 시트
             if summary_rows:
-                import pandas as pd
                 summary_df = pd.DataFrame(summary_rows)
                 summary_df.insert(0, "no", range(1, len(summary_df) + 1))
                 summary_df.to_excel(writer, sheet_name="SUMMARY", index=False)
