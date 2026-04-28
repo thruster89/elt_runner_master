@@ -960,6 +960,11 @@ class UiBuildMixin:
         self._path_entry_widgets.append((self._transform_sql_dir, _t_sql))
         self._transform_sql_dir_row = tfm_sql_row
 
+        # out_dir (COPY TO 등 SQL 내 ${out_dir} 자동 주입 대상)
+        self._path_row(body, "out_dir", self._transform_out_dir,
+                       "Select transform output dir",
+                       tooltip=TOOLTIPS["transform_out_dir"])
+
         def _w_tfm_schema(r):
             tk.Entry(r, textvariable=self._transform_schema,
                      bg=C["surface0"], fg=C["text"], insertbackground=C["text"],

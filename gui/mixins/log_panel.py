@@ -20,22 +20,34 @@ LOG_TRIM_CHUNK = 2_000  # 초과 시 한 번에 제거할 줄 수
 
 class LogPanelMixin:
 
+    def _is_log_at_bottom(self: "BatchRunnerGUI") -> bool:
+        """사용자가 로그 끝부분에 위치해 있는지 확인 (자동 스크롤 판단용)."""
+        try:
+            _, bottom = self._log.yview()
+            return bottom >= 0.999  # 거의 끝이면 True
+        except Exception:
+            return True
+
     def _log_write(self: "BatchRunnerGUI", text: str, tag="INFO"):
         ts = datetime.now().strftime("%H:%M:%S")
         self._log_raw_lines.append((text, tag, ts))
         if self._should_show_line(tag):
+            at_bottom = self._is_log_at_bottom()
             self._insert_log_line(text, tag, ts)
-            self._log.see("end")
+            if at_bottom:
+                self._log.see("end")
         self._trim_log_if_needed()
 
     def _log_write_batch(self: "BatchRunnerGUI", lines: list[tuple[str, str]]):
         """여러 줄을 한 번에 기록 (고속 출력 시 GUI 멈춤 방지)"""
+        at_bottom = self._is_log_at_bottom()
         for text, tag in lines:
             ts = datetime.now().strftime("%H:%M:%S")
             self._log_raw_lines.append((text, tag, ts))
             if self._should_show_line(tag):
                 self._insert_log_line(text, tag, ts)
-        self._log.see("end")
+        if at_bottom:
+            self._log.see("end")
         self._trim_log_if_needed()
 
     def _trim_log_if_needed(self: "BatchRunnerGUI"):
@@ -46,12 +58,13 @@ class LogPanelMixin:
         del self._log_raw_lines[:LOG_TRIM_CHUNK]
         # Text 위젯 갱신
         self._refilter_log()
-        # 첫 번째 트림 시에만 사용자에게 알림
-        if not getattr(self, "_log_trim_warned", False):
+        # 트림 횟수 누적 카운터 — 5회마다 알림
+        self._log_trim_count = getattr(self, "_log_trim_count", 0) + 1
+        if self._log_trim_count == 1 or self._log_trim_count % 5 == 0:
             self._log_raw_lines.append(
-                (f"[Log] 로그 {LOG_MAX_LINES:,}줄 초과 — 오래된 {LOG_TRIM_CHUNK:,}줄 자동 삭제됨",
+                (f"[Log] 로그 {LOG_MAX_LINES:,}줄 초과 — 오래된 {LOG_TRIM_CHUNK:,}줄 삭제 "
+                 f"(누적 {self._log_trim_count}회)",
                  "WARN", datetime.now().strftime("%H:%M:%S")))
-            self._log_trim_warned = True
 
     def _log_sys(self: "BatchRunnerGUI", msg):
         self._log_write(msg, "SYS")
@@ -59,7 +72,7 @@ class LogPanelMixin:
     def _clear_log(self: "BatchRunnerGUI"):
         self._log.delete("1.0", "end")
         self._log_raw_lines.clear()
-        self._log_trim_warned = False
+        self._log_trim_count = 0
 
     def _set_log_filter(self: "BatchRunnerGUI", level):
         self._log_filter.set(level)
@@ -87,11 +100,13 @@ class LogPanelMixin:
         return True
 
     def _refilter_log(self: "BatchRunnerGUI"):
+        at_bottom = self._is_log_at_bottom()
         self._log.delete("1.0", "end")
         for text, tag, ts in self._log_raw_lines:
             if self._should_show_line(tag):
                 self._insert_log_line(text, tag, ts)
-        self._log.see("end")
+        if at_bottom:
+            self._log.see("end")
 
     # 모든 로그 tag 목록 (elide 토글 대상)
     _LOG_ALL_TAGS = ("INFO", "DEBUG", "WARN", "ERROR", "SYS",

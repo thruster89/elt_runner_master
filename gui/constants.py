@@ -181,6 +181,7 @@ TOOLTIPS = {
     "source_host":   "Source 호스트 선택\nconfig/env.yml의 sources.{type}.hosts에서 정의",
     "target_type":   "Target DB 타입 선택\nduckdb / sqlite3 / oracle",
     "transform_target_type": "Transform 단독 Target\n(global): 글로벌 Target 사용\n그 외: 이 단계에서만 다른 DB 사용",
+    "transform_out_dir": "Transform 출력 디렉토리\nSQL 내 ${out_dir} 파라미터로 자동 주입\n예: COPY (...) TO '${out_dir}/foo.csv'\n비워두면 기본값(jobs/{name}/data) 사용",
     # Export
     "overwrite":    "ON: 기존 출력 파일 덮어쓰기\nOFF: 이미 존재하면 건너뜀",
     "timeout":      "Export 최대 대기 시간 (초)",
@@ -208,7 +209,7 @@ TOOLTIPS = {
     "csv":          "CSV 리포트 생성",
     "max_files":    "Excel 파일당 최대 시트 수 (1~100)\n초과 시 새 파일 생성",
     "skip_sql":     "SQL 실행 건너뜀\nunion_dir의 CSV를 바로 Excel로 변환",
-    "union_dir":    "CSV 원본 폴더 (입력)\nskip_sql=ON 시 이 폴더의 CSV를\n→ report_out 경로에 Excel로 변환",
+    "union_dir":    "CSV 원본 폴더 (입력)\nskip_sql=ON 시 이 폴더의 CSV를\n→ report_out 경로에 Excel로 변환\n비워두면 export.out_dir 자동 사용",
     "name_style":   "CSV 파일명 파라미터 형식\nfull: key_value (clsYymm_202003)\ncompact: value만 (202003)",
     "strip_prefix": "SQL 파일명에서 숫자 접두어 제거\nON: 01_contract → contract\n      3. qpv_005 → qpv_005\n      01-abc → abc\nOFF: 원본 파일명 그대로 유지\n지원 구분자: _ . - 공백",
 }

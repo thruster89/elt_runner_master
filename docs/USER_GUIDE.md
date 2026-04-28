@@ -256,9 +256,30 @@ SELECT * FROM raw.orders WHERE date_col >= :start_date
 | 항목 | 설명 |
 |------|------|
 | **SQL Dir** | SQL 파일 경로 (`jobs/{name}/sql/transform`) |
+| **Out Dir** | SQL 내 `${out_dir}` 자동 주입 — COPY TO 등 파일 출력 기본 경로 (기본: `jobs/{name}/data/`) |
 | **Schema** | 실행 시 세션 스키마 (DuckDB: `SET schema` / Oracle: `ALTER SESSION`) |
 | **On Error** | `stop` (즉시 중단) / `continue` (나머지 계속) |
 | **SQL 선택** | Select 버튼 → 개별 SQL 선택 |
+
+#### `${out_dir}` 자동 주입 (DuckDB COPY TO 대응)
+
+Transform 단계 실행 시 `out_dir` 파라미터가 자동으로 추가됩니다. SQL 안에서 `${out_dir}`로 참조하면 절대경로로 해석됩니다.
+
+```sql
+-- ✅ 권장: ${out_dir} 사용
+COPY (SELECT * FROM summary) TO '${out_dir}/summary.csv' (FORMAT CSV, HEADER);
+
+-- ⚠️ 비권장: 상대경로 — DuckDB는 프로세스 cwd(work_dir) 기준으로 해석하여
+--    예상치 않은 위치(work_dir 직속)에 파일이 생성됨
+COPY (SELECT * FROM summary) TO 'summary.csv' (FORMAT CSV);
+```
+
+**주입 규칙:**
+- 사용자가 `out_dir` 파라미터를 직접 정의하면 사용자 값이 우선
+- yml의 `transform.out_dir`이 지정되면 그 경로 사용
+- 미지정 시 `jobs/{name}/data/` 사용 (job-centric) 또는 `data/` (글로벌)
+- 디렉토리는 자동 생성됨 (mkdir -p)
+- 절대경로로 변환되어 주입되므로 cwd와 무관하게 일관된 결과
 
 #### Transfer (DB→DB 전송)
 
