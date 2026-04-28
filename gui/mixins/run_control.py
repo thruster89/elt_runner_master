@@ -121,48 +121,55 @@ class RunControlMixin:
                 buf.clear()
                 self.after(0, self._log_write_batch, batch)
 
-        for line in self._process.stdout:
-            line = line.rstrip("\n")
-            tag = self._guess_tag(line)
-            buf.append((line, tag))
+        try:
+            for line in self._process.stdout:
+                line = line.rstrip("\n")
+                tag = self._guess_tag(line)
+                buf.append((line, tag))
 
-            # Pipeline 레벨 [N/M] STAGE_NAME → 프로그레스바 %
-            pm = pipe_pat.search(line)
-            if pm:
-                cur, total = int(pm.group(1)), int(pm.group(2))
-                stage_name = pm.group(3)
-                pct = int(cur / total * 100)
-                label = f"{stage_name} ({cur}/{total})"
-                self.after(0, self._update_progress, pct, label)
-                self.after(0, self._update_stage_detail, stage_name, 0, 0)
+                # Pipeline 레벨 [N/M] STAGE_NAME → 프로그레스바 %
+                pm = pipe_pat.search(line)
+                if pm:
+                    cur, total = int(pm.group(1)), int(pm.group(2))
+                    stage_name = pm.group(3)
+                    pct = int(cur / total * 100) if total else 0
+                    label = f"{stage_name} ({cur}/{total})"
+                    self.after(0, self._update_progress, pct, label)
+                    self.after(0, self._update_stage_detail, stage_name, 0, 0)
 
-            # Stage 내부 세부 카운트 → 세그먼트 업데이트
-            dm = detail_pat.search(line)
-            if dm:
-                groups = dm.groups()
-                # 4쌍 중 매치된 것 찾기
-                names = ["EXPORT", "LOAD", "TRANSFORM", "REPORT"]
-                for i, name in enumerate(names):
-                    c, t = groups[i*2], groups[i*2+1]
-                    if c is not None:
-                        self.after(0, self._update_stage_detail,
-                                   name, int(c), int(t))
-            # Summary 줄 파싱 → 세그먼트 결과 업데이트
-            sm = summary_pat.search(line)
-            if sm:
-                stage_name = sm.group(1).upper()
-                status = sm.group(2).upper()
-                detail = sm.group(3)
-                self.after(0, self._update_stage_result,
-                           stage_name, status, detail)
+                # Stage 내부 세부 카운트 → 세그먼트 업데이트
+                dm = detail_pat.search(line)
+                if dm:
+                    groups = dm.groups()
+                    # 4쌍 중 매치된 것 찾기
+                    names = ["EXPORT", "LOAD", "TRANSFORM", "REPORT"]
+                    for i, name in enumerate(names):
+                        c, t = groups[i*2], groups[i*2+1]
+                        if c is not None:
+                            self.after(0, self._update_stage_detail,
+                                       name, int(c), int(t))
+                # Summary 줄 파싱 → 세그먼트 결과 업데이트
+                sm = summary_pat.search(line)
+                if sm:
+                    stage_name = sm.group(1).upper()
+                    status = sm.group(2).upper()
+                    detail = sm.group(3)
+                    self.after(0, self._update_stage_result,
+                               stage_name, status, detail)
 
-            # 일정 간격마다 flush (고속 출력 시 GUI 멈춤 방지)
-            now = time.time()
-            if now - last_flush >= flush_interval:
-                _flush()
-                last_flush = now
+                # 일정 간격마다 flush (고속 출력 시 GUI 멈춤 방지)
+                now = time.time()
+                if now - last_flush >= flush_interval:
+                    _flush()
+                    last_flush = now
+        except Exception:
+            pass
         _flush()  # 잔여 버퍼 flush
-        ret = self._process.wait()
+        try:
+            ret = self._process.wait(timeout=300)
+        except Exception:
+            self._process.kill()
+            ret = -9
         self.after(0, self._on_done, ret)
 
     def _on_done(self: "BatchRunnerGUI", ret: int):
@@ -238,16 +245,21 @@ class RunControlMixin:
             return
         self._log_write("Stopping process...", "WARN")
         self._manually_stopped = True
-        if sys.platform == "win32":
-            self._process.send_signal(signal.CTRL_BREAK_EVENT)
-        else:
-            self._process.terminate()
+        try:
+            if sys.platform == "win32":
+                self._process.send_signal(signal.CTRL_BREAK_EVENT)
+            else:
+                self._process.terminate()
+        except OSError:
+            pass
         # terminate 후 3초 대기, 아직 살아 있으면 kill
         def _ensure_killed():
-            if self._process and self._process.poll() is None:
-                self._process.kill()
-                self._log_write("Process killed (force)", "WARN")
-        threading.Thread(target=lambda: (self._process.wait(timeout=3),), daemon=True).start()
+            try:
+                if self._process and self._process.poll() is None:
+                    self._process.kill()
+                    self._log_write("Process killed (force)", "WARN")
+            except OSError:
+                pass
         self.after(3500, _ensure_killed)
         if getattr(self, "_anim_id", None):
             self.after_cancel(self._anim_id)

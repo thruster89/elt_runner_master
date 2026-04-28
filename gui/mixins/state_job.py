@@ -375,12 +375,12 @@ class StateJobMixin:
             if ans:  # Yes
                 self._on_save_yml()
         # 예약/타이머 정리 (destroy 후 TclError 방지)
-        if getattr(self, "_schedule_id", None):
-            self.after_cancel(self._schedule_id)
-            self._schedule_id = None
-        if getattr(self, "_clock_timer_id", None):
-            self.after_cancel(self._clock_timer_id)
-            self._clock_timer_id = None
+        for attr in ("_schedule_id", "_clock_timer_id",
+                      "_anim_id", "_elapsed_job_id", "_preview_debounce_id"):
+            tid = getattr(self, attr, None)
+            if tid:
+                self.after_cancel(tid)
+                setattr(self, attr, None)
         self._stop_idle_timer()
         self._save_geometry()
         self.destroy()
