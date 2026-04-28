@@ -261,7 +261,15 @@ def run_pipeline(ctx: RunContext):
         ctx.logger.info("-" * 60)
 
         start = time.time()
-        stage_func(ctx)
+        try:
+            stage_func(ctx)
+        except Exception:
+            elapsed = time.time() - start
+            ctx.logger.error("[%d/%d] %s FAILED (%.2fs)", idx, len(stages),
+                             stage_name.upper(), elapsed, exc_info=True)
+            if stage_name not in ctx.stage_results:
+                ctx.report_stage_result(stage_name, success=0, failed=1, skipped=0)
+            break
         elapsed = time.time() - start
 
         ctx.logger.info("-" * 60)

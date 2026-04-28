@@ -38,7 +38,13 @@ def build_delete_condition(
             f"전체 삭제가 필요하면 load.mode=truncate를 사용하세요."
         )
 
-    norm_map = {col.replace("_", "").lower(): col for col in table_cols}
+    norm_map: dict[str, str] = {}
+    for col in table_cols:
+        nk = col.replace("_", "").lower()
+        if nk in norm_map:
+            logger.warning("DELETE 정규화 매칭 충돌: '%s'와 '%s'가 동일 키('%s')로 매핑됩니다. "
+                           "정확한 컬럼명을 params에 사용하세요.", norm_map[nk], col, nk)
+        norm_map[nk] = col
 
     matched: list[tuple[str, str]] = []
     skipped: list[str] = []

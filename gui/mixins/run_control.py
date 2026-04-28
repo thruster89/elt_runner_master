@@ -116,13 +116,18 @@ class RunControlMixin:
         flush_interval = 0.05  # 50ms 배치
 
         def _flush():
-            if buf:
+            if buf and not getattr(self, "_closing", False):
                 batch = buf.copy()
                 buf.clear()
-                self.after(0, self._log_write_batch, batch)
+                try:
+                    self.after(0, self._log_write_batch, batch)
+                except RuntimeError:
+                    pass
 
         try:
             for line in self._process.stdout:
+                if getattr(self, "_closing", False):
+                    break
                 line = line.rstrip("\n")
                 tag = self._guess_tag(line)
                 buf.append((line, tag))
@@ -163,14 +168,25 @@ class RunControlMixin:
                     _flush()
                     last_flush = now
         except Exception as e:
-            self.after(0, self._log_write, f"[Stream Error] {e}", "WARN")
-        _flush()  # 잔여 버퍼 flush
+            if not getattr(self, "_closing", False):
+                try:
+                    self.after(0, self._log_write, f"[Stream Error] {e}", "WARN")
+                except RuntimeError:
+                    pass
+        _flush()
         try:
-            ret = self._process.wait(timeout=300)
+            ret = self._process.wait(timeout=30)
         except Exception:
-            self._process.kill()
+            try:
+                self._process.kill()
+            except OSError:
+                pass
             ret = -9
-        self.after(0, self._on_done, ret)
+        if not getattr(self, "_closing", False):
+            try:
+                self.after(0, self._on_done, ret)
+            except RuntimeError:
+                pass
 
     def _on_done(self: "BatchRunnerGUI", ret: int):
         # 애니메이션 취소
