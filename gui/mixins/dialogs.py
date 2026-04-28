@@ -645,7 +645,11 @@ class DialogsMixin:
             messagebox.showerror("Error", str(e))
 
     def _open_in_explorer(self: "BatchRunnerGUI", path_str):
-        """OS 파일 탐색기에서 경로를 연다 (파일이면 상위 폴더를 열고 파일 선택)"""
+        """OS 파일 탐색기에서 경로를 연다 (파일이면 상위 폴더를 열고 파일 선택).
+
+        GUI에 표시된 경로 그대로 연다. 경로가 존재하지 않으면 부모 폴더로
+        폴백하지 않고 안내 후 종료한다.
+        """
         import subprocess as sp
         if not (path_str or "").strip():
             messagebox.showwarning("Path Not Found", "경로가 비어 있습니다.")
@@ -653,27 +657,22 @@ class DialogsMixin:
         p = Path(path_str)
         if not p.is_absolute():
             p = Path(self._work_dir.get()) / p
-        # 경로가 없으면 존재하는 가장 가까운 부모 폴더로 폴백
-        target = p
-        while not target.exists() and target != target.parent:
-            target = target.parent
-        if not target.exists():
-            messagebox.showwarning("Path Not Found", f"Cannot find path:\n{path_str}")
+        if not p.exists():
+            messagebox.showwarning("Path Not Found", f"경로를 찾을 수 없습니다:\n{p}")
             return
-        # p: 원래 경로 (파일 존재 시 선택 표시용), target: 실제 존재하는 경로
         try:
             if sys.platform == "win32":
                 if p.is_file():
                     sp.Popen(["explorer", "/select,", str(p)])
                 else:
-                    os.startfile(str(target))
+                    os.startfile(str(p))
             elif sys.platform == "darwin":
                 if p.is_file():
                     sp.Popen(["open", "-R", str(p)])
                 else:
-                    sp.Popen(["open", str(target)])
+                    sp.Popen(["open", str(p)])
             else:
-                open_path = str(target.parent) if p.is_file() else str(target)
+                open_path = str(p.parent) if p.is_file() else str(p)
                 sp.Popen(["xdg-open", open_path])
         except Exception as e:
             messagebox.showerror("Error", str(e))
