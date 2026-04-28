@@ -137,6 +137,10 @@ def expand_range_value(value: str):
 
     start, end = range_part.split(":", 1)
 
+    if not re.match(r'^\d{6}$', start) or not re.match(r'^\d{6}$', end):
+        raise ValueError(
+            f"range 형식 오류: '{value}' — YYYYMM:YYYYMM 형식 필요 (예: 202401:202412)")
+
     def to_int_ym(s):
         return int(s[:4]) * 12 + int(s[4:6]) - 1
 
@@ -791,7 +795,10 @@ def run(ctx: RunContext):
                     if stop_event.is_set():
                         logger.warning("EXPORT cancelled")
                         break
-                    f.result()
+                    try:
+                        f.result()
+                    except Exception:
+                        logger.error("EXPORT worker error", exc_info=True)
     finally:
         _close_all_connections(logger)
 

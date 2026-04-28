@@ -52,6 +52,11 @@ def _ensure_schema(cur, conn, schema: str, password: str):
     pwd = password or schema
     s = schema.upper()
 
+    if '"' in s:
+        raise ValueError(f"스키마명에 큰따옴표 사용 불가: {s}")
+    if '"' in pwd:
+        raise ValueError("비밀번호에 큰따옴표 사용 불가")
+
     logger.info("Schema not found, creating: %s", s)
 
     cur.execute(f'CREATE USER "{s}" IDENTIFIED BY "{pwd}"')

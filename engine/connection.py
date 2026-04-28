@@ -104,6 +104,9 @@ def _apply_duckdb_settings(conn, target_cfg: dict, db_path=None):
     if not threads:
         threads = str(_default_threads())
 
+    if not re.match(r'^[\d.]+ *(B|KB|MB|GB|TB)$', memory_limit, re.IGNORECASE):
+        raise ValueError(f"Invalid memory_limit format: {memory_limit!r} (expected e.g. '4GB')")
+
     conn.execute(f"SET memory_limit = '{memory_limit}'")
     conn.execute(f"SET threads = {int(threads)}")
 
@@ -125,7 +128,8 @@ def _apply_duckdb_settings(conn, target_cfg: dict, db_path=None):
     if temp_dir:
         from pathlib import Path
         Path(temp_dir).mkdir(parents=True, exist_ok=True)
-        conn.execute(f"SET temp_directory = '{temp_dir}'")
+        safe_dir = temp_dir.replace("'", "")
+        conn.execute(f"SET temp_directory = '{safe_dir}'")
 
     _log.info("DuckDB SET memory_limit = '%s', threads = %s, temp_directory = '%s'",
               memory_limit, threads, temp_dir or "(default)")
