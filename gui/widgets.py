@@ -515,6 +515,15 @@ class Tooltip:
             self._tip_win.destroy()
             self._tip_win = None
 
+    def destroy(self):
+        self._hide()
+        try:
+            self._widget.unbind("<Enter>")
+            self._widget.unbind("<Leave>")
+            self._widget.unbind("<ButtonPress>")
+        except Exception:
+            pass
+
 
 class RunHistoryDialog(tk.Toplevel):
     """과거 실행 이력(run_info.json) 조회 다이얼로그"""

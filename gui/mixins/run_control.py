@@ -200,10 +200,12 @@ class RunControlMixin:
         elif ret < 0:
             self._log_write(f"Stopped  ({elapsed_str})", "WARN")
             self._set_status("● stopped", C["yellow"])
+            self._progress_bar["value"] = 0
             self._progress_label.config(text=f"Stopped  {elapsed_str}")
         else:
             self._log_write(f"Error (code={ret})  ({elapsed_str})", "ERROR")
             self._set_status(f"● error (code={ret})", C["red"])
+            self._progress_bar["value"] = 0
             self._progress_label.config(text=f"Error  {elapsed_str}")
         # 완료 알림
         self.bell()
