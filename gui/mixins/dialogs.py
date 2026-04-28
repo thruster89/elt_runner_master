@@ -299,7 +299,10 @@ class DialogsMixin:
                 if k:
                     provided.add(k)
 
-        return required - provided
+        # 런타임에 자동 주입되는 파라미터는 누락 경고에서 제외
+        # (transform 단계의 out_dir은 stages/transform_stage.py에서 자동 주입됨)
+        auto_provided = {"out_dir"}
+        return required - provided - auto_provided
 
     def _count_retry_targets(self: "BatchRunnerGUI") -> str:
         """이전 실행의 failed/pending task 수를 stage별로 집계하여 문자열 반환."""
