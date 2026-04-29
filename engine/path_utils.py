@@ -26,7 +26,7 @@ def get_job_defaults(work_dir: Path, job_name: str, target_type: str = "duckdb")
     """Job convention 기반 기본 경로 반환.
 
     jobs/{job_name}/ 폴더가 있으면 그 하위 경로를 기본값으로 사용 (job-centric).
-    없으면 기존 글로벌 경로를 기본값으로 반환.
+    없으면 job_name을 반영한 글로벌 경로를 기본값으로 반환.
 
     Returns:
         {
@@ -59,16 +59,16 @@ def get_job_defaults(work_dir: Path, job_name: str, target_type: str = "duckdb")
             "tracking_dir_report":     f"{base}/data/report_tracking",
         }
 
-    # 기존 글로벌 기본값 (하위 호환)
+    # 기존 글로벌 기본값 — job_name 반영으로 job 간 데이터 격리
     return {
         "job_dir_exists": False,
         "export_sql_dir":          "sql/export",
-        "export_out_dir":          "data/export",
+        "export_out_dir":          f"data/export/{job_name}",
         "transform_sql_dir":       f"sql/transform/{target_type}",
-        "transform_out_dir":       "data",
+        "transform_out_dir":       f"data/{job_name}",
         "report_sql_dir":          "sql/report",
-        "report_out_dir":          "data/report",
-        "target_db_path":          f"data/local/result.{('duckdb' if target_type == 'duckdb' else 'sqlite')}",
-        "tracking_dir_transform":  "data/transform",
-        "tracking_dir_report":     "data/report_tracking",
+        "report_out_dir":          f"data/report/{job_name}",
+        "target_db_path":          f"data/local/{job_name}.{('duckdb' if target_type == 'duckdb' else 'sqlite')}",
+        "tracking_dir_transform":  f"data/transform/{job_name}",
+        "tracking_dir_report":     f"data/report_tracking/{job_name}",
     }
