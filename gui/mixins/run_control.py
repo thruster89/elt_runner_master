@@ -75,6 +75,7 @@ class RunControlMixin:
         # Windows에서 한글 깨짐 방지: PYTHONIOENCODING, PYTHONUTF8 강제 설정
         env["PYTHONIOENCODING"] = "utf-8"
         env["PYTHONUTF8"] = "1"
+        env["PYTHONUNBUFFERED"] = "1"
 
         try:
             self._process = subprocess.Popen(
@@ -125,7 +126,10 @@ class RunControlMixin:
                     pass
 
         try:
-            for line in self._process.stdout:
+            while True:
+                line = self._process.stdout.readline()
+                if not line:
+                    break
                 if getattr(self, "_closing", False):
                     break
                 line = line.rstrip("\n")
