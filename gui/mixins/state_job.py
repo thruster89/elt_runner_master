@@ -886,9 +886,9 @@ class StateJobMixin:
         job_loaded = False
         if hasattr(self, "_job_combo"):
             self._job_combo["values"] = job_names
-            # reload 시 미저장 경고 팝업 방지 — _restoring_job으로 감싸서 호출
-            prev_restoring = self._restoring_job
-            self._restoring_job = True
+            # reload 시 미저장 경고 팝업 방지 — snapshot을 None으로 초기화
+            saved_snapshot = self._job_loaded_snapshot
+            self._job_loaded_snapshot = None
             if self.job_var.get() in job_names:
                 self._on_job_change()
                 job_loaded = True
@@ -896,7 +896,8 @@ class StateJobMixin:
                 self.job_var.set("_default.yml")
                 self._on_job_change()
                 job_loaded = True
-            self._restoring_job = prev_restoring
+            if not job_loaded:
+                self._job_loaded_snapshot = saved_snapshot
 
         # source type combo 갱신
         if hasattr(self, "_source_type_combo"):
