@@ -431,15 +431,6 @@ class StateJobMixin:
         work_dir = Path(self._work_dir.get())
         defaults = get_job_defaults(work_dir, job_name, tgt_type)
 
-        def _upgrade_legacy(val: str, default_key: str) -> str:
-            """구 공유 기본값이면 job별 기본값으로 교체."""
-            _OLD = {"data/export", "data/report", "data",
-                    "data/local/result.duckdb", "data/local/result.sqlite",
-                    "data/transform", "data/report_tracking"}
-            if val in _OLD and job_name and job_name not in ("default", "_default"):
-                return defaults.get(default_key, val)
-            return val
-
         # Source
         src = cfg.get("source", {})
         src_type = src.get("type", "oracle")
@@ -449,8 +440,7 @@ class StateJobMixin:
 
         # Target
         self._target_type_var.set(tgt_type)
-        self._target_db_path.set(
-            _upgrade_legacy(tgt.get("db_path", defaults["target_db_path"]), "target_db_path"))
+        self._target_db_path.set(tgt.get("db_path", defaults["target_db_path"]))
         self._target_schema.set(tgt.get("schema", ""))
         self._update_target_visibility()
         self._update_load_mode_options()
@@ -458,8 +448,7 @@ class StateJobMixin:
         # Export paths
         exp = cfg.get("export", {})
         self._export_sql_dir.set(exp.get("sql_dir", defaults["export_sql_dir"]))
-        self._export_out_dir.set(
-            _upgrade_legacy(exp.get("out_dir", defaults["export_out_dir"]), "export_out_dir"))
+        self._export_out_dir.set(exp.get("out_dir", defaults["export_out_dir"]))
 
         # Load
         load_cfg = cfg.get("load", {})
@@ -485,15 +474,11 @@ class StateJobMixin:
         else:
             transform_sql_default = f"sql/transform/{effective_type}"
         self._transform_sql_dir.set(tfm.get("sql_dir", transform_sql_default))
-        self._transform_out_dir.set(
-            _upgrade_legacy(tfm.get("out_dir", ""), "transform_out_dir") if tfm.get("out_dir") else "")
+        self._transform_out_dir.set(tfm.get("out_dir", ""))
         rep = cfg.get("report", {})
         rep_csv = rep.get("export_csv", {})
         self._report_sql_dir.set(rep_csv.get("sql_dir", defaults["report_sql_dir"]))
-        self._report_out_dir.set(
-            _upgrade_legacy(
-                rep_csv.get("out_dir", rep.get("excel", {}).get("out_dir", defaults["report_out_dir"])),
-                "report_out_dir"))
+        self._report_out_dir.set(rep_csv.get("out_dir", rep.get("excel", {}).get("out_dir", defaults["report_out_dir"])))
         self._report_schema.set(rep.get("schema", ""))
 
         # Stages

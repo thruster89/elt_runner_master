@@ -59,16 +59,16 @@ def get_job_defaults(work_dir: Path, job_name: str, target_type: str = "duckdb")
             "tracking_dir_report":     f"{base}/data/report_tracking",
         }
 
-    # 기존 글로벌 기본값 — job_name 반영으로 job 간 데이터 격리
+    # 기존 글로벌 기본값 (하위 호환)
     return {
         "job_dir_exists": False,
         "export_sql_dir":          "sql/export",
-        "export_out_dir":          f"data/export/{job_name}",
+        "export_out_dir":          "data/export",
         "transform_sql_dir":       f"sql/transform/{target_type}",
-        "transform_out_dir":       f"data/{job_name}",
+        "transform_out_dir":       "data",
         "report_sql_dir":          "sql/report",
-        "report_out_dir":          f"data/report/{job_name}",
+        "report_out_dir":          "data/report",
         "target_db_path":          f"data/local/{job_name}.{('duckdb' if target_type == 'duckdb' else 'sqlite')}",
-        "tracking_dir_transform":  f"data/transform/{job_name}",
-        "tracking_dir_report":     f"data/report_tracking/{job_name}",
+        "tracking_dir_transform":  "data/transform",
+        "tracking_dir_report":     "data/report_tracking",
     }
