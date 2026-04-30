@@ -553,9 +553,9 @@ class StateJobMixin:
         self._report_param_mode_var.set(rep.get("param_mode", "product"))
 
         # Params — per-stage 우선, 없으면 top-level fallback
-        exp_params = exp.get("params", {})
-        tfm_params = tfm.get("params", {})
-        rep_params = rep.get("params", {})
+        exp_params = exp.get("params") or {}
+        tfm_params = tfm.get("params") or {}
+        rep_params = rep.get("params") or {}
         if exp_params or tfm_params or rep_params:
             grouped = []
             if exp_params:
@@ -567,7 +567,7 @@ class StateJobMixin:
             self._refresh_param_rows_grouped(grouped)
         else:
             # 구 형식: top-level params → export에 배치 후 scan으로 재분배
-            params = cfg.get("params", {})
+            params = cfg.get("params") or {}
             self._refresh_param_rows(list(params.items()))
         self.after(50, self._scan_and_suggest_params)
 
@@ -710,8 +710,9 @@ class StateJobMixin:
             # job-centric 경로로 하드코딩 제거 (defaults에 위임)
             for section in ("export", "transform", "target"):
                 sec = new_cfg.get(section, {})
-                for k in ("sql_dir", "out_dir", "db_path"):
+                for k in ("sql_dir", "out_dir", "db_path", "params"):
                     sec.pop(k, None)
+            new_cfg.pop("params", None)
             rep = new_cfg.get("report", {})
             for sub_key in ("export_csv", "excel"):
                 sub = rep.get(sub_key, {})
