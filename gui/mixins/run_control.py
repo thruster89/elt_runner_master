@@ -50,6 +50,7 @@ class RunControlMixin:
         self._cleanup_old_logs()
 
         cmd = self._build_command()
+        self._save_param_history()
         self._log_sys(f"Run: {chr(32).join(cmd)}")
         self._log_data_flow_summary()
         self._set_status("● running", C["green"])

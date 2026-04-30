@@ -1188,6 +1188,11 @@ class UiBuildMixin:
                   bd=0, highlightthickness=0,
                   activebackground=C["surface1"],
                   command=self._show_run_history).pack(side="right", padx=4)
+        tk.Button(header, text="Params", font=FONTS["mono_small"],
+                  bg=C["surface0"], fg=C["subtext"], relief="flat", padx=8,
+                  bd=0, highlightthickness=0,
+                  activebackground=C["surface1"],
+                  command=self._show_param_history).pack(side="right", padx=4)
 
         ttk.Separator(parent, orient="horizontal").pack(fill="x", padx=8)
 

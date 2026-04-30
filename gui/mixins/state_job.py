@@ -1199,6 +1199,127 @@ class StateJobMixin:
             self._last_detected_params = set(all_detected)
             self._log_write(f"SQL params detected: {', '.join(sorted(all_detected))}", "INFO")
 
+    # ── 파라미터 히스토리 ─────────────────────────────────────
+    _PARAM_HISTORY_MAX = 20
+
+    def _param_history_path(self: "BatchRunnerGUI") -> Path:
+        fname = self.job_var.get()
+        stem = Path(fname).stem if fname else "_default"
+        wd = Path(self._work_dir.get())
+        job_dir = wd / "jobs" / stem
+        if not job_dir.is_dir():
+            job_dir = wd / "jobs"
+        return job_dir / "param_history.json"
+
+    def _save_param_history(self: "BatchRunnerGUI"):
+        """현재 파라미터 조합을 히스토리에 저장 (Run 시 호출)."""
+        params: dict[str, dict[str, str]] = {}
+        for stage, entries in self._stage_param_entries.items():
+            stage_p = {k.get().strip(): v.get().strip()
+                       for k, v in entries if k.get().strip() and v.get().strip()}
+            if stage_p:
+                params[stage] = stage_p
+        if not params:
+            return
+
+        from datetime import datetime
+        entry = {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "params": params,
+        }
+
+        path = self._param_history_path()
+        history = []
+        if path.exists():
+            try:
+                history = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+
+        # 동일 파라미터 조합 중복 제거
+        history = [h for h in history if h.get("params") != params]
+        history.insert(0, entry)
+        history = history[:self._PARAM_HISTORY_MAX]
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(history, ensure_ascii=False, indent=2),
+                        encoding="utf-8")
+
+    def _show_param_history(self: "BatchRunnerGUI"):
+        """파라미터 히스토리 팝업."""
+        path = self._param_history_path()
+        if not path.exists():
+            messagebox.showinfo("Params", "저장된 파라미터 히스토리가 없습니다.")
+            return
+        try:
+            history = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            messagebox.showinfo("Params", "히스토리 파일을 읽을 수 없습니다.")
+            return
+        if not history:
+            messagebox.showinfo("Params", "저장된 파라미터 히스토리가 없습니다.")
+            return
+
+        dlg = tk.Toplevel(self)
+        dlg.title("Recent Params")
+        dlg.configure(bg=C["base"])
+        dlg.geometry("620x400")
+        dlg.transient(self)
+        dlg.grab_set()
+
+        tk.Label(dlg, text=f"Recent Params — {self.job_var.get()}",
+                 font=FONTS["h2"], bg=C["base"], fg=C["text"]).pack(pady=(12, 6))
+
+        list_frame = tk.Frame(dlg, bg=C["base"])
+        list_frame.pack(fill="both", expand=True, padx=12, pady=6)
+
+        canvas = tk.Canvas(list_frame, bg=C["base"], highlightthickness=0)
+        scrollbar = tk.Scrollbar(list_frame, orient="vertical", command=canvas.yview)
+        inner = tk.Frame(canvas, bg=C["base"])
+        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        def _apply(entry):
+            params = entry.get("params", {})
+            grouped = [(stage, list(p.items())) for stage, p in params.items() if p]
+            if grouped:
+                self._refresh_param_rows_grouped(grouped)
+                self._log_sys(f"[Params] loaded: {entry.get('timestamp', '?')}")
+            dlg.destroy()
+
+        for i, entry in enumerate(history):
+            ts = entry.get("timestamp", "?")
+            params = entry.get("params", {})
+            # 요약 텍스트: stage별 key=value
+            parts = []
+            for stage, p in params.items():
+                for k, v in p.items():
+                    display_v = v if len(v) <= 20 else v[:17] + "..."
+                    parts.append(f"{k}={display_v}")
+            summary = ", ".join(parts)
+            if len(summary) > 80:
+                summary = summary[:77] + "..."
+
+            row = tk.Frame(inner, bg=C["surface0"], cursor="hand2")
+            row.pack(fill="x", pady=1, padx=2)
+            tk.Label(row, text=ts, font=FONTS["mono_small"],
+                     bg=C["surface0"], fg=C["subtext"], width=19,
+                     anchor="w").pack(side="left", padx=(8, 4))
+            tk.Label(row, text=summary, font=FONTS["mono_small"],
+                     bg=C["surface0"], fg=C["text"],
+                     anchor="w").pack(side="left", fill="x", expand=True, padx=(0, 8))
+            for widget in (row,):
+                widget.bind("<Button-1>", lambda e, ent=entry: _apply(ent))
+            for child in row.winfo_children():
+                child.bind("<Button-1>", lambda e, ent=entry: _apply(ent))
+
+        tk.Button(dlg, text="Close", font=FONTS["body"],
+                  bg=C["surface0"], fg=C["text"], relief="flat",
+                  command=dlg.destroy).pack(pady=(4, 12))
+
     # ── SQL 선택 (공통 헬퍼) ─────────────────────────────────
     _SQL_SELECTOR_CFG = {
         "export":    {"dir_var": "_export_sql_dir",    "default": "sql/export",
