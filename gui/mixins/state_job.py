@@ -710,8 +710,9 @@ class StateJobMixin:
             # job-centric 경로로 하드코딩 제거 (defaults에 위임)
             for section in ("export", "transform", "target"):
                 sec = new_cfg.get(section, {})
-                for k in ("sql_dir", "out_dir", "db_path"):
+                for k in ("sql_dir", "out_dir", "db_path", "params"):
                     sec.pop(k, None)
+            new_cfg.pop("params", None)
             rep = new_cfg.get("report", {})
             for sub_key in ("export_csv", "excel"):
                 sub = rep.get(sub_key, {})
