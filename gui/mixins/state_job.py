@@ -230,6 +230,40 @@ class StateJobMixin:
             return {"csv_filter": parts[0]}
         return {"csv_filter": parts}
 
+    # ── 경로 내 job_name 교체 ────────────────────────────────────
+    @staticmethod
+    def _remap_job_paths(cfg: dict, old_name: str, new_name: str) -> dict:
+        """config dict 내 경로 문자열에서 old job_name을 new job_name으로 교체.
+
+        jobs/{old}/... → jobs/{new}/...  및  {old}.duckdb → {new}.duckdb 등을 변환.
+        """
+        if not old_name or old_name == new_name:
+            return cfg
+
+        def _replace(val: str) -> str:
+            if not isinstance(val, str):
+                return val
+            val = val.replace(f"jobs/{old_name}/", f"jobs/{new_name}/")
+            val = val.replace(f"jobs\\{old_name}\\", f"jobs\\{new_name}\\")
+            val = val.replace(f"/{old_name}.duckdb", f"/{new_name}.duckdb")
+            val = val.replace(f"\\{old_name}.duckdb", f"\\{new_name}.duckdb")
+            val = val.replace(f"/{old_name}.sqlite", f"/{new_name}.sqlite")
+            val = val.replace(f"\\{old_name}.sqlite", f"\\{new_name}.sqlite")
+            return val
+
+        path_keys = {"sql_dir", "out_dir", "db_path", "csv_dir",
+                     "csv_union_dir", "temp_directory"}
+
+        def _walk(d: dict):
+            for k, v in d.items():
+                if isinstance(v, dict):
+                    _walk(v)
+                elif isinstance(v, str) and k in path_keys:
+                    d[k] = _replace(v)
+
+        _walk(cfg)
+        return cfg
+
     # ── GUI config 빌드 ────────────────────────────────────────
     def _build_gui_config(self: "BatchRunnerGUI") -> dict:
         """GUI 전체 상태를 job yml dict로 조립"""
@@ -431,15 +465,6 @@ class StateJobMixin:
         work_dir = Path(self._work_dir.get())
         defaults = get_job_defaults(work_dir, job_name, tgt_type)
 
-        def _upgrade_legacy(val: str, default_key: str) -> str:
-            """구 공유 기본값이면 job별 기본값으로 교체."""
-            _OLD = {"data/export", "data/report", "data",
-                    "data/local/result.duckdb", "data/local/result.sqlite",
-                    "data/transform", "data/report_tracking"}
-            if val in _OLD and job_name and job_name not in ("default", "_default"):
-                return defaults.get(default_key, val)
-            return val
-
         # Source
         src = cfg.get("source", {})
         src_type = src.get("type", "oracle")
@@ -449,8 +474,7 @@ class StateJobMixin:
 
         # Target
         self._target_type_var.set(tgt_type)
-        self._target_db_path.set(
-            _upgrade_legacy(tgt.get("db_path", defaults["target_db_path"]), "target_db_path"))
+        self._target_db_path.set(tgt.get("db_path", defaults["target_db_path"]))
         self._target_schema.set(tgt.get("schema", ""))
         self._update_target_visibility()
         self._update_load_mode_options()
@@ -458,8 +482,7 @@ class StateJobMixin:
         # Export paths
         exp = cfg.get("export", {})
         self._export_sql_dir.set(exp.get("sql_dir", defaults["export_sql_dir"]))
-        self._export_out_dir.set(
-            _upgrade_legacy(exp.get("out_dir", defaults["export_out_dir"]), "export_out_dir"))
+        self._export_out_dir.set(exp.get("out_dir", defaults["export_out_dir"]))
 
         # Load
         load_cfg = cfg.get("load", {})
@@ -485,15 +508,11 @@ class StateJobMixin:
         else:
             transform_sql_default = f"sql/transform/{effective_type}"
         self._transform_sql_dir.set(tfm.get("sql_dir", transform_sql_default))
-        self._transform_out_dir.set(
-            _upgrade_legacy(tfm.get("out_dir", ""), "transform_out_dir") if tfm.get("out_dir") else "")
+        self._transform_out_dir.set(tfm.get("out_dir", ""))
         rep = cfg.get("report", {})
         rep_csv = rep.get("export_csv", {})
         self._report_sql_dir.set(rep_csv.get("sql_dir", defaults["report_sql_dir"]))
-        self._report_out_dir.set(
-            _upgrade_legacy(
-                rep_csv.get("out_dir", rep.get("excel", {}).get("out_dir", defaults["report_out_dir"])),
-                "report_out_dir"))
+        self._report_out_dir.set(rep_csv.get("out_dir", rep.get("excel", {}).get("out_dir", defaults["report_out_dir"])))
         self._report_schema.set(rep.get("schema", ""))
 
         # Stages
@@ -592,6 +611,22 @@ class StateJobMixin:
         else:
             out_path = jobs_dir / fname
         new_cfg = self._build_gui_config()
+        # db_path 안에 다른 job_name이 들어있으면 경고 + 자동 수정 제안
+        db_path = new_cfg.get("target", {}).get("db_path", "")
+        if db_path and f"/{stem}." not in db_path and f"\\{stem}." not in db_path:
+            if messagebox.askyesno(
+                    "Path Mismatch",
+                    f"target.db_path 경로가 현재 job 이름({stem})과 "
+                    f"일치하지 않습니다.\n\n"
+                    f"현재: {db_path}\n\n"
+                    f"경로를 job 이름에 맞게 자동 수정할까요?"):
+                work_dir = Path(self._work_dir.get())
+                tgt_type = new_cfg.get("target", {}).get("type", "duckdb")
+                from engine.path_utils import get_job_defaults
+                defaults = get_job_defaults(work_dir, stem, tgt_type)
+                new_cfg["target"]["db_path"] = defaults["target_db_path"]
+                self._target_db_path.set(defaults["target_db_path"])
+                self._log_sys(f"[Save] db_path auto-fixed → {defaults['target_db_path']}")
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(
             yaml.dump(new_cfg, allow_unicode=True, default_flow_style=False,
@@ -735,14 +770,16 @@ class StateJobMixin:
             return
         jobs_dir = self._jobs_dir()
         jobs_dir.mkdir(parents=True, exist_ok=True)
-        base = fname.replace(".yml", "")
+        old_stem = Path(fname).stem
         # 중복 방지: _copy, _copy2, _copy3 ...
-        new_name = f"{base}_copy.yml"
+        new_name = f"{old_stem}_copy.yml"
         counter = 2
         while (jobs_dir / new_name).exists():
-            new_name = f"{base}_copy{counter}.yml"
+            new_name = f"{old_stem}_copy{counter}.yml"
             counter += 1
+        new_stem = Path(new_name).stem
         new_cfg = self._build_gui_config()
+        self._remap_job_paths(new_cfg, old_stem, new_stem)
         (jobs_dir / new_name).write_text(
             yaml.dump(new_cfg, allow_unicode=True, default_flow_style=False,
                       sort_keys=False),
@@ -807,8 +844,11 @@ class StateJobMixin:
                     return
             # Save As: job_name을 새 파일명 기준으로 갱신
             prev_job = self.job_var.get()
+            old_stem = Path(prev_job).stem if prev_job else ""
+            new_stem = Path(raw).stem
             self.job_var.set(raw)
             new_cfg = self._build_gui_config()
+            self._remap_job_paths(new_cfg, old_stem, new_stem)
             self.job_var.set(prev_job)  # combo 표시 복원 (reload에서 재설정)
             out_path.write_text(
                 yaml.dump(new_cfg, allow_unicode=True, default_flow_style=False,
@@ -846,9 +886,9 @@ class StateJobMixin:
         job_loaded = False
         if hasattr(self, "_job_combo"):
             self._job_combo["values"] = job_names
-            # reload 시 미저장 경고 팝업 방지 — _restoring_job으로 감싸서 호출
-            prev_restoring = self._restoring_job
-            self._restoring_job = True
+            # reload 시 미저장 경고 팝업 방지 — snapshot을 None으로 초기화
+            saved_snapshot = self._job_loaded_snapshot
+            self._job_loaded_snapshot = None
             if self.job_var.get() in job_names:
                 self._on_job_change()
                 job_loaded = True
@@ -856,7 +896,8 @@ class StateJobMixin:
                 self.job_var.set("_default.yml")
                 self._on_job_change()
                 job_loaded = True
-            self._restoring_job = prev_restoring
+            if not job_loaded:
+                self._job_loaded_snapshot = saved_snapshot
 
         # source type combo 갱신
         if hasattr(self, "_source_type_combo"):
@@ -1142,14 +1183,13 @@ class StateJobMixin:
 
         # 스테이지별 (key, value) 리스트 구성 — 중복 제거 없이 각 스테이지 독립
         grouped: list[tuple[str, list[tuple[str, str]]]] = []
-        prev_detected = getattr(self, "_last_detected_params", set())
         for stage in ("export", "transform", "report"):
             detected = stage_params.get(stage, set())
             pairs = [(p, _val(p, stage)) for p in sorted(detected)]
-            # 사용자가 이 스테이지에 직접 추가한 값 (자동감지 아닌 것) 보존
+            # 사용자가 값을 입력한 파라미터만 보존 (빈값 skip 상태는 제거)
             user_cur = current_by_stage.get(stage, {})
             for k, v in user_cur.items():
-                if k and k not in detected and k not in prev_detected:
+                if k and k not in detected and v.strip():
                     pairs.append((k, v))
             if pairs:
                 grouped.append((stage, pairs))
