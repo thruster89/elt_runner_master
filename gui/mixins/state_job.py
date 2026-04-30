@@ -1183,14 +1183,13 @@ class StateJobMixin:
 
         # 스테이지별 (key, value) 리스트 구성 — 중복 제거 없이 각 스테이지 독립
         grouped: list[tuple[str, list[tuple[str, str]]]] = []
-        prev_detected = getattr(self, "_last_detected_params", set())
         for stage in ("export", "transform", "report"):
             detected = stage_params.get(stage, set())
             pairs = [(p, _val(p, stage)) for p in sorted(detected)]
-            # 사용자가 이 스테이지에 직접 추가한 값 (자동감지 아닌 것) 보존
+            # 사용자가 값을 입력한 파라미터만 보존 (빈값 skip 상태는 제거)
             user_cur = current_by_stage.get(stage, {})
             for k, v in user_cur.items():
-                if k and k not in detected and k not in prev_detected:
+                if k and k not in detected and v.strip():
                     pairs.append((k, v))
             if pairs:
                 grouped.append((stage, pairs))
