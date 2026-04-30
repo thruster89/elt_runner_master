@@ -1,16 +1,12 @@
-job_name: default
 pipeline:
   stages:
   - export
   - load_local
   - transform
-  - report
 source:
   type: oracle
-  host: local
+  host: ''
 export:
-  sql_dir: sql/export
-  out_dir: data/export
   overwrite: false
   parallel_workers: 1
   compression: gzip
@@ -21,18 +17,5 @@ load:
   mode: replace
 target:
   type: duckdb
-  db_path: data/local/result.duckdb
 transform:
-  sql_dir: sql/transform/duckdb
   on_error: stop
-report:
-  source: target
-  export_csv:
-    enabled: true
-    sql_dir: sql/report
-    out_dir: data/report
-  excel:
-    enabled: true
-    out_dir: data/report
-    max_files: 10
-  csv_union_dir: data/report
