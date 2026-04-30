@@ -553,9 +553,9 @@ class StateJobMixin:
         self._report_param_mode_var.set(rep.get("param_mode", "product"))
 
         # Params — per-stage 우선, 없으면 top-level fallback
-        exp_params = exp.get("params", {})
-        tfm_params = tfm.get("params", {})
-        rep_params = rep.get("params", {})
+        exp_params = exp.get("params") or {}
+        tfm_params = tfm.get("params") or {}
+        rep_params = rep.get("params") or {}
         if exp_params or tfm_params or rep_params:
             grouped = []
             if exp_params:
@@ -567,7 +567,7 @@ class StateJobMixin:
             self._refresh_param_rows_grouped(grouped)
         else:
             # 구 형식: top-level params → export에 배치 후 scan으로 재분배
-            params = cfg.get("params", {})
+            params = cfg.get("params") or {}
             self._refresh_param_rows(list(params.items()))
         self.after(50, self._scan_and_suggest_params)
 
