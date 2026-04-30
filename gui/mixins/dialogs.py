@@ -205,10 +205,15 @@ class DialogsMixin:
             if missing:
                 tk.Label(body, text="Warning", **kw_key).grid(
                     row=row, column=0, sticky="e", **pad_k)
-                tk.Label(body, text=f"Param 누락: {', '.join(sorted(missing))}",
+                warn_frame = tk.Frame(body, bg=C["base"])
+                warn_frame.grid(row=row, column=1, columnspan=3, sticky="w", **pad_v)
+                tk.Label(warn_frame, text=f"Param 누락: {', '.join(sorted(missing))}",
                          bg=C["base"], fg=C["red"],
-                         font=FONTS["body_bold"]).grid(
-                    row=row, column=1, columnspan=3, sticky="w", **pad_v)
+                         font=FONTS["body_bold"]).pack(anchor="w")
+                tk.Label(warn_frame,
+                         text="(빈값 파라미터는 해당 SQL 라인이 자동 제거됩니다)",
+                         bg=C["base"], fg=C["subtext"],
+                         font=FONTS["small"]).pack(anchor="w")
 
         return self._themed_confirm("━ Run Confirm", build)
 
