@@ -261,7 +261,10 @@ def expand_params(params: dict, mode: str = "product",
 # ---------------------------
 # Helpers
 # ---------------------------
+_INVISIBLE_RE = re.compile('[﻿​‌‍⁠\x00]')
+
 def sanitize_sql(sql: str) -> str:
+    sql = _INVISIBLE_RE.sub('', sql)
     sql = sql.strip()
     while sql.endswith(";") or sql.endswith("/"):
         sql = sql[:-1].rstrip()
@@ -757,6 +760,10 @@ def run(ctx: RunContext):
                     except ValueError:
                         pass
             logger.exception("%s EXPORT failed: %s", prefix, e)
+            _rsql = locals().get("rendered_sql")
+            if _rsql:
+                for sql_line in _rsql.splitlines():
+                    logger.error("%s   SQL> %s", prefix, sql_line)
             update_task_status(run_info_path, task_key, "failed", error=str(e))
 
     set_recycle_interval(parallel_workers)

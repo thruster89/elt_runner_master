@@ -8,7 +8,7 @@ SQL_PREFIX_STRIP = re.compile(r"^(\d+)[.\-_ ]+")
 TABLE_HINT_PATTERN = re.compile(r"^--\[(.+)\]$")
 
 # SQL 파일 읽기에 시도할 인코딩 목록 (우선순위순)
-_SQL_ENCODINGS = ("utf-8", "cp949", "euc-kr", "latin-1")
+_SQL_ENCODINGS = ("utf-8-sig", "utf-8", "cp949", "euc-kr", "latin-1")
 
 
 def read_sql_file(path: Path) -> str:
