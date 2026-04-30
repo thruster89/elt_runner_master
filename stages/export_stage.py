@@ -261,7 +261,10 @@ def expand_params(params: dict, mode: str = "product",
 # ---------------------------
 # Helpers
 # ---------------------------
+_INVISIBLE_RE = re.compile('[﻿​‌‍⁠\x00]')
+
 def sanitize_sql(sql: str) -> str:
+    sql = _INVISIBLE_RE.sub('', sql)
     sql = sql.strip()
     while sql.endswith(";") or sql.endswith("/"):
         sql = sql[:-1].rstrip()
